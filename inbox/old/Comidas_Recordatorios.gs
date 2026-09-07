@@ -7,8 +7,9 @@
                 asume "No estoy" o "Taper / Glovo".
 
    UN SOLO CORREO para todos los pendientes, no uno por persona.
-   Sale desde noreply@ con los destinatarios en el PARA, igual que los avisos
-   de Pases Calendados (ver MODO_ENVIO más abajo).
+   Sale desde la cuenta que ejecuta el script, con el equipo en copia oculta:
+   está comprobado que noreply@nfq.es NO entrega a buzones del propio dominio
+   (ver MODO_ENVIO más abajo y COMO_ARREGLAR_NOREPLY al final).
 
    Puesta en marcha: ejecutar crearTriggers() una vez.
    Prueba:      enviarRecordatorioPrueba()  → envía a PRUEBA_TO.
@@ -32,14 +33,23 @@ const PRUEBA_TO = 'pablo.llorente@nfq.es';
      Pases   → desarrollos.nfq.rdr.group@bbva.com   (dominio de FUERA)   llega
      Comidas → compañeros de nfq.es / nter.es       (dominio PROPIO)  NO llega
 
-   Y en la misma ejecución de probarEntrega, el correo enviado desde la cuenta
-   sí llegó a ese mismo compañero. O sea: no es la cuenta, no es el código y no
-   es el destinatario — es la combinación "remitente noreply@nfq.es + buzón del
-   propio dominio". Es lo que hace Google Workspace con un remitente interno
-   que NO existe en el directorio: a un destino externo (bbva.com) el mensaje
-   sale firmado y se acepta; hacia buzones del propio dominio, la protección
-   antisuplantación lo retiene. Quien envía se ve su propio correo siempre,
-   por eso parecía que salía bien.
+   COMPROBADO (probarEntrega a iker.cid@nfq.es, 24 personas del equipo, una
+   sola ejecución desde pablo.llorente@nfq.es, las tres "enviadas sin error"):
+     [A] desde la cuenta, copia oculta ......... LLEGA
+     [B] desde noreply@, copia oculta .......... no llega
+     [C] desde noreply@, en el PARA (= Pases) .. no llega
+   Mismo código, misma cuenta, mismo destinatario y mismo momento: lo único
+   que cambia es el remitente. Es lo que hace Google Workspace con un
+   remitente interno que NO existe en el directorio (no hay ningún alias:
+   diagnosticarRemitente devuelve 0): a un destino externo (bbva.com) el
+   mensaje sale firmado y se acepta; hacia buzones del propio dominio, la
+   protección antisuplantación lo retiene sin devolver error. Quien envía se
+   ve siempre su propio correo, y por eso parecía que salía bien.
+
+   Conclusión: desde el script no hay forma de arreglarlo. Hasta que IT lo
+   toque (ver COMO_ARREGLAR_NOREPLY al final), el modo por defecto es el
+   único que entrega a todo el equipo. Cuando esté hecho, se vuelve a
+   'noreply-para' cambiando esta constante y ya está.
 
    Se arregla en la Consola de administración, no aquí (ver COMO_ARREGLAR_NOREPLY
    al final del fichero). Mientras tanto:
@@ -52,7 +62,7 @@ const PRUEBA_TO = 'pablo.llorente@nfq.es';
                                    Requiere que sea alias verificado de la cuenta.
                   'cuenta-bcc'   → desde la cuenta, en copia oculta. Es la única
                                    variante confirmada que llega hoy a todos. */
-const MODO_ENVIO = 'noreply-para';
+const MODO_ENVIO = 'cuenta-bcc';
 
 // Para MODO_ENVIO = 'alias': dirección que debe aparecer como remitente. Tiene
 // que ser un alias verificado de la cuenta (Gmail → Ver todos los ajustes →
@@ -342,6 +352,7 @@ function revisarRebotes() {
    1. Crear el buzón. Directorio → Usuarios (o Grupos) → dar de alta
       noreply@nfq.es. Al existir en el directorio, deja de ser un remitente
       interno "inventado" y la protección antisuplantación no lo retiene.
+      Es la vía más limpia y la que menos toca la configuración de seguridad.
 
    2. Permitirlo explícitamente. Aplicaciones → Google Workspace → Gmail →
       Seguridad → "Suplantación de identidad y autenticación": en la protección
@@ -354,5 +365,12 @@ function revisarRebotes() {
       mensaje, si se entregó, si está en cuarentena o si se rechazó y por qué.
       Esto es lo que conviene enseñarle a IT.
 
+   Otra vía si no se quiere tocar nada de seguridad: crear comidas@nfq.es
+   (usuario o grupo), verificarlo en Gmail → Ver todos los ajustes → Cuentas →
+   "Enviar como" de la cuenta que ejecuta el script, y poner MODO_ENVIO =
+   'alias'. Es un remitente de no-respuesta que sí existe en el directorio,
+   así que entrega sin problema. Hoy no hay ningún alias verificado, por eso
+   la variante [D] de probarEntrega se omite.
+
    Mientras no esté hecho, MODO_ENVIO = 'cuenta-bcc' es lo único que llega a
-   todo el equipo, y 'alias' es la alternativa si se crea comidas@nfq.es. */
+   todo el equipo. */
