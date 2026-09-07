@@ -6,11 +6,9 @@
      · Mié 12 → aviso final: la reserva se hace en 30 min; quien no vote se
                 asume "No estoy" o "Taper / Glovo".
 
-   UN SOLO CORREO para todos los pendientes, con ellos en COPIA OCULTA y la
-   cuenta que envía en el PARA. Es el patrón que mejor entrega: 20 correos de
-   golpe (o uno con 20 direcciones en el PARA) tienen pinta de envío masivo y
-   los filtran. Con BCC, además, nadie ve la lista de direcciones.
-   Sale desde noreply@, salvo los dominios que lo filtran (ver más abajo).
+   UN SOLO CORREO para todos los pendientes, no uno por persona.
+   Sale desde noreply@ con los destinatarios en el PARA, igual que los avisos
+   de Pases Calendados (ver MODO_ENVIO más abajo).
 
    Puesta en marcha: ejecutar crearTriggers() una vez.
    Prueba:      enviarRecordatorioPrueba()  → envía a PRUEBA_TO.
@@ -23,27 +21,26 @@ const WEB_URL   = 'https://rdr-nfq.github.io/team-hub/comidas/'; // enlace del b
 const REMITE    = 'Comidas RDR';
 const PRUEBA_TO = 'pablo.llorente@nfq.es';
 
-/* ── Remitente ─────────────────────────────────────────────────────────────
-   Se envía desde noreply@<dominio> (noReply:true), igual que los avisos de
-   Pases Calendados, que salen a desarrollos.nfq.rdr.group@bbva.com y llegan
-   sin problema: noreply@nfq.es SÍ sale del dominio.
+/* ── Modo de envío ─────────────────────────────────────────────────────────
+   Los avisos de Pases Calendados usan noReply:true y llegan bien: van con el
+   destinatario en el PARA, sin copia oculta y con cuerpo de texto plano.
+   La prueba de entrega apunta a que el problema está en la COPIA OCULTA con
+   noreply@: la variante [A] (desde la cuenta, en copia oculta) llegó a un
+   tercero; la [B] (noreply@ en copia oculta) solo la vio quien envía, que iba
+   en el PARA. Así que aquí se replica el patrón de Pases:
 
-   Lo comprobado con probarEntrega(): a nfq.es y a bbva.com llega; a nter.es
-   NO llega el correo de noreply@ (lo filtra el servidor de destino), pero sí
-   el que sale desde la cuenta. Por eso:
+     MODO_ENVIO = 'noreply-para' (por defecto) → un solo correo desde
+         noreply@ con todos los pendientes en el PARA (se ven entre ellos,
+         son el mismo equipo). Es la forma en la que noreply@ está
+         demostrado que entrega.
+                  'noreply-bcc' → desde noreply@ con el equipo en copia
+         oculta (más discreto, pero es justo lo que no llegó).
+                  'cuenta-bcc'  → desde la cuenta y en copia oculta: la única
+         variante que se ha confirmado que llega a terceros. Es el plan B si
+         'noreply-para' tampoco llega.
 
-     MODO_REMITENTE = 'auto'    → noreply@ para todos MENOS los dominios de
-                                  DOMINIOS_SIN_NOREPLY, que lo reciben desde
-                                  la cuenta que ejecuta el script.
-                      'noreply' → todo desde noreply@ (los de esos dominios no
-                                  lo recibirán mientras su filtro no lo deje).
-                      'cuenta'  → todo desde la cuenta.
-
-   Para mandarlo TODO desde noreply@: que IT de nter.es permita
-   noreply@nfq.es (o que quien lo reciba lo saque de spam y cree la regla).
-   En cuanto esté, se quita 'nter.es' de la lista de abajo. */
-const MODO_REMITENTE = 'auto';
-const DOMINIOS_SIN_NOREPLY = ['nter.es'];
+   Con probarEntrega('compañero@nfq.es') se comprueban las tres a la vez. */
+const MODO_ENVIO = 'noreply-para';
 
 // Responder al correo escribe a esta dirección (con noreply@ no hay a quién).
 const RESPONDER_A = 'pablo.llorente@nfq.es';
@@ -99,9 +96,7 @@ function proximoJueves_(tz, isoDow) {
 }
 
 // ── Envío ─────────────────────────────────────────────────────────────────
-//    UN correo por grupo de remitente: la cuenta que envía en el PARA y el
-//    equipo en COPIA OCULTA (un solo destinatario visible entrega mejor que
-//    20 direcciones en el PARA, y nadie ve la lista).
+//    UN solo correo para todos los pendientes, con el patrón de MODO_ENVIO.
 //    El texto plano es el HTML sin etiquetas, como en los avisos de pases: un
 //    cuerpo de texto de verdad puntúa mejor en los filtros que una sola línea.
 
@@ -116,55 +111,47 @@ function quitarTags_(html) {
     .trim();
 }
 
-const dominio_ = (email) => String(email || '').split('@')[1] || '';
-
-/** ¿Este destinatario recibe bien el correo de noreply@? */
-function aceptaNoreply_(email) {
-  if (MODO_REMITENTE === 'noreply') return true;
-  if (MODO_REMITENTE === 'cuenta') return false;
-  return DOMINIOS_SIN_NOREPLY.indexOf(dominio_(email).toLowerCase()) < 0;
-}
-
-/** Envía a un grupo en copia oculta. Si el envío conjunto falla (una dirección
- *  que ya no existe puede tumbar el mensaje entero), reintenta uno a uno: así
- *  lo recibe todo el mundo menos quien tenga la dirección mala, que queda
- *  anotada en el registro. */
-function enviarGrupo_(emails, subject, htmlBody, conNoreply) {
+/** Envía UN correo al grupo, con el patrón que indique MODO_ENVIO. Si falla
+ *  (una dirección que ya no existe puede tumbar el mensaje entero), reintenta
+ *  uno a uno: así lo recibe todo el mundo menos quien tenga la dirección mala,
+ *  que queda anotada en el registro. */
+function enviarGrupo_(emails, subject, htmlBody) {
   if (!emails.length) return { enviados: 0, fallidos: [] };
   const yo = Session.getEffectiveUser().getEmail();
   const texto = quitarTags_(htmlBody);
-  const opciones = (bcc) => {
-    const o = { htmlBody: htmlBody, name: REMITE, bcc: bcc };
-    if (conNoreply) o.noReply = true;
-    else o.replyTo = RESPONDER_A;
-    return o;
+  // 'noreply-para': destinatarios en el PARA, como los avisos de pases.
+  // Los modos '-bcc' mandan a la propia cuenta y ponen al equipo en copia oculta.
+  const enPara = MODO_ENVIO === 'noreply-para';
+  const conNoreply = MODO_ENVIO !== 'cuenta-bcc';
+  const enviar = (destinos) => {
+    const o = { htmlBody: htmlBody, name: REMITE };
+    if (conNoreply) o.noReply = true; else o.replyTo = RESPONDER_A;
+    if (enPara) return GmailApp.sendEmail(destinos.join(','), subject, texto, o);
+    o.bcc = destinos.join(',');
+    return GmailApp.sendEmail(yo, subject, texto, o);
   };
   try {
-    GmailApp.sendEmail(yo, subject, texto, opciones(emails.join(',')));
+    enviar(emails);
     return { enviados: emails.length, fallidos: [] };
   } catch (e) {
     Logger.log('Envío conjunto fallido (' + e + '). Se reintenta dirección a dirección.');
     const fallidos = [];
     let ok = 0;
     emails.forEach(em => {
-      try { GmailApp.sendEmail(yo, subject, texto, opciones(em)); ok++; }
+      try { enviar([em]); ok++; }
       catch (e2) { fallidos.push(em + ' (' + e2 + ')'); }
     });
     return { enviados: ok, fallidos: fallidos };
   }
 }
 
-/** Reparte los destinatarios según quién acepta noreply@ y envía cada grupo. */
+/** Envía el recordatorio a todos los pendientes. */
 function enviarMail_(destinatarios, subject, htmlBody) {
   const lista = [].concat(destinatarios).filter(Boolean);
-  const conNoreply = lista.filter(aceptaNoreply_);
-  const desdeCuenta = lista.filter(e => !aceptaNoreply_(e));
-  const r1 = enviarGrupo_(conNoreply, subject, htmlBody, true);
-  const r2 = enviarGrupo_(desdeCuenta, subject, htmlBody, false);
-  const fallidos = r1.fallidos.concat(r2.fallidos);
-  Logger.log('Enviado · desde noreply@: ' + r1.enviados + ' · desde la cuenta: ' + r2.enviados
-    + (fallidos.length ? ' · DIRECCIONES QUE FALLAN: ' + fallidos.join(' | ') : ''));
-  return { noreply: r1.enviados, cuenta: r2.enviados, fallidos: fallidos };
+  const r = enviarGrupo_(lista, subject, htmlBody);
+  Logger.log('Enviado (' + MODO_ENVIO + '): ' + r.enviados + ' destinatarios'
+    + (r.fallidos.length ? ' · DIRECCIONES QUE FALLAN: ' + r.fallidos.join(' | ') : ''));
+  return r;
 }
 
 // ── Datos ─────────────────────────────────────────────────────────────────
@@ -245,7 +232,7 @@ function enviarRecordatorioPrueba() {
   const pendientes = noVotantes_(ss, fecha);
   enviarMail_(PRUEBA_TO, '[PRUEBA] 🍽️ ¿Dónde comemos el jueves ' + fecha + '?',
     cuerpo_(pendientes.length ? pendientes : [{ nombre: 'equipo' }], fecha, false, lider_(ss, fecha)));
-  Logger.log('Prueba enviada a ' + PRUEBA_TO + ' (remitente: ' + (aceptaNoreply_(PRUEBA_TO) ? 'noreply@' : Session.getEffectiveUser().getEmail()) + ').');
+  Logger.log('Prueba enviada a ' + PRUEBA_TO + ' (modo ' + MODO_ENVIO + ').');
 }
 
 // ── Diagnóstico: qué haría el próximo disparo, sin enviar nada ────────────
@@ -260,11 +247,8 @@ function diagnosticarComidas() {
   Logger.log('¿Jueves de oficina ("N" en Semana)?: ' + esOficina_(ss, fecha));
   Logger.log('equipo.json: ' + team.length + ' personas · sin email: ' + team.filter(p => !p.email).map(p => p.nombre).join(', '));
   Logger.log('Pendientes de votar (' + pendientes.length + '): ' + pendientes.map(p => p.nombre + ' <' + p.email + '>').join(', '));
-  const emails = pendientes.map(p => p.email).filter(Boolean);
-  Logger.log('Modo de remitente: ' + MODO_REMITENTE + ' · dominios sin noreply: ' + DOMINIOS_SIN_NOREPLY.join(', '));
-  Logger.log('Desde noreply@ (' + emails.filter(aceptaNoreply_).length + '): ' + emails.filter(aceptaNoreply_).join(', '));
-  Logger.log('Desde ' + Session.getEffectiveUser().getEmail() + ' (' + emails.filter(e => !aceptaNoreply_(e)).length + '): '
-    + emails.filter(e => !aceptaNoreply_(e)).join(', '));
+  Logger.log('Modo de envío: ' + MODO_ENVIO + ' · remitente: '
+    + (MODO_ENVIO === 'cuenta-bcc' ? Session.getEffectiveUser().getEmail() : 'noreply@'));
   Logger.log('Cuota de correo restante hoy: ' + MailApp.getRemainingDailyQuota());
 }
 
@@ -275,10 +259,12 @@ function diagnosticarComidas() {
      [B] desde noreply@, en copia oculta
      [C] desde noreply@, en el PARA y con texto plano completo — EXACTAMENTE
          como los avisos de Pases Calendados, que sí llegan a bbva.com
-   Que llegue [A] y no [B] ni [C] significa que ese destino filtra a
-   noreply@nfq.es: hay que sacarlo de spam y permitirlo en su servidor, o
-   dejar su dominio en DOMINIOS_SIN_NOREPLY. Mirar SIEMPRE la carpeta de spam
-   antes de dar un correo por no entregado. */
+   Cómo leer el resultado:
+     · llega [C] pero no [B]  → el problema es la copia oculta con noreply@;
+       vale el modo 'noreply-para' (el que está puesto).
+     · no llega ni [B] ni [C] → noreply@ no entrega a terceros desde esta
+       cuenta: poner MODO_ENVIO = 'cuenta-bcc'.
+   Mirar SIEMPRE la carpeta de spam antes de dar un correo por no entregado. */
 function probarEntrega(direccion) {
   const to = direccion || PRUEBA_TO;
   const yo = Session.getEffectiveUser().getEmail();
