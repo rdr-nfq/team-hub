@@ -183,6 +183,14 @@
       "emailBBVA": "carlos.lozano.lorenzo.contractor@bbva.com",
       "track": "tecnico",
       "coordinador": false
+    },
+    {
+      "id": "-",
+      "nombre": "Juan Carlos Botello",
+      "email": "juan.botella@nfq.es",
+      "emailBBVA": "-",
+      "track": "funcional",
+      "coordinador": false
     }
   ]
 }
