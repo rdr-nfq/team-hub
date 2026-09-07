@@ -1,76 +1,50 @@
 /* ===========================================================================
    Comidas RDR · Recordatorios por email (Apps Script)
-   Avisa a quien AÚN NO ha votado, con el enlace a la web.
-   Horario (solo si ese jueves es de oficina, 'N' en la pestaña "Semana"):
+
+   Avisa a quien AÚN NO ha votado, con el enlace a la web. Se manda UN SOLO
+   correo a todos los pendientes (en copia oculta), no uno por persona.
+
+   Cuándo, y solo si ese jueves es de oficina ('N' en la pestaña "Semana"):
      · Lun 12 y 17 · Mar 12 y 17
      · Mié 12 → aviso final: la reserva se hace en 30 min; quien no vote se
                 asume "No estoy" o "Taper / Glovo".
 
-   UN SOLO CORREO para todos los pendientes, no uno por persona.
-   Sale desde la cuenta que ejecuta el script, con el equipo en copia oculta:
-   está comprobado que noreply@nfq.es NO entrega a buzones del propio dominio
-   (ver MODO_ENVIO más abajo y COMO_ARREGLAR_NOREPLY al final).
-
-   Puesta en marcha: ejecutar crearTriggers() una vez.
-   Prueba:      enviarRecordatorioPrueba()  → envía a PRUEBA_TO.
-   Diagnóstico: diagnosticarComidas()       → qué vería el próximo disparo.
-   Entrega:     probarEntrega('x@nfq.es')   → manda todas las variantes de
-                envío a esa dirección para ver cuál llega.
-   Remitente:   diagnosticarRemitente()      → qué remitentes puede usar.
-   Rebotes:     revisarRebotes()             → avisos de no entrega recientes.
+   Funciones de uso:
+     crearTriggers()             una vez, para programar los avisos
+     enviarRecordatorioPrueba()  envía a PRUEBA_TO el correo que saldría hoy
+     diagnosticarComidas()       qué haría el próximo disparo, sin enviar nada
+     probarEntrega('x@nfq.es')   manda las variantes de envío para ver cuál llega
+     diagnosticarRemitente()     remitentes que puede usar el script
+     revisarRebotes()            avisos de no entrega recientes
    =========================================================================== */
 
 const WEB_URL   = 'https://rdr-nfq.github.io/team-hub/comidas/'; // enlace del botón del correo
 const REMITE    = 'Comidas RDR';
 const PRUEBA_TO = 'pablo.llorente@nfq.es';
 
-/* ── Modo de envío ─────────────────────────────────────────────────────────
-   La llamada de aquí es EXACTAMENTE la misma que la de los avisos de pases
-   (Avisos_Pases.gs:214): GmailApp.sendEmail(dest, asunto, texto plano,
-   { htmlBody, name, noReply:true }). Mismo código, mismo proyecto de Apps
-   Script, misma cuenta. Lo único que cambia es a QUIÉN se envía:
+/* Remitente y forma de envío.
 
-     Pases   → desarrollos.nfq.rdr.group@bbva.com   (dominio de FUERA)   llega
-     Comidas → compañeros de nfq.es / nter.es       (dominio PROPIO)  NO llega
+   Sale desde la cuenta que ejecuta el script, con el equipo en copia oculta.
+   No se usa noreply@nfq.es porque esa dirección no existe en el directorio y
+   Workspace no la entrega a buzones del propio dominio: los avisos de pases
+   sí llegan con noReply:true porque van a un buzón de fuera (bbva.com). Está
+   comprobado con probarEntrega(): mismo código, misma cuenta y mismo
+   destinatario, solo llega el correo enviado desde la cuenta.
 
-   COMPROBADO (probarEntrega a iker.cid@nfq.es, 24 personas del equipo, una
-   sola ejecución desde pablo.llorente@nfq.es, las tres "enviadas sin error"):
-     [A] desde la cuenta, copia oculta ......... LLEGA
-     [B] desde noreply@, copia oculta .......... no llega
-     [C] desde noreply@, en el PARA (= Pases) .. no llega
-   Mismo código, misma cuenta, mismo destinatario y mismo momento: lo único
-   que cambia es el remitente. Es lo que hace Google Workspace con un
-   remitente interno que NO existe en el directorio (no hay ningún alias:
-   diagnosticarRemitente devuelve 0): a un destino externo (bbva.com) el
-   mensaje sale firmado y se acepta; hacia buzones del propio dominio, la
-   protección antisuplantación lo retiene sin devolver error. Quien envía se
-   ve siempre su propio correo, y por eso parecía que salía bien.
+     MODO_ENVIO = 'cuenta-bcc'   (actual) desde la cuenta, equipo en copia oculta
+                  'alias'        desde ALIAS_REMITENTE, si es alias verificado
+                  'noreply-para' desde noreply@, destinatarios en el PARA
+                  'noreply-bcc'  desde noreply@, equipo en copia oculta
 
-   Conclusión: desde el script no hay forma de arreglarlo. Hasta que IT lo
-   toque (ver COMO_ARREGLAR_NOREPLY al final), el modo por defecto es el
-   único que entrega a todo el equipo. Cuando esté hecho, se vuelve a
-   'noreply-para' cambiando esta constante y ya está.
-
-   Se arregla en la Consola de administración, no aquí (ver COMO_ARREGLAR_NOREPLY
-   al final del fichero). Mientras tanto:
-
-     MODO_ENVIO = 'noreply-para' → como los pases: noreply@ y todos en el PARA.
-                  'noreply-bcc'  → noreply@ con el equipo en copia oculta.
-                  'alias'        → desde ALIAS_REMITENTE (p. ej. comidas@nfq.es):
-                                   un remitente "de buzón" que sí existe, así que
-                                   no lo para la protección antisuplantación.
-                                   Requiere que sea alias verificado de la cuenta.
-                  'cuenta-bcc'   → desde la cuenta, en copia oculta. Es la única
-                                   variante confirmada que llega hoy a todos. */
+   Para volver a noreply@ hay que darlo de alta antes (ver COMO_ARREGLAR_NOREPLY
+   al final del fichero); después basta con cambiar esta constante. */
 const MODO_ENVIO = 'cuenta-bcc';
 
-// Para MODO_ENVIO = 'alias': dirección que debe aparecer como remitente. Tiene
-// que ser un alias verificado de la cuenta (Gmail → Ver todos los ajustes →
-// Cuentas → Enviar como) o un grupo con permiso de envío. diagnosticarRemitente()
-// lista los que hay disponibles.
+// Remitente para MODO_ENVIO = 'alias'. diagnosticarRemitente() lista los alias
+// verificados que hay disponibles en la cuenta.
 const ALIAS_REMITENTE = 'comidas@nfq.es';
 
-// Responder al correo escribe a esta dirección (con noreply@ no hay a quién).
+// Dirección a la que van las respuestas al correo.
 const RESPONDER_A = 'pablo.llorente@nfq.es';
 
 // El JSON del equipo se lee SIEMPRE desde la URL "raw" de GitHub: devuelve text/plain
@@ -111,7 +85,7 @@ function enviarRecordatorio() {
   const asunto = esFinal
     ? '⏰ Última hora · la reserva del jueves se hace en 30 min'
     : '🍽️ ¿Dónde comemos el jueves ' + fecha + '? Vota ahora';
-  // Un único envío con todos los pendientes en copia oculta.
+  // Un único envío para todos los pendientes.
   enviarMail_(emails, asunto, cuerpo_(pendientes, fecha, esFinal, lider_(ss, fecha)));
   Logger.log(fecha + ': 1 correo a ' + emails.length + ' pendientes → ' + emails.join(', '));
 }
@@ -125,10 +99,10 @@ function proximoJueves_(tz, isoDow) {
 
 // ── Envío ─────────────────────────────────────────────────────────────────
 //    UN solo correo para todos los pendientes, con el patrón de MODO_ENVIO.
-//    El texto plano es el HTML sin etiquetas, como en los avisos de pases: un
-//    cuerpo de texto de verdad puntúa mejor en los filtros que una sola línea.
+//    El cuerpo lleva su versión en texto plano además del HTML: los mensajes
+//    con un texto de verdad puntúan mejor en los filtros antispam.
 
-/** Cuerpo en texto plano a partir del HTML (mismo criterio que Avisos_Pases). */
+/** Cuerpo en texto plano a partir del HTML. */
 function quitarTags_(html) {
   return String(html)
     .replace(/<\s*br\s*\/?>/gi, '\n')
@@ -139,16 +113,16 @@ function quitarTags_(html) {
     .trim();
 }
 
-/** Envía UN correo al grupo, con el patrón que indique MODO_ENVIO. Si falla
+/** Envía UN correo al grupo con el patrón que indique MODO_ENVIO. Si falla
  *  (una dirección que ya no existe puede tumbar el mensaje entero), reintenta
  *  uno a uno: así lo recibe todo el mundo menos quien tenga la dirección mala,
- *  que queda anotada en el registro. */
+ *  que queda anotada en el registro para darla de baja. */
 function enviarGrupo_(emails, subject, htmlBody) {
   if (!emails.length) return { enviados: 0, fallidos: [] };
   const yo = Session.getEffectiveUser().getEmail();
   const texto = quitarTags_(htmlBody);
-  // 'noreply-para' y 'alias': destinatarios en el PARA, como los avisos de pases.
-  // Los modos '-bcc' mandan a la propia cuenta y ponen al equipo en copia oculta.
+  // 'noreply-para' y 'alias' ponen a los destinatarios en el PARA; los modos
+  // '-bcc' mandan a la propia cuenta y dejan al equipo en copia oculta.
   const enPara = MODO_ENVIO === 'noreply-para' || MODO_ENVIO === 'alias';
   const enviar = (destinos) => {
     const o = { htmlBody: htmlBody, name: REMITE };
@@ -285,14 +259,14 @@ function diagnosticarComidas() {
   Logger.log('Cuota de correo restante hoy: ' + MailApp.getRemainingDailyQuota());
 }
 
-/* ── ¿Por qué no llega? ────────────────────────────────────────────────────
-   Manda a UNA dirección las variantes de envío, cada una con su asunto y su
-   resultado en el registro (si alguna lanza error, se ve aquí en vez de
-   quedarse el resto sin enviar):
-     [A] desde la cuenta, en copia oculta
+/* ── Comprobar la entrega ──────────────────────────────────────────────────
+   Manda a UNA dirección las cuatro variantes de envío, cada una con su asunto
+   y su resultado en el registro. Sirve para saber qué remitente entrega de
+   verdad — por ejemplo, después de dar de alta noreply@nfq.es:
+     [A] desde la cuenta, en copia oculta        (el modo actual)
      [B] desde noreply@, en copia oculta
-     [C] desde noreply@, en el PARA — la MISMA llamada que Avisos_Pases.gs:214
-     [D] desde ALIAS_REMITENTE, si es un alias verificado de la cuenta
+     [C] desde noreply@, en el PARA
+     [D] desde ALIAS_REMITENTE, si es alias verificado de la cuenta
    Pregunta cuáles han llegado, mirando también en spam. */
 function probarEntrega(direccion) {
   const to = direccion || PRUEBA_TO;
@@ -308,7 +282,7 @@ function probarEntrega(direccion) {
     GmailApp.sendEmail(yo, '[A] Prueba comidas · desde la cuenta', texto, { htmlBody: html, name: REMITE, bcc: to, replyTo: RESPONDER_A }));
   intento('[B] desde noreply, copia oculta', () =>
     GmailApp.sendEmail(yo, '[B] Prueba comidas · desde noreply', texto, { htmlBody: html, name: REMITE, bcc: to, noReply: true }));
-  intento('[C] desde noreply, en el PARA (igual que Pases)', () =>
+  intento('[C] desde noreply, en el PARA', () =>
     GmailApp.sendEmail(to, '[C] Prueba comidas · noreply directo', texto, { htmlBody: html, name: REMITE, noReply: true }));
   if (GmailApp.getAliases().indexOf(ALIAS_REMITENTE) >= 0) {
     intento('[D] desde el alias ' + ALIAS_REMITENTE, () =>
@@ -330,10 +304,10 @@ function diagnosticarRemitente() {
   Logger.log('Cuota de correo restante hoy: ' + MailApp.getRemainingDailyQuota());
 }
 
-/** ¿Rebotó algo? Busca avisos de no entrega recientes en el buzón de quien
- *  envía. Si Google RECHAZA los correos de noreply@ aparecen aquí con el
- *  motivo; si no hay nada, es que los está reteniendo en cuarentena y hay que
- *  mirarlo en la Consola de administración. */
+/** Avisos de no entrega recientes en el buzón de quien envía. Un correo
+ *  RECHAZADO aparece aquí con su motivo; si no hay nada y aun así no llegó,
+ *  es que quedó retenido en cuarentena y hay que mirarlo en la Consola de
+ *  administración (Informes → Búsqueda del registro de correo). */
 function revisarRebotes() {
   const hilos = GmailApp.search('newer_than:2d (from:mailer-daemon OR from:postmaster OR subject:("Undelivered" OR "Delivery Status" OR "no se ha entregado" OR "Devolución"))', 0, 20);
   Logger.log('Avisos de no entrega en las últimas 48 h: ' + hilos.length);
@@ -345,32 +319,19 @@ function revisarRebotes() {
 }
 
 /* ── COMO_ARREGLAR_NOREPLY ─────────────────────────────────────────────────
-   Para que noreply@nfq.es entregue TAMBIÉN dentro del propio dominio, hay que
-   tocar la Consola de administración de Google Workspace (admin.google.com).
-   Cualquiera de estas tres vale; la primera es la más limpia:
+   Para poder enviar desde una dirección de no-respuesta hace falta que exista,
+   y eso se hace en la Consola de administración (admin.google.com):
 
-   1. Crear el buzón. Directorio → Usuarios (o Grupos) → dar de alta
-      noreply@nfq.es. Al existir en el directorio, deja de ser un remitente
-      interno "inventado" y la protección antisuplantación no lo retiene.
-      Es la vía más limpia y la que menos toca la configuración de seguridad.
+   1. Dar de alta noreply@nfq.es en Directorio → Usuarios (o Grupos). Al
+      existir deja de ser un remitente interno "inventado", la protección
+      antisuplantación no lo retiene y ya se puede usar MODO_ENVIO =
+      'noreply-para'.
 
-   2. Permitirlo explícitamente. Aplicaciones → Google Workspace → Gmail →
-      Seguridad → "Suplantación de identidad y autenticación": en la protección
-      contra suplantación del propio dominio, añadir noreply@nfq.es como
-      remitente permitido (o meterlo en una lista de direcciones permitidas
-      en Gmail → Configuración de spam).
+   2. O crear comidas@nfq.es y verificarlo en Gmail → Ver todos los ajustes →
+      Cuentas → "Enviar como" de la cuenta que ejecuta el script. Entonces
+      vale MODO_ENVIO = 'alias'. Hoy no hay ningún alias verificado, por eso
+      probarEntrega() omite esa variante.
 
-   3. Comprobar qué está pasando de verdad. Informes → Búsqueda del registro
-      de correo: buscar los envíos de noreply@nfq.es. Ahí se ve, mensaje a
-      mensaje, si se entregó, si está en cuarentena o si se rechazó y por qué.
-      Esto es lo que conviene enseñarle a IT.
-
-   Otra vía si no se quiere tocar nada de seguridad: crear comidas@nfq.es
-   (usuario o grupo), verificarlo en Gmail → Ver todos los ajustes → Cuentas →
-   "Enviar como" de la cuenta que ejecuta el script, y poner MODO_ENVIO =
-   'alias'. Es un remitente de no-respuesta que sí existe en el directorio,
-   así que entrega sin problema. Hoy no hay ningún alias verificado, por eso
-   la variante [D] de probarEntrega se omite.
-
-   Mientras no esté hecho, MODO_ENVIO = 'cuenta-bcc' es lo único que llega a
-   todo el equipo. */
+   Para ver qué pasa con un envío concreto: Informes → Búsqueda del registro de
+   correo, buscando por remitente. Dice si se entregó, si quedó en cuarentena o
+   si se rechazó y por qué. */
