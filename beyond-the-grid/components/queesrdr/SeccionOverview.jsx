@@ -6,7 +6,7 @@
 import { PALETTE } from "@/lib/palette";
 import { rgba } from "@/lib/ui";
 import { useAccentMap } from "@/lib/theme";
-import { Reveal, Section, ModuleDivider, BlockHeader, Glass, KeyIdea, DotList, H3, Pill } from "./ui";
+import { Reveal, Slide, SlideModulo, BlockHeader, Glass, KeyIdea, DotList, H3, Pill } from "./ui";
 
 const C = PALETTE.canary;
 
@@ -37,8 +37,8 @@ const JERARQUIA = [
 export default function SeccionOverview() {
   const mapAccent = useAccentMap(); // canary como TEXTO legible en claro; tintes con hex original
   return (
-    <Section id="overview">
-      <ModuleDivider
+    <>
+      <SlideModulo id="overview"
         n="01"
         color={C}
         title="¿Qué es RDR?"
@@ -46,125 +46,136 @@ export default function SeccionOverview() {
       />
 
       {/* ── Definición (slide 5) ────────────────────────────────── */}
-      <BlockHeader color={C} kicker="Definición" title="El Repositorio de Datos de Referencia">
-        RDR es la plataforma corporativa de BBVA que centraliza, valida y distribuye los{" "}
-        <strong className="text-sand">datos maestros de referencia</strong> usados en toda la operativa del banco: contrapartidas,
-        instrumentos financieros, acuerdos legales e instrucciones de liquidación.
-      </BlockHeader>
+      <Slide id="overview-1">
+        <BlockHeader color={C} kicker="Definición" title="El Repositorio de Datos de Referencia">
+          RDR es la plataforma corporativa de BBVA que centraliza, valida y distribuye los{" "}
+          <strong className="text-sand">datos maestros de referencia</strong> usados en toda la operativa del banco: contrapartidas,
+          instrumentos financieros, acuerdos legales e instrucciones de liquidación.
+        </BlockHeader>
 
-      <Reveal className="mt-8 grid gap-6 md:grid-cols-[1.1fr_0.9fr]">
-        <Glass accent={C}>
-          <DotList
-            color={C}
-            className="mt-0"
-            items={[
-              <>Fuente única de verdad (<em>single source of truth</em>) para datos maestros CIB</>,
-              "Punto de distribución hacia más de 20 sistemas downstream",
-              "Garantía de calidad, coherencia y trazabilidad del dato",
-              "Operativo desde 2016 en producción continua",
-            ]}
-          />
-        </Glass>
-        <div className="flex flex-col gap-4">
-          <KeyIdea color={C}>
-            <p className="text-[15px] font-normal text-sand/85">
-              RDR no almacena operaciones de negocio. Almacena los <em>datos sobre los actores y activos</em> que intervienen en esas
-              operaciones.
-            </p>
-          </KeyIdea>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-2xl border border-white/12 bg-white/[0.055] p-4 text-center backdrop-blur-md">
-              <p className="font-display text-3xl font-bold text-canary">+13M</p>
-              <p className="mt-1 text-xs text-sand/70">registros activos</p>
-            </div>
-            <div className="rounded-2xl border border-white/12 bg-white/[0.055] p-4 text-center backdrop-blur-md">
-              <p className="font-display text-3xl font-bold text-serene">20+</p>
-              <p className="mt-1 text-xs text-sand/70">sistemas integrados</p>
+        <Reveal className="mt-8 grid gap-6 md:grid-cols-[1.1fr_0.9fr]">
+          <Glass accent={C}>
+            <DotList
+              color={C}
+              className="mt-0"
+              items={[
+                <>Fuente única de verdad (<em>single source of truth</em>) para datos maestros CIB</>,
+                "Punto de distribución hacia más de 20 sistemas downstream",
+                "Garantía de calidad, coherencia y trazabilidad del dato",
+                "Operativo desde 2016 en producción continua",
+              ]}
+            />
+          </Glass>
+          <div className="flex flex-col gap-4">
+            <KeyIdea color={C}>
+              <p className="text-[15px] font-normal text-sand/85">
+                RDR no almacena operaciones de negocio. Almacena los <em>datos sobre los actores y activos</em> que intervienen en esas
+                operaciones.
+              </p>
+            </KeyIdea>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-2xl border border-white/12 bg-white/[0.055] p-4 text-center backdrop-blur-md">
+                <p className="font-display text-3xl font-bold text-canary">+13M</p>
+                <p className="mt-1 text-xs text-sand/70">registros activos</p>
+              </div>
+              <div className="rounded-2xl border border-white/12 bg-white/[0.055] p-4 text-center backdrop-blur-md">
+                <p className="font-display text-3xl font-bold text-serene">20+</p>
+                <p className="mt-1 text-xs text-sand/70">sistemas integrados</p>
+              </div>
             </div>
           </div>
-        </div>
-      </Reveal>
+        </Reveal>
+
+      </Slide>
 
       {/* ── GoldenSource EDM 8.7 (slide 6) ──────────────────────── */}
-      <BlockHeader color={C} kicker="El producto base" title="GoldenSource EDM 8.7">
-        RDR se construye sobre <strong className="text-sand">GoldenSource Enterprise Data Management 8.7</strong>, producto de gestión
-        de datos maestros orientado a banca de inversión. BBVA lo despliega en la versión <Pill color={C}>8.7.1.05</Pill> con el nombre
-        interno <Pill color={C}>standardvddb</Pill>.
-      </BlockHeader>
+      <Slide id="overview-2">
+        <BlockHeader color={C} kicker="El producto base" title="GoldenSource EDM 8.7">
+          RDR se construye sobre <strong className="text-sand">GoldenSource Enterprise Data Management 8.7</strong>, producto de gestión
+          de datos maestros orientado a banca de inversión. BBVA lo despliega en la versión <Pill color={C}>8.7.1.05</Pill> con el nombre
+          interno <Pill color={C}>standardvddb</Pill>.
+        </BlockHeader>
 
-      <Reveal className="mt-8 grid gap-6 md:grid-cols-[1.1fr_0.9fr]">
-        <Glass accent={C}>
-          <DotList
-            color={C}
-            className="mt-0"
-            items={[
-              "Modelo de datos config-driven: entidades definidas en XML/SQL, no en código",
-              "Motor de workflows para orquestación de procesos de ingesta y publicación",
-              "Workstation: interfaz J2EE generada automáticamente desde los modelos",
-              "Motor de reglas Java (JBRE) para lógica de negocio custom",
-              "Pipeline de carga FTI (C++) optimizado para altos volúmenes",
-            ]}
-          />
-        </Glass>
-        <div>
-          <H3 className="mb-3">Stack tecnológico</H3>
-          <div className="grid gap-2.5">
-            {STACK.map((s) => (
-              <div key={s.t} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.045] px-4 py-3 backdrop-blur-sm">
-                <span aria-hidden className="h-2 w-2 shrink-0 rounded-full" style={{ background: C }} />
-                <p className="text-sm text-sand/80">
-                  <strong className="text-sand">{s.t}</strong> · {s.d}
-                </p>
+        <Reveal className="mt-8 grid gap-6 md:grid-cols-[1.1fr_0.9fr]">
+          <Glass accent={C}>
+            <DotList
+              color={C}
+              className="mt-0"
+              items={[
+                "Modelo de datos config-driven: entidades definidas en XML/SQL, no en código",
+                "Motor de workflows para orquestación de procesos de ingesta y publicación",
+                "Workstation: interfaz J2EE generada automáticamente desde los modelos",
+                "Motor de reglas Java (JBRE) para lógica de negocio custom",
+                "Pipeline de carga FTI (C++) optimizado para altos volúmenes",
+              ]}
+            />
+          </Glass>
+          <div>
+            <H3 className="mb-3">Stack tecnológico</H3>
+            <div className="grid gap-2.5">
+              {STACK.map((s) => (
+                <div key={s.t} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.045] px-4 py-3 backdrop-blur-sm">
+                  <span aria-hidden className="h-2 w-2 shrink-0 rounded-full" style={{ background: C }} />
+                  <p className="text-sm text-sand/80">
+                    <strong className="text-sand">{s.t}</strong> · {s.d}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Reveal>
+
+      </Slide>
+
+      {/* ── Alcance y objetivos (slide 7) ───────────────────────── */}
+      <Slide id="overview-3">
+        <BlockHeader color={C} kicker="Alcance y objetivos" title="¿Por qué existe RDR?" />
+
+        <Reveal className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {OBJETIVOS.map((o, i) => (
+            <div key={o.t} className="rounded-2xl border border-white/10 bg-white/[0.045] p-4 backdrop-blur-sm" style={{ borderLeft: `3px solid ${rgba(C, 0.85)}` }}>
+              <p className="text-sm font-bold text-sand">{o.t}</p>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-sand/70">{o.d}</p>
+            </div>
+          ))}
+        </Reveal>
+
+      </Slide>
+
+      {/* ── Jerarquía Grupo BBVA (slide 8) ──────────────────────── */}
+      <Slide id="overview-4">
+        <BlockHeader color={C} kicker="Estructura interna del Grupo BBVA" title="Jerarquía de 5 niveles" />
+
+        <Reveal className="mt-8 grid gap-6 md:grid-cols-[1.1fr_0.9fr] md:items-center">
+          {/* Diagrama en escalera: cada nivel, más estrecho e indentado */}
+          <div className="flex flex-col gap-1.5" role="img" aria-label="Jerarquía de 5 niveles del Grupo BBVA: Grupo, Enterprises, Branches, Oficinas y Portfolios">
+            {JERARQUIA.map((niv, i) => (
+              <div key={niv.n} className="flex items-stretch" style={{ paddingLeft: `${i * 6}%` }}>
+                <div
+                  className="w-full rounded-xl border px-4 py-2.5 backdrop-blur-sm"
+                  style={{
+                    borderColor: rgba(C, 0.2 + niv.peso * 0.5),
+                    background: rgba(C, 0.04 + niv.peso * 0.12),
+                  }}
+                >
+                  <p className="text-sm font-bold text-sand">
+                    <span className="mr-2 font-display tabular-nums" style={{ color: mapAccent(C) }}>{niv.n}</span>
+                    {niv.t}
+                  </p>
+                  <p className="text-xs text-sand/65">{niv.d}</p>
+                </div>
               </div>
             ))}
           </div>
-        </div>
-      </Reveal>
-
-      {/* ── Alcance y objetivos (slide 7) ───────────────────────── */}
-      <BlockHeader color={C} kicker="Alcance y objetivos" title="¿Por qué existe RDR?" />
-
-      <Reveal className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {OBJETIVOS.map((o, i) => (
-          <div key={o.t} className="rounded-2xl border border-white/10 bg-white/[0.045] p-4 backdrop-blur-sm" style={{ borderLeft: `3px solid ${rgba(C, 0.85)}` }}>
-            <p className="text-sm font-bold text-sand">{o.t}</p>
-            <p className="mt-1.5 text-[13px] leading-relaxed text-sand/70">{o.d}</p>
-          </div>
-        ))}
-      </Reveal>
-
-      {/* ── Jerarquía Grupo BBVA (slide 8) ──────────────────────── */}
-      <BlockHeader color={C} kicker="Estructura interna del Grupo BBVA" title="Jerarquía de 5 niveles" />
-
-      <Reveal className="mt-8 grid gap-6 md:grid-cols-[1.1fr_0.9fr] md:items-center">
-        {/* Diagrama en escalera: cada nivel, más estrecho e indentado */}
-        <div className="flex flex-col gap-1.5" role="img" aria-label="Jerarquía de 5 niveles del Grupo BBVA: Grupo, Enterprises, Branches, Oficinas y Portfolios">
-          {JERARQUIA.map((niv, i) => (
-            <div key={niv.n} className="flex items-stretch" style={{ paddingLeft: `${i * 6}%` }}>
-              <div
-                className="w-full rounded-xl border px-4 py-2.5 backdrop-blur-sm"
-                style={{
-                  borderColor: rgba(C, 0.2 + niv.peso * 0.5),
-                  background: rgba(C, 0.04 + niv.peso * 0.12),
-                }}
-              >
-                <p className="text-sm font-bold text-sand">
-                  <span className="mr-2 font-display tabular-nums" style={{ color: mapAccent(C) }}>{niv.n}</span>
-                  {niv.t}
-                </p>
-                <p className="text-xs text-sand/65">{niv.d}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-        <KeyIdea color={C}>
-          <p className="text-[15px] font-normal text-sand/85">
-            Cada <strong className="text-sand">Enterprise, Branch y Oficina</strong> tiene su representación como{" "}
-            <strong className="text-sand">contrapartida</strong> en RDR. Esta jerarquía permite a RDR modelar la estructura
-            organizativa completa del grupo y asociar operaciones a la unidad correspondiente.
-          </p>
-        </KeyIdea>
-      </Reveal>
-    </Section>
+          <KeyIdea color={C}>
+            <p className="text-[15px] font-normal text-sand/85">
+              Cada <strong className="text-sand">Enterprise, Branch y Oficina</strong> tiene su representación como{" "}
+              <strong className="text-sand">contrapartida</strong> en RDR. Esta jerarquía permite a RDR modelar la estructura
+              organizativa completa del grupo y asociar operaciones a la unidad correspondiente.
+            </p>
+          </KeyIdea>
+        </Reveal>
+      </Slide>
+    </>
   );
 }

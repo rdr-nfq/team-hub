@@ -8,7 +8,7 @@
 import { PALETTE } from "@/lib/palette";
 import { rgba } from "@/lib/ui";
 import { useTheme, useAccentMap } from "@/lib/theme";
-import { Reveal, Section, ModuleDivider, BlockHeader, Glass, EdgeCard, KeyIdea, Pill, H3 } from "./ui";
+import { Reveal, Slide, SlideModulo, BlockHeader, Glass, EdgeCard, KeyIdea, Pill, H3 } from "./ui";
 
 const C = PALETTE.purple;
 // Azul hielo del deck (no es token BBVA y no está en el LIGHT_EQ de lib/theme):
@@ -204,8 +204,8 @@ const DICCIONARIO = [
 export default function SeccionDetalle() {
   const tx = useTx(); // acentos data-driven como TEXTO legibles en claro; tintes/bordes con hex original
   return (
-    <Section id="detalle">
-      <ModuleDivider
+    <>
+      <SlideModulo id="detalle"
         n="03"
         color={C}
         title="Entidades en detalle"
@@ -213,333 +213,365 @@ export default function SeccionDetalle() {
       />
 
       {/* ══ Contrapartidas (slides 13–15) ═══════════════════════ */}
-      <BlockHeader color={FINS} kicker="FINS · 692.000 entidades activas" title="Contrapartidas" />
+      <Slide id="detalle-1">
+        <BlockHeader color={FINS} kicker="FINS · 692.000 entidades activas" title="Contrapartidas" />
 
-      <Reveal className="mt-8 grid gap-3 sm:grid-cols-2">
-        {FINS_BOXES.map((b) => (
-          <div
-            key={b.label}
-            className={`rounded-2xl border p-5 backdrop-blur-sm ${b.hl ? "" : "border-white/10 bg-white/[0.045]"}`}
-            style={b.hl ? { borderColor: rgba(FINS, 0.55), background: rgba(FINS, 0.09) } : undefined}
-          >
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-serene">{b.label}</p>
-            <H3 className="mt-1">{b.title}</H3>
-            <p className="mt-2 text-[13px] leading-relaxed text-sand/70">{b.desc}</p>
-          </div>
-        ))}
-      </Reveal>
+        <Reveal className="mt-8 grid gap-3 sm:grid-cols-2">
+          {FINS_BOXES.map((b) => (
+            <div
+              key={b.label}
+              className={`rounded-2xl border p-5 backdrop-blur-sm ${b.hl ? "" : "border-white/10 bg-white/[0.045]"}`}
+              style={b.hl ? { borderColor: rgba(FINS, 0.55), background: rgba(FINS, 0.09) } : undefined}
+            >
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-serene">{b.label}</p>
+              <H3 className="mt-1">{b.title}</H3>
+              <p className="mt-2 text-[13px] leading-relaxed text-sand/70">{b.desc}</p>
+            </div>
+          ))}
+        </Reveal>
 
-      <BlockHeader color={FINS} kicker="Una misma entidad, organizada en tres niveles" title="Global → Local → Operativo" />
-      <Reveal className="mt-8">
-        <Glass accent={FINS} className="p-5 sm:p-7">
-          <ArbolContrapartida />
-        </Glass>
-      </Reveal>
+      </Slide>
+      <Slide id="detalle-2">
+        <BlockHeader color={FINS} kicker="Una misma entidad, organizada en tres niveles" title="Global → Local → Operativo" />
+        <Reveal className="mt-8">
+          <Glass accent={FINS} className="p-5 sm:p-7">
+            <ArbolContrapartida />
+          </Glass>
+        </Reveal>
 
-      <BlockHeader color={FINS} kicker="Una entidad puede tener múltiples roles simultáneos" title="Roles: ¿qué hace la contraparte con BBVA?" />
-      <Reveal className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {ROLES.map((r) => (
-          <div key={r.code} className="rounded-2xl border border-white/10 bg-white/[0.045] p-4 backdrop-blur-sm">
-            <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-serene">{r.code}</p>
-            <p className="mt-1 text-sm font-bold text-sand">{r.t}</p>
-            <p className="mt-1.5 text-[12px] leading-relaxed text-sand/65">{r.d}</p>
-          </div>
-        ))}
-      </Reveal>
+      </Slide>
+      <Slide id="detalle-3">
+        <BlockHeader color={FINS} kicker="Una entidad puede tener múltiples roles simultáneos" title="Roles: ¿qué hace la contraparte con BBVA?" />
+        <Reveal className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {ROLES.map((r) => (
+            <div key={r.code} className="rounded-2xl border border-white/10 bg-white/[0.045] p-4 backdrop-blur-sm">
+              <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-serene">{r.code}</p>
+              <p className="mt-1 text-sm font-bold text-sand">{r.t}</p>
+              <p className="mt-1.5 text-[12px] leading-relaxed text-sand/65">{r.d}</p>
+            </div>
+          ))}
+        </Reveal>
+
+      </Slide>
 
       {/* ══ Emisiones (slides 16–17) ════════════════════════════ */}
-      <BlockHeader color={ISSU} kicker="ISSU · 12 millones de instrumentos" title="Emisiones — los activos que gestiona BBVA" />
+      <Slide id="detalle-4">
+        <BlockHeader color={ISSU} kicker="ISSU · 12 millones de instrumentos" title="Emisiones — los activos que gestiona BBVA" />
 
-      <Reveal className="mt-8 grid gap-3 lg:grid-cols-3">
-        {/* Renta variable: el maestro, tarjeta destacada a doble altura */}
-        <div className="flex flex-col rounded-2xl border p-5 backdrop-blur-sm lg:row-span-2" style={{ borderColor: rgba(ISSU, 0.6), background: rgba(ISSU, 0.09) }}>
-          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-lime">⭐ Maestro en el banco</p>
-          <H3 className="mt-1">Renta Variable</H3>
-          <p className="mt-2 text-[14px] leading-relaxed text-sand/80">
-            RDR es el <strong className="text-sand">repositorio maestro de Renta Variable</strong> del banco. Acciones, ETFs,
-            preferentes, convertibles, warrants, derechos, ADRs/GDRs…
-          </p>
-          <div className="mt-4 flex flex-wrap gap-1.5">
-            {["Common Stock", "Preferred Stock", "ETF", "Warrants", "Rights", "Receipts (ADR/GDR)"].map((t) => (
-              <Pill key={t} color={ISSU} className="normal-case tracking-normal">{t}</Pill>
-            ))}
-          </div>
-        </div>
-        {ISSU_TIPOS.map((tp) => (
-          <div key={tp.label} className={`rounded-2xl border border-white/10 bg-white/[0.045] p-4 backdrop-blur-sm ${tp.dim ? "opacity-80" : ""}`}>
-            <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-lime">{tp.label}</p>
-            <p className="mt-1 text-sm font-bold text-sand">{tp.t}</p>
-            <p className="mt-1.5 text-[12px] leading-relaxed text-sand/65">{tp.d}</p>
-            <div className="mt-2.5 flex flex-wrap gap-1.5">
-              {tp.tags.map((t) => <Pill key={t} color={ISSU} className="normal-case tracking-normal">{t}</Pill>)}
+        <Reveal className="mt-8 grid gap-3 lg:grid-cols-3">
+          {/* Renta variable: el maestro, tarjeta destacada a doble altura */}
+          <div className="flex flex-col rounded-2xl border p-5 backdrop-blur-sm lg:row-span-2" style={{ borderColor: rgba(ISSU, 0.6), background: rgba(ISSU, 0.09) }}>
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-lime">⭐ Maestro en el banco</p>
+            <H3 className="mt-1">Renta Variable</H3>
+            <p className="mt-2 text-[14px] leading-relaxed text-sand/80">
+              RDR es el <strong className="text-sand">repositorio maestro de Renta Variable</strong> del banco. Acciones, ETFs,
+              preferentes, convertibles, warrants, derechos, ADRs/GDRs…
+            </p>
+            <div className="mt-4 flex flex-wrap gap-1.5">
+              {["Common Stock", "Preferred Stock", "ETF", "Warrants", "Rights", "Receipts (ADR/GDR)"].map((t) => (
+                <Pill key={t} color={ISSU} className="normal-case tracking-normal">{t}</Pill>
+              ))}
             </div>
           </div>
-        ))}
-      </Reveal>
-
-      <BlockHeader color={ISSU} kicker="El nexo entre empresas e instrumentos" title="El Emisor y la Renta Variable en RDR">
-        Cuando Telefónica emite bonos o pone acciones en bolsa, en RDR se modela como:
-      </BlockHeader>
-
-      <Reveal className="mt-8 grid gap-6 lg:grid-cols-2">
-        <div className="flex flex-col gap-3">
-          <EdgeCard accent={ISSU} title="Contrapartida con rol ISSUER">
-            Telefónica S.A. existe como <strong className="text-sand">entidad en FINS</strong> con el rol «ISSUER» activo. Tiene su
-            LEI, su CIF, sus datos regulatorios.
-          </EdgeCard>
-          <EdgeCard accent={ISSU} title="Vinculada a sus instrumentos">
-            Cada bono u acción de Telefónica tiene el campo <strong className="text-sand">INSTR_ISSR_ID</strong> apuntando a la
-            entidad. Si el emisor entra en default, todos sus instrumentos se marcan automáticamente.
-          </EdgeCard>
-          <EdgeCard accent={PALETTE.lime} title="Datos Bloomberg del emisor">
-            Bloomberg alimenta datos del emisor (sector, país, outstanding, índices de pertenencia) directamente al nivel operativo de
-            la contrapartida.
-          </EdgeCard>
-        </div>
-        <div>
-          <p className="text-[14px] leading-relaxed text-sand/80">
-            Las acciones cotizadas son los instrumentos de mayor rotación en BBVA CIB. RDR gestiona:
-          </p>
-          <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
-            {RV_MODELOS.map((m) => (
-              <div key={m.t} className="rounded-xl border border-white/10 bg-white/[0.045] px-4 py-3 backdrop-blur-sm">
-                <p className="text-[13px] font-bold text-lime">{m.t}</p>
-                <p className="mt-0.5 text-[12px] leading-relaxed text-sand/65">{m.d}</p>
+          {ISSU_TIPOS.map((tp) => (
+            <div key={tp.label} className={`rounded-2xl border border-white/10 bg-white/[0.045] p-4 backdrop-blur-sm ${tp.dim ? "opacity-80" : ""}`}>
+              <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-lime">{tp.label}</p>
+              <p className="mt-1 text-sm font-bold text-sand">{tp.t}</p>
+              <p className="mt-1.5 text-[12px] leading-relaxed text-sand/65">{tp.d}</p>
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                {tp.tags.map((t) => <Pill key={t} color={ISSU} className="normal-case tracking-normal">{t}</Pill>)}
               </div>
-            ))}
+            </div>
+          ))}
+        </Reveal>
+
+      </Slide>
+      <Slide id="detalle-5">
+        <BlockHeader color={ISSU} kicker="El nexo entre empresas e instrumentos" title="El Emisor y la Renta Variable en RDR">
+          Cuando Telefónica emite bonos o pone acciones en bolsa, en RDR se modela como:
+        </BlockHeader>
+
+        <Reveal className="mt-8 grid gap-6 lg:grid-cols-2">
+          <div className="flex flex-col gap-3">
+            <EdgeCard accent={ISSU} title="Contrapartida con rol ISSUER">
+              Telefónica S.A. existe como <strong className="text-sand">entidad en FINS</strong> con el rol «ISSUER» activo. Tiene su
+              LEI, su CIF, sus datos regulatorios.
+            </EdgeCard>
+            <EdgeCard accent={ISSU} title="Vinculada a sus instrumentos">
+              Cada bono u acción de Telefónica tiene el campo <strong className="text-sand">INSTR_ISSR_ID</strong> apuntando a la
+              entidad. Si el emisor entra en default, todos sus instrumentos se marcan automáticamente.
+            </EdgeCard>
+            <EdgeCard accent={PALETTE.lime} title="Datos Bloomberg del emisor">
+              Bloomberg alimenta datos del emisor (sector, país, outstanding, índices de pertenencia) directamente al nivel operativo de
+              la contrapartida.
+            </EdgeCard>
           </div>
-          <EdgeCard accent={ISSU} className="mt-3">
-            <strong className="text-sand">Book-Entry (Anotación en cuenta):</strong> en España (Iberclear) y México (Indeval) las
-            acciones no son físicas — son anotaciones electrónicas. RDR gestiona esto con los modelos{" "}
-            <strong className="text-sand">BEISSU</strong> (14 modelos especializados).
-          </EdgeCard>
-        </div>
-      </Reveal>
+          <div>
+            <p className="text-[14px] leading-relaxed text-sand/80">
+              Las acciones cotizadas son los instrumentos de mayor rotación en BBVA CIB. RDR gestiona:
+            </p>
+            <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
+              {RV_MODELOS.map((m) => (
+                <div key={m.t} className="rounded-xl border border-white/10 bg-white/[0.045] px-4 py-3 backdrop-blur-sm">
+                  <p className="text-[13px] font-bold text-lime">{m.t}</p>
+                  <p className="mt-0.5 text-[12px] leading-relaxed text-sand/65">{m.d}</p>
+                </div>
+              ))}
+            </div>
+            <EdgeCard accent={ISSU} className="mt-3">
+              <strong className="text-sand">Book-Entry (Anotación en cuenta):</strong> en España (Iberclear) y México (Indeval) las
+              acciones no son físicas — son anotaciones electrónicas. RDR gestiona esto con los modelos{" "}
+              <strong className="text-sand">BEISSU</strong> (14 modelos especializados).
+            </EdgeCard>
+          </div>
+        </Reveal>
+
+      </Slide>
 
       {/* ══ Acuerdos legales (slides 18–19) ═════════════════════ */}
-      <BlockHeader color={LAGR} kicker="LAGR · 96.000 contratos firmados" title="Acuerdos Legales">
-        Antes de que BBVA pueda operar derivados, repos o préstamos de valores con una contraparte, necesitan firmar un{" "}
-        <strong className="text-sand">contrato marco</strong>. Este contrato define qué tipo de operaciones están permitidas y bajo qué
-        condiciones.
-      </BlockHeader>
+      <Slide id="detalle-6">
+        <BlockHeader color={LAGR} kicker="LAGR · 96.000 contratos firmados" title="Acuerdos Legales">
+          Antes de que BBVA pueda operar derivados, repos o préstamos de valores con una contraparte, necesitan firmar un{" "}
+          <strong className="text-sand">contrato marco</strong>. Este contrato define qué tipo de operaciones están permitidas y bajo qué
+          condiciones.
+        </BlockHeader>
 
-      <Reveal className="mt-8 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-        <div className="flex flex-col gap-3">
-          <EdgeCard accent={LAGR} title="🤝 Siempre dos partes">
-            BBVA (rol INTERNAL) + la contraparte (rol EXTERNAL). No puede haber un acuerdo sin ambas.
-          </EdgeCard>
-          <EdgeCard accent={LAGR} title="📋 Productos cubiertos">
-            El contrato especifica exactamente qué operaciones habilita: derivados OTC, repos, préstamo de valores, FX...
-          </EdgeCard>
-          <EdgeCard accent={LAGR} title="💼 Gestión de colateral (CSA)">
-            Muchos acuerdos incluyen un anexo de colateral (Credit Support Annex) que define qué garantías se intercambian para cubrir
-            exposición.
-          </EdgeCard>
-        </div>
-        <Glass accent={LAGR}>
-          <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-sand/60">Ciclo de vida</p>
-          <ol className="mt-4 space-y-4">
-            {LAGR_CICLO.map((s, i) => (
-              <li key={s.t} className="relative flex gap-3 pl-1">
-                <span className="relative flex flex-col items-center">
-                  <span aria-hidden className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: s.color }} />
-                  {i < LAGR_CICLO.length - 1 && <span aria-hidden className="mt-1 w-px flex-1 bg-white/15" />}
-                </span>
-                <p className="text-[13px] leading-relaxed text-sand/75">
-                  <strong className="text-sand">{s.t}:</strong> {s.d}
-                </p>
-              </li>
-            ))}
-          </ol>
-        </Glass>
-      </Reveal>
-
-      <BlockHeader color={LAGR} kicker="Cada tipo de operativa necesita su propio contrato" title="Tipos de Acuerdo Marco" />
-      <Reveal className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {LAGR_TIPOS.map((t) => (
-          <div key={t.code} className="rounded-2xl border border-white/10 bg-white/[0.045] p-4 backdrop-blur-sm" style={{ borderLeft: `3px solid ${t.color}` }}>
-            <p className="font-display text-lg font-bold" style={{ color: tx(t.color) }}>{t.code}</p>
-            <p className="mt-0.5 text-[11px] text-sand/55">{t.full}</p>
-            <p className="mt-2 text-[13px] leading-relaxed text-sand/75">{t.d}</p>
+        <Reveal className="mt-8 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="flex flex-col gap-3">
+            <EdgeCard accent={LAGR} title="🤝 Siempre dos partes">
+              BBVA (rol INTERNAL) + la contraparte (rol EXTERNAL). No puede haber un acuerdo sin ambas.
+            </EdgeCard>
+            <EdgeCard accent={LAGR} title="📋 Productos cubiertos">
+              El contrato especifica exactamente qué operaciones habilita: derivados OTC, repos, préstamo de valores, FX...
+            </EdgeCard>
+            <EdgeCard accent={LAGR} title="💼 Gestión de colateral (CSA)">
+              Muchos acuerdos incluyen un anexo de colateral (Credit Support Annex) que define qué garantías se intercambian para cubrir
+              exposición.
+            </EdgeCard>
           </div>
-        ))}
-      </Reveal>
+          <Glass accent={LAGR}>
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-sand/60">Ciclo de vida</p>
+            <ol className="mt-4 space-y-4">
+              {LAGR_CICLO.map((s, i) => (
+                <li key={s.t} className="relative flex gap-3 pl-1">
+                  <span className="relative flex flex-col items-center">
+                    <span aria-hidden className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: s.color }} />
+                    {i < LAGR_CICLO.length - 1 && <span aria-hidden className="mt-1 w-px flex-1 bg-white/15" />}
+                  </span>
+                  <p className="text-[13px] leading-relaxed text-sand/75">
+                    <strong className="text-sand">{s.t}:</strong> {s.d}
+                  </p>
+                </li>
+              ))}
+            </ol>
+          </Glass>
+        </Reveal>
 
-      {/* ══ SSIs (slides 20–21) ═════════════════════════════════ */}
-      <BlockHeader color={SSIS} kicker="SSIS · 857.000 instrucciones activas" title="SSIs — instrucciones de liquidación permanentes" />
-
-      <Reveal className="mt-8 grid gap-6 lg:grid-cols-2">
-        <div className="space-y-4 text-[14px] leading-relaxed text-sand/80">
-          <p>
-            Cuando BBVA cierra un trade con una contraparte, los valores o el dinero deben moverse físicamente. La pregunta es:{" "}
-            <em>¿a qué cuenta y a través de qué banco?</em>
-          </p>
-          <p>
-            La <strong className="text-sand">SSI (Standing Settlement Instruction)</strong> es la respuesta permanente a esa pregunta:{" "}
-            <em>«Para pagar en USD a Citibank Madrid, envía el dinero al BIC CITIUS33, cuenta 1234567.»</em>
-          </p>
-          <p>
-            Es <strong className="text-sand">permanente</strong> porque no hay que indicarla en cada operación. Se configura una vez y
-            el sistema la aplica automáticamente cada vez que toca liquidar con esa contraparte en esa moneda y mercado.
-          </p>
-        </div>
-        <div className="flex flex-col gap-3">
-          {SSI_CARDS.map((c) => (
-            <EdgeCard key={c.t} accent={c.color} title={c.t}>{c.d}</EdgeCard>
-          ))}
-        </div>
-      </Reveal>
-
-      <BlockHeader color={SSIS} kicker="Los eslabones del camino del dinero o los valores" title="La cadena de participantes en la liquidación" />
-      <Reveal className="mt-8">
-        <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-5">
-          {CADENA.map((p, i) => (
-            <div key={p.t} className="relative rounded-2xl border border-white/10 bg-white/[0.045] p-4 backdrop-blur-sm" style={{ borderTop: `3px solid ${p.color}` }}>
-              <p className="text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: tx(p.color) }}>
-                <span className="mr-1.5 font-display tabular-nums text-sand/50">{i + 1}</span>{p.t}
-              </p>
-              <p className="mt-2 text-[12px] leading-relaxed text-sand/70">{p.d}</p>
+      </Slide>
+      <Slide id="detalle-7">
+        <BlockHeader color={LAGR} kicker="Cada tipo de operativa necesita su propio contrato" title="Tipos de Acuerdo Marco" />
+        <Reveal className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {LAGR_TIPOS.map((t) => (
+            <div key={t.code} className="rounded-2xl border border-white/10 bg-white/[0.045] p-4 backdrop-blur-sm" style={{ borderLeft: `3px solid ${t.color}` }}>
+              <p className="font-display text-lg font-bold" style={{ color: tx(t.color) }}>{t.code}</p>
+              <p className="mt-0.5 text-[11px] text-sand/55">{t.full}</p>
+              <p className="mt-2 text-[13px] leading-relaxed text-sand/75">{t.d}</p>
             </div>
           ))}
-        </div>
-        <EdgeCard accent={SSIS} className="mt-4">
-          💡 <strong className="text-sand">Cómo fluye el mensaje SWIFT:</strong> la SSI en RDR alimenta directamente los campos del
-          mensaje MT (SWIFT): el Beneficiario va en el campo <em>:58: Beneficiary Institution</em>, el Corresponsal en{" "}
-          <em>:57: Account with Institution</em>, el Clearing Agent en <em>:56: Intermediary</em> y el Custodio en{" "}
-          <em>:53: Sender's Correspondent</em>.
-        </EdgeCard>
-      </Reveal>
+        </Reveal>
 
-      {/* ══ SCIs (slides 22–23) ═════════════════════════════════ */}
-      <BlockHeader color={SCIS} kicker="SCIS · 55.000 instrucciones activas" title="SCIs — instrucciones de confirmación de operaciones" />
+      </Slide>
 
-      <Reveal className="mt-8 grid gap-6 lg:grid-cols-2">
-        <div>
+      {/* ══ SSIs (slides 20–21) ═════════════════════════════════ */}
+      <Slide id="detalle-8">
+        <BlockHeader color={SSIS} kicker="SSIS · 857.000 instrucciones activas" title="SSIs — instrucciones de liquidación permanentes" />
+
+        <Reveal className="mt-8 grid gap-6 lg:grid-cols-2">
           <div className="space-y-4 text-[14px] leading-relaxed text-sand/80">
             <p>
-              Una vez que se acuerda un trade, la contraparte necesita recibir una <strong className="text-sand">confirmación</strong>:
-              un documento que diga exactamente qué se ha acordado (precio, cantidad, fecha, contraparte...).
+              Cuando BBVA cierra un trade con una contraparte, los valores o el dinero deben moverse físicamente. La pregunta es:{" "}
+              <em>¿a qué cuenta y a través de qué banco?</em>
             </p>
             <p>
-              La <strong className="text-sand">SCI (Standard Confirmation Instruction)</strong> define: ¿<em>cómo</em> enviamos esa
-              confirmación? ¿<em>A quién</em>? ¿<em>Para qué productos</em>?
+              La <strong className="text-sand">SSI (Standing Settlement Instruction)</strong> es la respuesta permanente a esa pregunta:{" "}
+              <em>«Para pagar en USD a Citibank Madrid, envía el dinero al BIC CITIUS33, cuenta 1234567.»</em>
+            </p>
+            <p>
+              Es <strong className="text-sand">permanente</strong> porque no hay que indicarla en cada operación. Se configura una vez y
+              el sistema la aplica automáticamente cada vez que toca liquidar con esa contraparte en esa moneda y mercado.
             </p>
           </div>
-          <EdgeCard accent={SCIS} className="mt-4">
-            <strong className="text-sand">Diferencia clave con las SSIs:</strong>
-            <br />Las SSIs dicen cómo mover el dinero o los valores (liquidación).
-            <br />Las SCIs dicen cómo comunicar que la operación se ha pactado (confirmación).
-          </EdgeCard>
-        </div>
-        <div>
-          <H3 className="mb-3">¿Qué define una SCI?</H3>
-          <div className="flex flex-col gap-2.5">
-            {SCI_DEFINE.map((c) => (
+          <div className="flex flex-col gap-3">
+            {SSI_CARDS.map((c) => (
               <EdgeCard key={c.t} accent={c.color} title={c.t}>{c.d}</EdgeCard>
             ))}
           </div>
-        </div>
-      </Reveal>
+        </Reveal>
 
-      <BlockHeader color={SCIS} kicker="SCIs — instrucciones de confirmación" title="Canales de confirmación" />
-      <Reveal className="mt-8 space-y-5">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-5 backdrop-blur-sm" style={{ borderLeft: `4px solid ${PALETTE.lime}` }}>
-            <p className="font-display text-lg font-bold text-lime">CONFIRMACIÓN</p>
-            <p className="mt-1.5 text-[14px] leading-relaxed text-sand/80">
-              Comunicación <strong className="text-sand">bilateral</strong> BBVA ↔ contraparte que confirma los términos del trade.{" "}
-              <em>Notification Type</em> vacío.
-            </p>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-5 backdrop-blur-sm" style={{ borderLeft: `4px solid ${PALETTE.canary}` }}>
-            <p className="font-display text-lg font-bold text-canary">NOTIFICACIÓN</p>
-            <p className="mt-1.5 text-[14px] leading-relaxed text-sand/80">
-              Aviso <strong className="text-sand">unilateral</strong> a un tercero (agente fiscal, depositario…). Requiere{" "}
-              <em>Notification Type</em>.
-            </p>
-          </div>
-        </div>
-        <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-serene">
-            Contactos <span className="normal-case tracking-normal text-sand/55">· FT_T_CNTC (~198K)</span>
-          </p>
-          <p className="mt-2 max-w-prose text-[14px] leading-relaxed text-sand/80">
-            Persona de la contraparte que recibe la confirmación. Cada medio referencia un{" "}
-            <strong className="text-sand">contacto activo</strong> con su email, fax, idioma y departamento.{" "}
-            <span className="text-mandarin">Contacto inactivo → SCI bloqueada.</span>
-          </p>
-        </div>
-        <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-lime">Tipos de canal</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {CANALES_SCI.map((c) => (
-              /* Texto temado; borde-tinte con hex original; fondo glass con la utilidad temada (antes white 6% hardcodeado). */
-              <span key={c.t} className="rounded-full border bg-white/[0.06] px-4 py-1.5 text-sm font-bold" style={{ color: tx(c.color), borderColor: rgba(c.color, 0.55) }}>
-                {c.t}
-              </span>
+      </Slide>
+      <Slide id="detalle-9">
+        <BlockHeader color={SSIS} kicker="Los eslabones del camino del dinero o los valores" title="La cadena de participantes en la liquidación" />
+        <Reveal className="mt-8">
+          <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-5">
+            {CADENA.map((p, i) => (
+              <div key={p.t} className="relative rounded-2xl border border-white/10 bg-white/[0.045] p-4 backdrop-blur-sm" style={{ borderTop: `3px solid ${p.color}` }}>
+                <p className="text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: tx(p.color) }}>
+                  <span className="mr-1.5 font-display tabular-nums text-sand/50">{i + 1}</span>{p.t}
+                </p>
+                <p className="mt-2 text-[12px] leading-relaxed text-sand/70">{p.d}</p>
+              </div>
             ))}
           </div>
-        </div>
-      </Reveal>
+          <EdgeCard accent={SSIS} className="mt-4">
+            💡 <strong className="text-sand">Cómo fluye el mensaje SWIFT:</strong> la SSI en RDR alimenta directamente los campos del
+            mensaje MT (SWIFT): el Beneficiario va en el campo <em>:58: Beneficiary Institution</em>, el Corresponsal en{" "}
+            <em>:57: Account with Institution</em>, el Clearing Agent en <em>:56: Intermediary</em> y el Custodio en{" "}
+            <em>:53: Sender's Correspondent</em>.
+          </EdgeCard>
+        </Reveal>
+
+      </Slide>
+
+      {/* ══ SCIs (slides 22–23) ═════════════════════════════════ */}
+      <Slide id="detalle-10">
+        <BlockHeader color={SCIS} kicker="SCIS · 55.000 instrucciones activas" title="SCIs — instrucciones de confirmación de operaciones" />
+
+        <Reveal className="mt-8 grid gap-6 lg:grid-cols-2">
+          <div>
+            <div className="space-y-4 text-[14px] leading-relaxed text-sand/80">
+              <p>
+                Una vez que se acuerda un trade, la contraparte necesita recibir una <strong className="text-sand">confirmación</strong>:
+                un documento que diga exactamente qué se ha acordado (precio, cantidad, fecha, contraparte...).
+              </p>
+              <p>
+                La <strong className="text-sand">SCI (Standard Confirmation Instruction)</strong> define: ¿<em>cómo</em> enviamos esa
+                confirmación? ¿<em>A quién</em>? ¿<em>Para qué productos</em>?
+              </p>
+            </div>
+            <EdgeCard accent={SCIS} className="mt-4">
+              <strong className="text-sand">Diferencia clave con las SSIs:</strong>
+              <br />Las SSIs dicen cómo mover el dinero o los valores (liquidación).
+              <br />Las SCIs dicen cómo comunicar que la operación se ha pactado (confirmación).
+            </EdgeCard>
+          </div>
+          <div>
+            <H3 className="mb-3">¿Qué define una SCI?</H3>
+            <div className="flex flex-col gap-2.5">
+              {SCI_DEFINE.map((c) => (
+                <EdgeCard key={c.t} accent={c.color} title={c.t}>{c.d}</EdgeCard>
+              ))}
+            </div>
+          </div>
+        </Reveal>
+
+      </Slide>
+      <Slide id="detalle-11">
+        <BlockHeader color={SCIS} kicker="SCIs — instrucciones de confirmación" title="Canales de confirmación" />
+        <Reveal className="mt-8 space-y-5">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-5 backdrop-blur-sm" style={{ borderLeft: `4px solid ${PALETTE.lime}` }}>
+              <p className="font-display text-lg font-bold text-lime">CONFIRMACIÓN</p>
+              <p className="mt-1.5 text-[14px] leading-relaxed text-sand/80">
+                Comunicación <strong className="text-sand">bilateral</strong> BBVA ↔ contraparte que confirma los términos del trade.{" "}
+                <em>Notification Type</em> vacío.
+              </p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-5 backdrop-blur-sm" style={{ borderLeft: `4px solid ${PALETTE.canary}` }}>
+              <p className="font-display text-lg font-bold text-canary">NOTIFICACIÓN</p>
+              <p className="mt-1.5 text-[14px] leading-relaxed text-sand/80">
+                Aviso <strong className="text-sand">unilateral</strong> a un tercero (agente fiscal, depositario…). Requiere{" "}
+                <em>Notification Type</em>.
+              </p>
+            </div>
+          </div>
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-serene">
+              Contactos <span className="normal-case tracking-normal text-sand/55">· FT_T_CNTC (~198K)</span>
+            </p>
+            <p className="mt-2 max-w-prose text-[14px] leading-relaxed text-sand/80">
+              Persona de la contraparte que recibe la confirmación. Cada medio referencia un{" "}
+              <strong className="text-sand">contacto activo</strong> con su email, fax, idioma y departamento.{" "}
+              <span className="text-mandarin">Contacto inactivo → SCI bloqueada.</span>
+            </p>
+          </div>
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-lime">Tipos de canal</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {CANALES_SCI.map((c) => (
+                /* Texto temado; borde-tinte con hex original; fondo glass con la utilidad temada (antes white 6% hardcodeado). */
+                <span key={c.t} className="rounded-full border bg-white/[0.06] px-4 py-1.5 text-sm font-bold" style={{ color: tx(c.color), borderColor: rgba(c.color, 0.55) }}>
+                  {c.t}
+                </span>
+              ))}
+            </div>
+          </div>
+        </Reveal>
+
+      </Slide>
 
       {/* ══ Relación entre entidades (slide 24) ═════════════════ */}
-      <BlockHeader color={C} kicker="Visión de conjunto" title="Relación entre Entidades">
-        RDR es una <strong className="text-sand">base de datos relacional</strong>: todas las entidades están conectadas entre sí con
-        la <strong className="text-sand">Contrapartida</strong> como eje central.
-      </BlockHeader>
+      <Slide id="detalle-12">
+        <BlockHeader color={C} kicker="Visión de conjunto" title="Relación entre Entidades">
+          RDR es una <strong className="text-sand">base de datos relacional</strong>: todas las entidades están conectadas entre sí con
+          la <strong className="text-sand">Contrapartida</strong> como eje central.
+        </BlockHeader>
 
-      <Reveal className="mt-8 grid gap-3 lg:grid-cols-2">
-        <Glass accent={C}>
-          <H3>
-            Data Related <span className="font-sans text-xs font-normal text-sand/55">(sección en Contrapartidas)</span>
-          </H3>
-          <p className="mt-1.5 text-[13px] text-sand/70">Desde una contrapartida, la sección <em>Data Related</em> da acceso a:</p>
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            {DATA_RELATED.map((d) => (
-              <div key={d.t} className="rounded-xl border px-3 py-2.5 text-center" style={{ borderColor: rgba(PALETTE.serene, 0.4), background: rgba(PALETTE.serene, 0.1) }}>
-                <p className="text-[13px] font-bold text-serene">{d.t}</p>
-                <p className="text-[11px] text-sand/60">{d.d}</p>
-              </div>
-            ))}
-          </div>
-        </Glass>
-        <Glass accent={C} style={{ background: rgba(C, 0.07) }}>
-          <H3>⚡ Los Roles son LA CLAVE</H3>
-          <p className="mt-1.5 text-[13px] text-sand/70">Los roles determinan <strong className="text-sand">cómo actúa</strong> una contrapartida en cada contexto:</p>
-          <div className="mt-3 flex flex-col gap-2">
-            {ROLES_CLAVE.map((r) => (
-              <div key={r.rol} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 rounded-xl bg-white/[0.07] px-3.5 py-2">
-                <span className="min-w-[9.5rem] text-[13px] font-bold text-sand">{r.rol}</span>
-                <span className="text-[12px] text-sand/70">{r.d}</span>
-              </div>
-            ))}
-          </div>
-        </Glass>
-      </Reveal>
+        <Reveal className="mt-8 grid gap-3 lg:grid-cols-2">
+          <Glass accent={C}>
+            <H3>
+              Data Related <span className="font-sans text-xs font-normal text-sand/55">(sección en Contrapartidas)</span>
+            </H3>
+            <p className="mt-1.5 text-[13px] text-sand/70">Desde una contrapartida, la sección <em>Data Related</em> da acceso a:</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {DATA_RELATED.map((d) => (
+                <div key={d.t} className="rounded-xl border px-3 py-2.5 text-center" style={{ borderColor: rgba(PALETTE.serene, 0.4), background: rgba(PALETTE.serene, 0.1) }}>
+                  <p className="text-[13px] font-bold text-serene">{d.t}</p>
+                  <p className="text-[11px] text-sand/60">{d.d}</p>
+                </div>
+              ))}
+            </div>
+          </Glass>
+          <Glass accent={C} style={{ background: rgba(C, 0.07) }}>
+            <H3>⚡ Los Roles son LA CLAVE</H3>
+            <p className="mt-1.5 text-[13px] text-sand/70">Los roles determinan <strong className="text-sand">cómo actúa</strong> una contrapartida en cada contexto:</p>
+            <div className="mt-3 flex flex-col gap-2">
+              {ROLES_CLAVE.map((r) => (
+                <div key={r.rol} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 rounded-xl bg-white/[0.07] px-3.5 py-2">
+                  <span className="min-w-[9.5rem] text-[13px] font-bold text-sand">{r.rol}</span>
+                  <span className="text-[12px] text-sand/70">{r.d}</span>
+                </div>
+              ))}
+            </div>
+          </Glass>
+        </Reveal>
+
+      </Slide>
 
       {/* ══ Entidades diccionario (slide 25) ════════════════════ */}
-      <BlockHeader color={C} kicker="Datos auxiliares" title="Entidades Diccionario">
-        Además de las entidades principales, RDR actúa como <strong className="text-sand">diccionario/traductor</strong> entre
-        aplicativos: mantiene las traducciones de códigos entre sistemas.
-      </BlockHeader>
+      <Slide id="detalle-13">
+        <BlockHeader color={C} kicker="Datos auxiliares" title="Entidades Diccionario">
+          Además de las entidades principales, RDR actúa como <strong className="text-sand">diccionario/traductor</strong> entre
+          aplicativos: mantiene las traducciones de códigos entre sistemas.
+        </BlockHeader>
 
-      <Reveal className="mt-8">
-        <div className="grid gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
-          {DICCIONARIO.map((d) => (
-            <div key={d.t} className="rounded-2xl border p-4 text-center backdrop-blur-sm" style={{ borderColor: rgba(C, 0.4), background: rgba(C, 0.09) }}>
-              <p className="font-display text-base font-bold text-sand">{d.t}</p>
-              <p className="mt-1 text-[11px] leading-relaxed text-sand/65">{d.d}</p>
-            </div>
-          ))}
-        </div>
-        <KeyIdea color={C} className="mt-5">
-          <p className="text-[15px] font-normal text-sand/85">
-            Ejemplo: cuando Murex envía un código de producto <em>«FX_SWAP»</em>, RDR traduce al código equivalente en Calypso
-            (<em>«FxSwap»</em>), Star (<em>«FXSW»</em>) y demás consumidores.{" "}
-            <strong className="text-sand">Un solo punto de traducción</strong> entre todos los sistemas.
-          </p>
-        </KeyIdea>
-      </Reveal>
-    </Section>
+        <Reveal className="mt-8">
+          <div className="grid gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
+            {DICCIONARIO.map((d) => (
+              <div key={d.t} className="rounded-2xl border p-4 text-center backdrop-blur-sm" style={{ borderColor: rgba(C, 0.4), background: rgba(C, 0.09) }}>
+                <p className="font-display text-base font-bold text-sand">{d.t}</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-sand/65">{d.d}</p>
+              </div>
+            ))}
+          </div>
+          <KeyIdea color={C} className="mt-5">
+            <p className="text-[15px] font-normal text-sand/85">
+              Ejemplo: cuando Murex envía un código de producto <em>«FX_SWAP»</em>, RDR traduce al código equivalente en Calypso
+              (<em>«FxSwap»</em>), Star (<em>«FXSW»</em>) y demás consumidores.{" "}
+              <strong className="text-sand">Un solo punto de traducción</strong> entre todos los sistemas.
+            </p>
+          </KeyIdea>
+        </Reveal>
+      </Slide>
+    </>
   );
 }

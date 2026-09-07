@@ -236,3 +236,32 @@ html.rdr-light .rdr-tilt:hover,
 html.rdr-light .rdr-tilt:focus-within {
   box-shadow: 0 0 0 1px var(--pc, transparent), 0 8px 24px -8px rgb(7 14 70 / 0.18);
 }
+
+/* ── Deck horizontal (/que-es-rdr): una diapositiva por pantalla ──
+   El scroll-snap y el gesto táctil son nativos; aquí solo se esconde la barra
+   de scroll y se anima la entrada del contenido de la diapositiva activa. */
+.rdr-deck {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.rdr-deck::-webkit-scrollbar,
+.rdr-slide::-webkit-scrollbar {
+  display: none;
+}
+.rdr-slide {
+  scrollbar-width: none;
+}
+.rdr-slide[data-active="true"] .rdr-anim {
+  animation: rdr-slide-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--rdr-d, 0ms);
+}
+@keyframes rdr-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

@@ -1,12 +1,12 @@
 "use client";
 
-// Cierre (slides 32–33 del deck legacy): RDR en cifras + coda con
+// Cierre (slides 32–33 del deck): RDR en cifras + coda con
 // enlaces de continuación (sustituye a la contraportada de logos: el
 // co-branding BBVA × NFQ ya lo aporta el chrome persistente).
 
 import { Link } from "next-view-transitions";
 import { PALETTE } from "@/lib/palette";
-import { Reveal, Section, BlockHeader, Stat } from "./ui";
+import { Reveal, Slide, BlockHeader, Stat } from "./ui";
 import { IconArrowRight } from "./icons";
 
 const KPIS = [
@@ -22,18 +22,21 @@ const KPIS = [
 
 export default function SeccionCierre() {
   return (
-    <Section id="cifras">
+    <>
       {/* ── RDR en cifras (slide 32) ────────────────────────────── */}
-      <BlockHeader color={PALETTE.serene} kicker="Una plataforma en producción continua desde 2016" title="RDR en cifras" />
+      <Slide id="cifras">
+        <BlockHeader color={PALETTE.serene} kicker="Una plataforma en producción continua desde 2016" title="RDR en cifras" />
 
-      <Reveal className="mt-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {KPIS.map((k) => (
-          <Stat key={k.label} {...k} />
-        ))}
-      </Reveal>
+        <Reveal className="mt-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {KPIS.map((k) => (
+            <Stat key={k.label} {...k} />
+          ))}
+        </Reveal>
+      </Slide>
 
       {/* ── Coda / contraportada (slide 33) ─────────────────────── */}
-      <Reveal className="mt-24 pb-4 text-center">
+      <Slide id="cierre">
+      <Reveal className="pb-4 text-center">
         <p className="font-sans text-xs font-bold uppercase tracking-[0.4em] text-serene/80">BBVA × NFQ</p>
         <h2 className="mt-3 text-balance font-display text-3xl font-bold tracking-tight text-sand sm:text-4xl">
           Esto es RDR.
@@ -57,6 +60,7 @@ export default function SeccionCierre() {
           </Link>
         </div>
       </Reveal>
-    </Section>
+      </Slide>
+    </>
   );
 }

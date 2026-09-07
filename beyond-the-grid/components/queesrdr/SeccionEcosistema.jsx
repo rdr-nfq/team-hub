@@ -6,7 +6,7 @@
 import { PALETTE } from "@/lib/palette";
 import { rgba } from "@/lib/ui";
 import { useAccentMap } from "@/lib/theme";
-import { Reveal, Section, ModuleDivider, BlockHeader, Glass } from "./ui";
+import { Reveal, Slide, SlideModulo, BlockHeader, Glass } from "./ui";
 
 const C = PALETTE.aqua;
 
@@ -99,8 +99,8 @@ function FlujoMurexCalypso() {
 export default function SeccionEcosistema() {
   const mapAccent = useAccentMap(); // leyenda/dirección como TEXTO legible en claro; puntos-swatch con hex original
   return (
-    <Section id="ecosistema">
-      <ModuleDivider
+    <>
+      <SlideModulo id="ecosistema"
         n="05"
         color={C}
         title="Ecosistema de integración"
@@ -108,39 +108,44 @@ export default function SeccionEcosistema() {
       />
 
       {/* ── Sistemas conectados (slide 30) ──────────────────────── */}
-      <BlockHeader color={C} kicker="Integraciones" title="Sistemas conectados" />
+      <Slide id="ecosistema-1">
+        <BlockHeader color={C} kicker="Integraciones" title="Sistemas conectados" />
 
-      <Reveal className="mt-6 flex flex-wrap gap-x-5 gap-y-1.5">
-        {Object.values(DIR).map((d) => (
-          <span key={d.legend} className="flex items-center gap-2 text-xs" style={{ color: mapAccent(d.color) }}>
-            <span aria-hidden className="h-2.5 w-2.5 rounded-full" style={{ background: d.color }} />
-            {d.legend}
-          </span>
-        ))}
-      </Reveal>
+        <Reveal className="mt-6 flex flex-wrap gap-x-5 gap-y-1.5">
+          {Object.values(DIR).map((d) => (
+            <span key={d.legend} className="flex items-center gap-2 text-xs" style={{ color: mapAccent(d.color) }}>
+              <span aria-hidden className="h-2.5 w-2.5 rounded-full" style={{ background: d.color }} />
+              {d.legend}
+            </span>
+          ))}
+        </Reveal>
 
-      <Reveal className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {SISTEMAS.map((s) => {
-          const dir = DIR[s.dir];
-          return (
-            <div key={s.n} className="rounded-2xl border border-white/10 bg-white/[0.045] p-4 backdrop-blur-sm" style={{ borderTop: `3px solid ${dir.color}` }}>
-              <div className="flex items-baseline justify-between gap-2">
-                <p className="font-display text-base font-bold text-sand">{s.n}</p>
-                <p className="shrink-0 text-[11px] font-bold uppercase tracking-wide" style={{ color: mapAccent(dir.color) }}>{dir.label}</p>
+        <Reveal className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {SISTEMAS.map((s) => {
+            const dir = DIR[s.dir];
+            return (
+              <div key={s.n} className="rounded-2xl border border-white/10 bg-white/[0.045] p-4 backdrop-blur-sm" style={{ borderTop: `3px solid ${dir.color}` }}>
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className="font-display text-base font-bold text-sand">{s.n}</p>
+                  <p className="shrink-0 text-[11px] font-bold uppercase tracking-wide" style={{ color: mapAccent(dir.color) }}>{dir.label}</p>
+                </div>
+                <p className="mt-1.5 text-[12px] leading-relaxed text-sand/65">{s.d}</p>
               </div>
-              <p className="mt-1.5 text-[12px] leading-relaxed text-sand/65">{s.d}</p>
-            </div>
-          );
-        })}
-      </Reveal>
+            );
+          })}
+        </Reveal>
+
+      </Slide>
 
       {/* ── Flujo Murex → Calypso (slide 31) ────────────────────── */}
-      <BlockHeader color={C} kicker="Ejemplo real · Servicio Petición/Respuesta" title="Caída de operación: Murex → ESB → RDR → ESB → Calypso" />
-      <Reveal className="mt-8">
-        <Glass accent={C} className="p-4 sm:p-6">
-          <FlujoMurexCalypso />
-        </Glass>
-      </Reveal>
-    </Section>
+      <Slide id="ecosistema-2">
+        <BlockHeader color={C} kicker="Ejemplo real · Servicio Petición/Respuesta" title="Caída de operación: Murex → ESB → RDR → ESB → Calypso" />
+        <Reveal className="mt-8">
+          <Glass accent={C} className="p-4 sm:p-6">
+            <FlujoMurexCalypso />
+          </Glass>
+        </Reveal>
+      </Slide>
+    </>
   );
 }

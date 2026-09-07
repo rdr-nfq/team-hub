@@ -1,18 +1,32 @@
 "use client";
 
-// Primitivas visuales de la página "¿Qué es RDR?": revelado al entrar en
-// viewport, secciones ancladas, separadores de módulo, tarjetas glass y
+// Primitivas visuales de la presentación "¿Qué es RDR?": diapositivas del deck
+// horizontal, revelado del contenido, separadores de módulo, tarjetas glass y
 // pequeños átomos (kicker, pills, stats). Todo respeta prefers-reduced-motion.
 
+import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { rgba } from "@/lib/ui";
 import { useAccentMap } from "@/lib/theme";
+import { useDeck } from "./Deck";
 
 const EASE = [0.16, 1, 0.3, 1];
 
-/** Bloque que se revela (fade + rise) la primera vez que entra en viewport. */
+/** Bloque que se revela (fade + rise) la primera vez que entra en viewport.
+ *  Dentro del deck no se usa el viewport (las diapositivas están fuera de
+ *  pantalla en horizontal): el contenido se pinta siempre y la entrada la
+ *  dispara la clase .rdr-anim cuando la diapositiva pasa a estar activa. */
 export function Reveal({ children, delay = 0, className, as = "div", ...rest }) {
   const reduce = useReducedMotion();
+  const { inDeck } = useDeck();
+  if (inDeck) {
+    const Tag = as;
+    return (
+      <Tag className={`rdr-anim ${className || ""}`} style={{ "--rdr-d": `${Math.round(delay * 1000)}ms` }} {...rest}>
+        {children}
+      </Tag>
+    );
+  }
   const M = motion[as] || motion.div;
   return (
     <M
@@ -25,15 +39,6 @@ export function Reveal({ children, delay = 0, className, as = "div", ...rest }) 
     >
       {children}
     </M>
-  );
-}
-
-/** Sección de lectura con ancla para el índice. */
-export function Section({ id, children, className = "" }) {
-  return (
-    <section id={id} className={`scroll-mt-28 ${className}`}>
-      {children}
-    </section>
   );
 }
 
@@ -63,29 +68,6 @@ export function H3({ children, className = "" }) {
 /** Párrafo destacado bajo el titular. */
 export function Lead({ children, className = "" }) {
   return <p className={`mt-4 max-w-prose text-pretty text-[15px] leading-relaxed text-sand/80 sm:text-base ${className}`}>{children}</p>;
-}
-
-/**
- * Separador de módulo: réplica editorial de los slides-separador del deck
- * (número de módulo + gran titular serif + descripción), con línea de acento.
- */
-export function ModuleDivider({ n, color, title, desc }) {
-  const mapAccent = useAccentMap(); // texto temado; el punto-swatch conserva el hex original
-  return (
-    <Reveal className="pb-12 pt-24 sm:pb-16 sm:pt-32">
-      <div className="flex items-center gap-3">
-        <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />
-        <span className="font-sans text-xs font-bold uppercase tracking-[0.35em]" style={{ color: mapAccent(color) }}>
-          Módulo {n}
-        </span>
-      </div>
-      <h2 className="mt-4 text-balance font-display text-4xl font-bold leading-[0.98] tracking-tight text-sand sm:text-6xl">
-        {title}
-      </h2>
-      {desc && <p className="mt-5 max-w-xl text-pretty text-base leading-relaxed text-sand/70 sm:text-lg">{desc}</p>}
-      <span aria-hidden className="mt-8 block h-px w-24" style={{ background: `linear-gradient(90deg, ${color}, transparent)` }} />
-    </Reveal>
-  );
 }
 
 /** Tarjeta glass estándar (mismo cristal que el hub). */
@@ -155,8 +137,9 @@ export function KeyIdea({ color = "#85C8FF", children, className = "" }) {
 
 /** Cabecera de sub-bloque dentro de un módulo (kicker + h2 + lead). */
 export function BlockHeader({ color, kicker, title, children }) {
+  const { inDeck } = useDeck();
   return (
-    <Reveal className="pt-16 sm:pt-20">
+    <Reveal className={inDeck ? "" : "pt-16 sm:pt-20"}>
       <Kicker color={color}>{kicker}</Kicker>
       <H2>{title}</H2>
       {children && <Lead>{children}</Lead>}
@@ -175,5 +158,80 @@ export function DotList({ color = "#85C8FF", items, className = "" }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/* ─────────────────────────── Diapositivas ───────────────────────────
+   Cada <Slide> ocupa la pantalla completa dentro del deck horizontal. Si su
+   contenido no cabe, la propia diapositiva hace scroll vertical y aparece un
+   degradado inferior avisando de que queda más por leer. */
+
+/** ¿El contenido de este nodo desborda en vertical? (para el aviso de scroll) */
+function useDesborda(ref) {
+  const [desborda, setDesborda] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const mide = () => setDesborda(el.scrollHeight > el.clientHeight + 4);
+    mide();
+    const ro = new ResizeObserver(mide);
+    ro.observe(el);
+    Array.from(el.children).forEach((c) => ro.observe(c));
+    return () => ro.disconnect();
+  }, [ref]);
+  return desborda;
+}
+
+export function Slide({ id, kicker, title, lead, color = "#85C8FF", wide = false, className = "", children }) {
+  const ref = useRef(null);
+  const desborda = useDesborda(ref);
+  return (
+    <article
+      ref={ref}
+      data-slide
+      data-slide-id={id}
+      id={id}
+      aria-roledescription="diapositiva"
+      aria-label={title || id}
+      className={`rdr-slide relative flex h-dvh w-full flex-none snap-start snap-always flex-col overflow-y-auto overscroll-contain px-5 pb-24 pt-20 sm:px-8 sm:pt-24 ${className}`}
+    >
+      {/* m-auto centra el contenido cuando cabe y, cuando no cabe, no lo recorta
+          (a diferencia de justify-center en un contenedor con scroll). */}
+      <div className={`m-auto w-full ${wide ? "max-w-7xl" : "max-w-6xl"}`}>
+        {(kicker || title) && (
+          <header className="rdr-anim">
+            {kicker && <Kicker color={color}>{kicker}</Kicker>}
+            {title && <H2>{title}</H2>}
+            {lead && <Lead>{lead}</Lead>}
+          </header>
+        )}
+        {children}
+      </div>
+      {desborda && (
+        <span aria-hidden className="pointer-events-none sticky bottom-0 -mt-10 block h-10 w-full bg-gradient-to-t from-midnight to-transparent" />
+      )}
+    </article>
+  );
+}
+
+/** Diapositiva separadora de módulo (equivale a los slides-separador del deck). */
+export function SlideModulo({ id, n, color, title, desc }) {
+  const mapAccent = useAccentMap(); // texto temado; el punto-swatch conserva el hex original
+  return (
+    <Slide id={id} color={color}>
+      <div className="rdr-anim">
+        <div className="flex items-center gap-3">
+          <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />
+          <span className="font-sans text-xs font-bold uppercase tracking-[0.35em]" style={{ color: mapAccent(color) }}>
+            Módulo {n}
+          </span>
+        </div>
+        <h2 className="mt-5 text-balance font-display text-4xl font-bold leading-[0.98] tracking-tight text-sand sm:text-6xl lg:text-7xl">
+          {title}
+        </h2>
+        {desc && <p className="mt-6 max-w-2xl text-pretty text-base leading-relaxed text-sand/70 sm:text-lg">{desc}</p>}
+        <span aria-hidden className="mt-9 block h-px w-28" style={{ background: `linear-gradient(90deg, ${color}, transparent)` }} />
+      </div>
+    </Slide>
   );
 }

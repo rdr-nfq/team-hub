@@ -4,7 +4,7 @@
 // comunicación online (RDR ↔ ESB ↔ sistemas) y canal batch.
 
 import { PALETTE } from "@/lib/palette";
-import { Reveal, Section, ModuleDivider, BlockHeader, Glass, EdgeCard, DotList } from "./ui";
+import { Reveal, Slide, SlideModulo, BlockHeader, Glass, EdgeCard, DotList } from "./ui";
 
 const C = PALETTE.mandarin;
 
@@ -74,8 +74,8 @@ function DiagramaOnline() {
 
 export default function SeccionCanales() {
   return (
-    <Section id="canales">
-      <ModuleDivider
+    <>
+      <SlideModulo id="canales"
         n="04"
         color={C}
         title="Canales de comunicación"
@@ -83,38 +83,43 @@ export default function SeccionCanales() {
       />
 
       {/* ── Comunicación ONLINE (slide 27) ──────────────────────── */}
-      <BlockHeader color={C} kicker="Comunicación en tiempo real" title="Comunicación ONLINE" />
-      <Reveal className="mt-8">
-        <Glass accent={C} className="p-5 sm:p-7">
-          <DiagramaOnline />
-        </Glass>
-      </Reveal>
+      <Slide id="canales-1">
+        <BlockHeader color={C} kicker="Comunicación en tiempo real" title="Comunicación ONLINE" />
+        <Reveal className="mt-8">
+          <Glass accent={C} className="p-5 sm:p-7">
+            <DiagramaOnline />
+          </Glass>
+        </Reveal>
+
+      </Slide>
 
       {/* ── Canal BATCH (slide 28) ──────────────────────────────── */}
-      <BlockHeader color={C} kicker="Volumen masivo · Ficheros · Coordinado por Control-M" title="Canal BATCH" />
-      <Reveal className="mt-8 grid gap-6 lg:grid-cols-2">
-        <Glass accent={C}>
-          <DotList
-            color={C}
-            className="mt-0"
-            items={[
-              <>Intercambio de datos en <strong className="text-sand">volumen</strong> — no viable por JMS online</>,
-              <>Transporte: <strong className="text-sand">DataX</strong> (plataforma corporativa bidireccional), <strong className="text-sand">SCP/SFTP</strong> directo, <strong className="text-sand">Connect Direct</strong> (SAIT)</>,
-              <>Coordinación: <strong className="text-sand">Control-M</strong> (planificador, UUAA KYTL, prefijo MEKYTL) o <strong className="text-sand">FileWatcher</strong> (detecta llegada de fichero → activa workflow GS)</>,
-              <>Rutas: salida → <code className="rounded bg-white/10 px-1 text-[12px]">/unload/kytl/datsal/datax/</code> · entrada → <code className="rounded bg-white/10 px-1 text-[12px]">/unload/kytl/datent/datax/</code></>,
-              "Procesamiento: transformaciones, splits, deltas, reconciliaciones con Java + PL/SQL",
-            ]}
-          />
-        </Glass>
-        <div>
-          <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.2em] text-sand/60">Casos de uso batch</p>
-          <div className="flex flex-col gap-2.5">
-            {BATCH_CASOS.map((c) => (
-              <EdgeCard key={c.t} accent={c.color} title={c.t}>{c.d}</EdgeCard>
-            ))}
+      <Slide id="canales-2">
+        <BlockHeader color={C} kicker="Volumen masivo · Ficheros · Coordinado por Control-M" title="Canal BATCH" />
+        <Reveal className="mt-8 grid gap-6 lg:grid-cols-2">
+          <Glass accent={C}>
+            <DotList
+              color={C}
+              className="mt-0"
+              items={[
+                <>Intercambio de datos en <strong className="text-sand">volumen</strong> — no viable por JMS online</>,
+                <>Transporte: <strong className="text-sand">DataX</strong> (plataforma corporativa bidireccional), <strong className="text-sand">SCP/SFTP</strong> directo, <strong className="text-sand">Connect Direct</strong> (SAIT)</>,
+                <>Coordinación: <strong className="text-sand">Control-M</strong> (planificador, UUAA KYTL, prefijo MEKYTL) o <strong className="text-sand">FileWatcher</strong> (detecta llegada de fichero → activa workflow GS)</>,
+                <>Rutas: salida → <code className="rounded bg-white/10 px-1 text-[12px]">/unload/kytl/datsal/datax/</code> · entrada → <code className="rounded bg-white/10 px-1 text-[12px]">/unload/kytl/datent/datax/</code></>,
+                "Procesamiento: transformaciones, splits, deltas, reconciliaciones con Java + PL/SQL",
+              ]}
+            />
+          </Glass>
+          <div>
+            <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.2em] text-sand/60">Casos de uso batch</p>
+            <div className="flex flex-col gap-2.5">
+              {BATCH_CASOS.map((c) => (
+                <EdgeCard key={c.t} accent={c.color} title={c.t}>{c.d}</EdgeCard>
+              ))}
+            </div>
           </div>
-        </div>
-      </Reveal>
-    </Section>
+        </Reveal>
+      </Slide>
+    </>
   );
 }
