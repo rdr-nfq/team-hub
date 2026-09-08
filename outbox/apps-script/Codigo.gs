@@ -542,9 +542,17 @@ function getEjecucion(opts) {
 }
 
 /* Rangos de fila de las SUMAS verticales de un bloque: [{ini, fin}, ...].
+
+   NADA de esto va con filas fijas. Las fórmulas se leen del libro EN EL MISMO
+   momento que los valores (getValues + getFormulas sobre el mismo rango), así
+   que los números que llevan dentro son siempre los de ahora: si se da de alta
+   o de baja a alguien, o si al crear un Q nuevo los bloques anteriores bajan,
+   Sheets reescribe las referencias y aquí se leen ya actualizadas.
+
    Solo cuentan las sumas de una columna a lo largo de VARIAS filas
    (SUM(Q6:Q21)); las horizontales de cada persona (SUM(R6:T6)) se descartan
-   porque empiezan y acaban en la misma fila. */
+   porque empiezan y acaban en la misma fila, igual que las que se cruzan con
+   su propia fila (no serían un total de otras). */
 function _rangosSuma(fmls, rowStart) {
   var re = /SUMA?\(\$?([A-Z]+)\$?(\d+):\$?([A-Z]+)\$?(\d+)\)/g;
   var out = [];
@@ -585,7 +593,13 @@ function getControlEconomico() {
     var n = b.end - b.row + 1;
     var vals = sh.getRange(b.row, 1, n, LASTC).getValues();   // A..U
     var fmls = sh.getRange(b.row, 1, n, LASTC).getFormulas(); // fórmulas de las filas resumen
-    var meses = (n > 1) ? [vals[1][4], vals[1][5], vals[1][6]] : []; // E,F,G de la fila cabecera
+    // Cabecera de meses (E,F,G): se BUSCA en las primeras filas del bloque en
+    // vez de darla por hecha en la segunda, para que una fila en blanco de más
+    // entre el rótulo del Q y la cabecera no la deje sin leer.
+    var meses = [];
+    for (var h = 1; h < Math.min(n, 4); h++) {
+      if (vals[h][4] !== '' && vals[h][4] !== null) { meses = [vals[h][4], vals[h][5], vals[h][6]]; break; }
+    }
     var team = null, personas = [], objetivos = {}, resumen = [];
     // Fila resumen del bloque (Ingresos/Costes/Rentabilidad/Margen… tal y como
     // los calcula el PROPIO Excel): etiqueta + celdas no vacías con su fórmula.
@@ -638,16 +652,22 @@ function getControlEconomico() {
     var rangos = _rangosSuma(fmls, b.row);
     // Por equipo: solo cuentan los rangos que cubren a ALGUNA de sus personas
     // (así una suma suelta de otra parte del bloque no puede dejar a nadie
-    // fuera). Si ningún rango cubre al equipo, entran todos.
+    // fuera). Si ningún rango cubre al equipo — porque su total esté escrito a
+    // mano en vez de con fórmula, por ejemplo — entran todos: nunca se deja de
+    // contar a nadie por no haber sabido leer la suma.
+    var rangosUsados = [];
     ['NFQ', 'NTER'].forEach(function (eq) {
       var delEquipo = personas.filter(function (p) { return p.equipo === eq; });
       var suyos = rangos.filter(function (r) {
         return delEquipo.some(function (p) { return p.row >= r.ini && p.row <= r.fin; });
       });
+      suyos.forEach(function (r) { rangosUsados.push({ equipo: eq, ini: r.ini, fin: r.fin }); });
       delEquipo.forEach(function (p) {
         p.enSumaExcel = !suyos.length || _dentroDeRango(suyos, p.row);
       });
     });
+    var fuera = personas.filter(function (p) { return p.enSumaExcel === false && Number(p.costeQ); })
+      .map(function (p) { return { nombre: p.nombre, equipo: p.equipo, row: p.row, costeQ: p.costeQ }; });
 
     var costeNFQ = 0, costeNTER = 0;
     personas.forEach(function (p) {
@@ -658,7 +678,10 @@ function getControlEconomico() {
       q: b.q, rowStart: b.row, rowEnd: b.end, meses: meses, personas: personas,
       costeNFQ: costeNFQ, costeNTER: costeNTER,
       rentObjetivoNFQ: objetivos.NFQ, rentObjetivoNTER: objetivos.NTER,
-      resumen: resumen
+      resumen: resumen,
+      // Cómo se ha leído el total del bloque (para diagnosticar sin abrir el
+      // Excel): rangos que suma cada equipo y quién queda fuera de ellos.
+      sumaExcel: { rangos: rangosUsados, fuera: fuera }
     });
   });
   return { sheet: sh.getName(), bloques: out };
