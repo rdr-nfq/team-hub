@@ -541,6 +541,36 @@ function getEjecucion(opts) {
   return { sheet: t.sheet, qColumns: qCols, totalesHorasQ: totalesHorasQ, records: t.records };
 }
 
+/* Rangos de fila de las SUMAS verticales de un bloque: [{ini, fin}, ...].
+   Solo cuentan las sumas de una columna a lo largo de VARIAS filas
+   (SUM(Q6:Q21)); las horizontales de cada persona (SUM(R6:T6)) se descartan
+   porque empiezan y acaban en la misma fila. */
+function _rangosSuma(fmls, rowStart) {
+  var re = /SUMA?\(\$?([A-Z]+)\$?(\d+):\$?([A-Z]+)\$?(\d+)\)/g;
+  var out = [];
+  for (var i = 0; i < fmls.length; i++) {
+    for (var c = 0; c < fmls[i].length; c++) {
+      var f = fmls[i][c];
+      if (!f) continue;
+      var m;
+      re.lastIndex = 0;
+      while ((m = re.exec(String(f))) !== null) {
+        var ini = Number(m[2]), fin = Number(m[4]);
+        if (m[1] !== m[3] || ini >= fin) continue; // horizontal o de una sola fila
+        if (rowStart + i >= ini && rowStart + i <= fin) continue; // la propia fila dentro: no es total
+        out.push({ ini: ini, fin: fin });
+      }
+    }
+  }
+  return out;
+}
+
+function _dentroDeRango(rangos, row) {
+  for (var i = 0; i < rangos.length; i++)
+    if (row >= rangos[i].ini && row <= rangos[i].fin) return true;
+  return false;
+}
+
 /**
  * Control Económico ('3) Control Economico.'): un objeto por trimestre con la
  * lista de personas (NFQ/NTER) y sus datos, costes por equipo y rentabilidades
@@ -600,9 +630,28 @@ function getControlEconomico() {
       var label = cs || String(vals[i][0] === null ? '' : vals[i][0]).trim() || String(vals[i][1] === null ? '' : vals[i][1]).trim();
       if (label) addResumen(i, label);
     }
+    // Rangos de las SUMAS verticales del bloque (las filas de total por equipo,
+    // p.ej. SUM(Q6:Q21)). Sirven para saber qué personas entran de verdad en el
+    // total que muestra el Excel: si alguien se añade DEBAJO del rango y nadie
+    // amplía la fórmula, el Excel no lo suma, y el simulador tiene que hacer lo
+    // mismo para cuadrar con él (se avisa en la web para poder corregirlo).
+    var rangos = _rangosSuma(fmls, b.row);
+    // Por equipo: solo cuentan los rangos que cubren a ALGUNA de sus personas
+    // (así una suma suelta de otra parte del bloque no puede dejar a nadie
+    // fuera). Si ningún rango cubre al equipo, entran todos.
+    ['NFQ', 'NTER'].forEach(function (eq) {
+      var delEquipo = personas.filter(function (p) { return p.equipo === eq; });
+      var suyos = rangos.filter(function (r) {
+        return delEquipo.some(function (p) { return p.row >= r.ini && p.row <= r.fin; });
+      });
+      delEquipo.forEach(function (p) {
+        p.enSumaExcel = !suyos.length || _dentroDeRango(suyos, p.row);
+      });
+    });
+
     var costeNFQ = 0, costeNTER = 0;
     personas.forEach(function (p) {
-      var c = Number(p.costeQ) || 0;
+      var c = p.enSumaExcel ? (Number(p.costeQ) || 0) : 0;
       if (p.equipo === 'NFQ') costeNFQ += c; else costeNTER += c;
     });
     out.push({

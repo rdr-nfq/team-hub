@@ -56,12 +56,19 @@ function seedSim(data, q) {
     // que Σ costes de partida = Σ columna "Coste Q" (lo que suma el Excel).
     // Sin "Coste Q" informado, la persona parte de 0 h (el Excel tampoco la
     // cuenta): nada de estimarle horas e inventar un coste que no existe.
-    const horasBase = num(p.costeQ) > 0 && costeHora > 0 ? num(p.costeQ) / costeHora : 0;
+    // Y si la fila queda FUERA del rango que suma la fila de total del Excel
+    // (alguien añadido debajo sin ampliar la fórmula), parte también de 0:
+    // el Excel no la está sumando y el simulador tiene que cuadrar con él.
+    // Se avisa en pantalla con el nombre y el importe para poder corregirlo.
+    const enSuma = p.enSumaExcel !== false;
+    const horasBase = enSuma && num(p.costeQ) > 0 && costeHora > 0 ? num(p.costeQ) / costeHora : 0;
     return {
       id: uid(),
       nombre: p.nombre,
       equipo: p.equipo || "NFQ",
       costeHora,
+      fueraSuma: !enSuma && num(p.costeQ) > 0,
+      costeQExcel: num(p.costeQ),
       dedBase: dedicacionMedia(p) || 1, //   dedicación del Excel (la simulada escala sobre ella)
       ded: Math.round((dedicacionMedia(p) || 1) * 100),
       impQ: horasBase,
@@ -107,9 +114,13 @@ function seedSim(data, q) {
   const costesBase = personas.reduce((a, p) => a + p.impQ * p.costeHora, 0);
   const ingresosBase =
     (proyectos.reduce((a, p) => a + p.horas, 0) + horasSembradas + bolsaCerrada) * tarifa;
+  const fueraDeSuma = personas
+    .filter((p) => p.fueraSuma)
+    .map((p) => ({ nombre: p.nombre, coste: p.costeQExcel }));
   const base = {
     ingresos: ingresosBase,
     costes: costesBase,
+    fueraDeSuma,
     rent: ingresosBase > 0 ? (ingresosBase - costesBase) / ingresosBase : 0,
     rentExcel: rentSegunExcel(bloque), // la que muestra el propio Excel (o null)
     aproximado: normQ(bloque?.q || "") !== q, // Q futuro sin bloque propio
@@ -128,7 +139,9 @@ const horasQDe = (p) => {
   return Math.max(0, p.impQ * factor - Math.max(0, p.aus - p.ausBase));
 };
 
-/* Fila de persona: todo editable en línea (coste, dedicación, ausencias). */
+/* Fila de persona: todo editable en línea (coste, dedicación, ausencias). Las
+   que el Excel deja fuera de su SUMA se marcan y parten de 0 h, para que la
+   partida cuadre con él; se pueden simular igual subiéndoles la dedicación. */
 function PersonaRow({ p, onUpd, onDel }) {
   const horasQ = horasQDe(p);
   const costeQ = horasQ * p.costeHora;
@@ -143,7 +156,17 @@ function PersonaRow({ p, onUpd, onDel }) {
         >
           {p.equipo}
         </span>
-        <span className="min-w-0 flex-1 truncate text-[13px] font-bold text-sand">{p.nombre}</span>
+        <span className="min-w-0 flex-1 truncate text-[13px] font-bold text-sand">
+          {p.nombre}
+          {p.fueraSuma && (
+            <span
+              className={`ml-1.5 whitespace-nowrap text-[10px] font-bold ${TEXT.mandarin}`}
+              title={`El Excel no la incluye en su fila de total (${eur.format(p.costeQExcel)}): amplía el rango de la SUMA`}
+            >
+              ⚠ fuera de la suma del Excel
+            </span>
+          )}
+        </span>
         <span className="text-[11px] tabular-nums text-sand/55">{h(horasQ)} · <strong className="text-sand/80">{eur.format(costeQ)}</strong></span>
         <button
           type="button"
@@ -354,6 +377,16 @@ export default function SimuladorRoute() {
               ingresos <strong className="tabular-nums text-sand/80">{eur.format(sim.base.ingresos)}</strong> · costes{" "}
               <strong className="tabular-nums text-sand/80">{eur.format(sim.base.costes)}</strong> · rentabilidad{" "}
               <strong className={`tabular-nums ${TEXT.lime}`}>{(sim.base.rent * 100).toFixed(2)}%</strong>
+              {sim.base.fueraDeSuma?.length > 0 && (
+                <>
+                  {" · "}
+                  <span className={TEXT.mandarin}>
+                    ⚠ la fila de total del Excel no llega a{" "}
+                    {sim.base.fueraDeSuma.map((f) => `${f.nombre} (${eur.format(f.coste)})`).join(", ")}
+                    : amplía el rango de la SUMA para incluirla
+                  </span>
+                </>
+              )}
               {sim.base.rentExcel != null && (
                 <>
                   {" · el Excel muestra "}
