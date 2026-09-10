@@ -56,7 +56,26 @@ export function useSnapshot() {
         // no-store: sin él el navegador puede servir un snapshot viejo de su
         // caché HTTP y la revalidación no sería real (la caché la ponemos
         // nosotros en sessionStorage, controlada).
-        const res = await fetch(u, { cache: "no-store", signal: AbortSignal.timeout(90000) }).then((r) => r.json());
+        const resp = await fetch(u, { cache: "no-store", signal: AbortSignal.timeout(90000) });
+        const texto = await resp.text();
+        // Se parsea a mano (no resp.json()) para poder diferenciar POR QUÉ
+        // falla: un HTTP distinto de 200 (deploy caído/sin permiso), o un
+        // cuerpo que no es JSON (típico: Apps Script devuelve la página de
+        // login de Google en vez de datos si el despliegue exige iniciar
+        // sesión, o una página de error si el script no compila). Antes todo
+        // esto cafa en el mismo "CORS/red", que rara vez es la causa real:
+        // los Apps Script ContentService sí llevan cabeceras CORS.
+        let res;
+        try {
+          res = JSON.parse(texto);
+        } catch {
+          throw new Error(
+            resp.ok
+              ? "el backend no devolvió JSON (¿pide iniciar sesión o el despliegue está roto?): " + texto.slice(0, 120)
+              : "HTTP " + resp.status + " del backend: " + texto.slice(0, 120)
+          );
+        }
+        if (!resp.ok) throw new Error("HTTP " + resp.status + " del backend: " + (res?.error || texto.slice(0, 120)));
         if (res && res.ok && res.data) {
           setSnap({ data: res.data, demo: false, cached: false, error: "" });
           setCargando(false);
@@ -67,9 +86,10 @@ export function useSnapshot() {
         }
         err = res && res.error ? "backend: " + res.error : "respuesta inesperada del backend";
       } catch (e) {
-        err = e && e.name === "TimeoutError"
-          ? "el backend no respondió en 90 s"
-          : "sin conexión con el backend (CORS/red)";
+        err =
+          e && e.name === "TimeoutError" ? "el backend no respondió en 90 s"
+          : e && e.message && /HTTP \d|no devolvió JSON/.test(e.message) ? e.message
+          : "sin conexión con el backend (" + (e && e.message ? e.message : "red") + ")";
       }
     } else if (!err) {
       err = "falta controlBackend en links.json";
