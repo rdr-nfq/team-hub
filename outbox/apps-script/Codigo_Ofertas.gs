@@ -3,11 +3,12 @@
  *  GENERADOR DE OFERTAS RDR  ·  Apps Script (backend de la página /ofertas)
  * ============================================================================
  *
- *  Recibe los 12 datos de una oferta y genera, a partir de las plantillas,
+ *  Recibe los 13 datos de una oferta y genera, a partir de las plantillas,
  *  un Google Doc y un Google Sheet en la carpeta de ofertas, sustituyendo
- *  los marcadores {{DATO1}} … {{DATO12}}. El DATO12 es el firmante: para las
+ *  los marcadores {{DATO1}} … {{DATO13}}. El DATO12 es el firmante: para las
  *  ofertas de España siempre BBVA S.A.; para las de LATAM, la entidad que
- *  firme (México, Colombia… ampliable desde la propia web).
+ *  firme (México, Colombia… ampliable desde la propia web). El DATO13 son las
+ *  horas del bloque de IVA: en LATAM llega vacío, porque no lleva IVA.
  *
  *  DESPLIEGUE (proyecto Apps Script INDEPENDIENTE, no ligado a ningún Excel):
  *   1. script.google.com -> Nuevo proyecto -> pegar este fichero entero.
@@ -22,7 +23,7 @@
  *    GET  ?action=ping                  -> { ok:true }
  *    GET  ?action=firmantes             -> { latam:[...] }
  *    POST text/plain JSON:
- *      { action:'generarOferta', plantilla:'bbva-sa'|'latam', datos:{ dato1..dato12 } }
+ *      { action:'generarOferta', plantilla:'bbva-sa'|'latam', datos:{ dato1..dato13 } }
  *      -> { ok:true, data:{ docUrl, sheetUrl, pdfUrl, carpetaUrl, ruta } }
  *      { action:'guardarFirmante', firmante:'BBVA PERÚ S.A.' }
  *      -> { ok:true, data:{ latam:[...] } }   (queda guardado para todos)
@@ -170,9 +171,9 @@ function _subcarpeta(padre, nombre) {
 
 /**
  * Genera el Doc + Sheet (+ PDF del Doc) de una oferta sustituyendo
- * {{DATO1}}..{{DATO12}}, en la carpeta 20XX/QX/<Dato 11>/ bajo la raíz.
+ * {{DATO1}}..{{DATO13}}, en la carpeta 20XX/QX/<Dato 11>/ bajo la raíz.
  * Los tres ficheros se llaman igual (el Dato 11). Los datos que lleguen
- * vacíos (en LATAM, las horas y el importe con IVA) borran su marcador.
+ * vacíos (en LATAM, los del bloque de IVA) borran su marcador.
  */
 function generarOferta(plantilla, datos) {
   var tpl = CONFIG.PLANTILLAS[plantilla || 'bbva-sa'];
@@ -194,7 +195,7 @@ function generarOferta(plantilla, datos) {
   var docId = _copiarComoNativo(tpl.doc, base, 'application/vnd.google-apps.document', carpeta.getId());
   var doc = DocumentApp.openById(docId);
   var partes = [doc.getBody(), doc.getHeader(), doc.getFooter()];
-  for (var i = 1; i <= 12; i++) {
+  for (var i = 1; i <= 13; i++) {
     var v = _valor(datos, i);
     for (var s = 0; s < partes.length; s++) {
       // replaceText usa regex: llaves escapadas para buscar el literal {{DATOi}}.
@@ -209,7 +210,7 @@ function generarOferta(plantilla, datos) {
   // ── Google Sheet (copia con conversión a Sheet nativo, mismo nombre) ──
   var sheetId = _copiarComoNativo(tpl.sheet, base, 'application/vnd.google-apps.spreadsheet', carpeta.getId());
   var ss = SpreadsheetApp.openById(sheetId);
-  for (var j = 1; j <= 12; j++) {
+  for (var j = 1; j <= 13; j++) {
     // TextFinder busca el LITERAL (sin regex): las llaves no molestan.
     ss.createTextFinder('{{DATO' + j + '}}').matchEntireCell(false).replaceAllWith(_valor(datos, j));
   }

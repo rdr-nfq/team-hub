@@ -17,9 +17,9 @@ import { IconReceipt, IconAlert, IconPlus, IconExternal } from "./icons";
    - España: firma BBVA S.A. y la oferta lleva IVA (datos 7 horas, 8 sin IVA
      y 9 con IVA).
    - LATAM: firma la entidad del país (se elige, y se pueden añadir nuevas) y
-     NO lleva IVA: los datos 7 y 9 se envían vacíos para que sus marcadores
-     desaparezcan del documento. El importe (dato 8) se sigue calculando
-     igual, horas × tarifa. */
+     NO lleva IVA: los datos 9 (importe con IVA) y 13 (las horas del bloque de
+     IVA) se envían vacíos para que sus marcadores desaparezcan del documento.
+     Las horas (dato 7) y el importe (dato 8) salen igual que en España. */
 
 const IVA = 1.21;
 const TARIFA_DEFECTO = 51.22;
@@ -158,14 +158,15 @@ export default function OfertasRoute() {
     dato4: fechaIni,
     dato5: fechaFin,
     dato6: detalle.trim(),
-    // Sin IVA en LATAM: los datos 7 y 9 van vacíos y sus marcadores
-    // desaparecen del documento.
-    dato7: esLatam ? "" : String(horas || ""),
+    dato7: String(horas || ""),
     dato8: horas ? eurTxt(sinIva) : "",
+    // Sin IVA en LATAM: el importe con IVA (9) y las horas del bloque de IVA
+    // (13) van vacíos, y sus marcadores desaparecen del documento.
     dato9: esLatam ? "" : horas ? eurTxt(conIva) : "",
     dato10: hoyDDMMYYYY(),
     dato11: nombre.trim() && sdatool.trim() ? `RDR - SDATOOL-${sdatool.trim()}.${nombre.trim()}` : "",
     dato12: firmanteFinal,
+    dato13: esLatam ? "" : String(horas || ""),
   }), [nombre, sdatool, mmf, fechaIni, fechaFin, detalle, horas, sinIva, conIva, esLatam, firmanteFinal]);
 
   const listo = !!(datos.dato1 && datos.dato2 && datos.dato6 && horas > 0 && datos.dato12);
@@ -462,12 +463,13 @@ export default function OfertasRoute() {
                 ["4 · Inicio Q", datos.dato4],
                 ["5 · Fin Q", datos.dato5],
                 ["6 · Detalle", datos.dato6],
-                ["7 · Horas", datos.dato7, esLatam],
+                ["7 · Horas", datos.dato7],
                 ["8 · Importe", datos.dato8 && `${datos.dato8} €`],
                 ["9 · Con IVA", datos.dato9 && `${datos.dato9} €`, esLatam],
                 ["10 · Fecha", datos.dato10],
                 ["11 · Combinación", datos.dato11],
                 ["12 · Firmante", datos.dato12],
+                ["13 · Horas (IVA)", datos.dato13, esLatam],
               ].map(([k, v, vacioLatam]) => (
                 <div key={k} className="flex gap-2">
                   <dt className="w-28 shrink-0 text-sand/45">{k}</dt>
