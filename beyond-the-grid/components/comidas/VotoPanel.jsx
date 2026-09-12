@@ -137,7 +137,7 @@ export default function VotoPanel({
       </button>
 
       <p className="mt-2.5 text-xs leading-relaxed text-sand/65">
-        Las dos prioridades suman al ranking, y la 2ª es opcional. ¿Te da igual? Elige{" "}
+        Tu prioridad 1 vale el doble que la 2ª en el ranking, y la 2ª es opcional. ¿Te da igual? Elige{" "}
         <b className="inline-flex items-center gap-1 text-mandarin"><IconEstrella size={11} />«{FLEX}»</b> y
         te unes a la ganadora sin sumar a ninguna. Si ya votaste esta semana, tu elección se actualizará.
       </p>

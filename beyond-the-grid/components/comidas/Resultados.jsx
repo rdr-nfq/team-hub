@@ -20,13 +20,15 @@ function CardOpcion({ tag, bg, r, flex }) {
     <div className={`flex min-h-[118px] flex-col rounded-xl p-4 text-[#001391] ${bg}`}>
       <span className="text-[10px] font-extrabold uppercase tracking-[0.1em] opacity-70">{tag}</span>
       <span className="mb-auto mt-2 font-display text-lg font-bold leading-tight">{r.nombre}</span>
+      {/* El número es la PUNTUACIÓN (1ª vale 2, 2ª vale 1): si se enseñara el
+          número de votos a secas, el orden del ranking no se entendería. */}
       <span className="mt-2.5 flex items-baseline gap-1.5">
-        <span className="font-display text-3xl font-bold leading-none tabular-nums">{r.n}</span>
-        <span className="text-[11px] font-bold uppercase tracking-[0.06em] opacity-70">{r.n === 1 ? "voto" : "votos"}</span>
+        <span className="font-display text-3xl font-bold leading-none tabular-nums">{r.puntos}</span>
+        <span className="text-[11px] font-bold uppercase tracking-[0.06em] opacity-70">{r.puntos === 1 ? "punto" : "puntos"}</span>
       </span>
-      {r.n2 > 0 && (
-        <span className="mt-1 text-[11px] opacity-70">{r.n1} de 1ª · {r.n2} de 2ª</span>
-      )}
+      <span className="mt-1 text-[11px] opacity-70">
+        {r.n1} de 1ª{r.n2 > 0 ? ` · ${r.n2} de 2ª` : ""}
+      </span>
       {flex > 0 && <span className="mt-1.5 text-[11px] opacity-75">+ {flex} flexible{flex > 1 ? "s" : ""} se unirán</span>}
     </div>
   );
@@ -83,6 +85,7 @@ export default function Resultados({ semana, votos, equipo }) {
 
           {/* Detalle: quién va a qué + quién falta */}
           <div className="mt-4 space-y-1 text-[11.5px] leading-relaxed text-sand/70">
+            <p className="text-sand/45">Puntos: cada voto de 1ª prioridad vale 2 y cada uno de 2ª, 1.</p>
             {c.r1 && (
               <p>
                 <b className="font-bold text-serene">{c.r1.nombre}:</b> {c.r1.quien.join(", ")}

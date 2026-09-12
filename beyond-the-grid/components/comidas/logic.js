@@ -5,6 +5,9 @@
 /** Voto "flexible": el usuario se une a la opción más votada. */
 export const FLEX = "El que más se vote";
 
+/** Peso de cada prioridad en el ranking: la 1ª manda sobre la 2ª. */
+export const PESO = { p1: 2, p2: 1 };
+
 /** Fallback (solo si no hay backend): restaurantes base para previsualizar. */
 export const FALLBACK_RESTAURANTES = [
   { nombre: "Beefius", descCorta: "", carta: "https://www.beefcious.com/menu-beefcious/", foto: "https://www.beefcious.com/wp-content/uploads/2025/07/interior-las-tablas-1024x683.webp", descLarga: "" },
@@ -62,8 +65,9 @@ export function semanasPasadas(semanas) {
 /**
  * Recuento de una semana.
  * - noEstoy / taperGlovo tienen prioridad sobre la elección.
- * - RANKING de restaurantes: suma los votos de prioridad 1 y los de
- *   prioridad 2 (valen lo mismo). La web enseña el 1º y el 2º del ranking.
+ * - RANKING de restaurantes por puntos: cada voto de prioridad 1 vale
+ *   PESO.p1 y cada uno de prioridad 2, PESO.p2 (la 1ª pesa más). La web
+ *   enseña el 1º y el 2º del ranking.
  * - Quien vota flexible NO suma al ranking: se une a la opción ganadora.
  * - Desempate: primero quien tenga más votos de prioridad 1 y, si siguen
  *   iguales, por orden alfabético.
@@ -87,16 +91,18 @@ export function computeWeek(votos, semana) {
     anota(e1, x.companero, 1);
     if (e2 && e2 !== FLEX) anota(e2, x.companero, 2);
   });
+  const puntos = (r) => r.n1 * PESO.p1 + r.n2 * PESO.p2;
   const sorted = Object.entries(rank).sort(
     (a, b) =>
-      (b[1].n1 + b[1].n2) - (a[1].n1 + a[1].n2) || // más votos en total
-      b[1].n1 - a[1].n1 ||                         // a igualdad, más de prioridad 1
+      puntos(b[1]) - puntos(a[1]) || // más puntos
+      b[1].n1 - a[1].n1 ||           // a igualdad, más votos de prioridad 1
       a[0].localeCompare(b[0])
   );
-  const puesto = (i) =>
-    sorted[i]
-      ? { nombre: sorted[i][0], n: sorted[i][1].n1 + sorted[i][1].n2, n1: sorted[i][1].n1, n2: sorted[i][1].n2, quien: sorted[i][1].quien }
-      : null;
+  const puesto = (i) => {
+    if (!sorted[i]) return null;
+    const [nombre, r] = sorted[i];
+    return { nombre, puntos: puntos(r), n: r.n1 + r.n2, n1: r.n1, n2: r.n2, quien: r.quien };
+  };
   return {
     total: v.length,
     ranking: sorted.map((x) => x[0]),

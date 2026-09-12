@@ -31,8 +31,8 @@ export default function Historico({ semanas, votos }) {
             <IconPlato size={14} className="shrink-0 text-mandarin" />
             {c.r1 ? (
               <span>
-                <b className="text-serene">{c.r1.nombre}</b> ({c.r1.n})
-                {c.r2 && <span className="text-sand/70"> · 2ª: {c.r2.nombre} ({c.r2.n})</span>}
+                <b className="text-serene">{c.r1.nombre}</b> ({c.r1.puntos} pts)
+                {c.r2 && <span className="text-sand/70"> · 2ª: {c.r2.nombre} ({c.r2.puntos} pts)</span>}
               </span>
             ) : ("Sin restaurante")}
           </span>
