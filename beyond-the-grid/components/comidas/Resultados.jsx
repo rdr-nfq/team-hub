@@ -7,7 +7,7 @@ import { IconTaper, IconCasa } from "./icons";
 /* Tarjetas de acento sólido: texto SIEMPRE Electric Blue (regla dura nº9).
    Superficies con hex LITERAL (no utilidades temadas): estos tiles BBVA se ven
    idénticos en modo claro y oscuro. */
-function CardOpcion({ tag, bg, r, flex }) {
+function CardOpcion({ tag, bg, r, flex, nota }) {
   if (!r) {
     return (
       <div className="flex min-h-[118px] flex-col rounded-xl border border-dashed border-white/15 bg-white/[0.05] p-4 text-sand">
@@ -25,6 +25,7 @@ function CardOpcion({ tag, bg, r, flex }) {
         <span className="text-[11px] font-bold uppercase tracking-[0.06em] opacity-70">{r.n === 1 ? "voto" : "votos"}</span>
       </span>
       {flex > 0 && <span className="mt-1.5 text-[11px] opacity-75">+ {flex} flexible{flex > 1 ? "s" : ""} se unirán</span>}
+      {nota && <span className="mt-1 text-[11px] font-bold opacity-80">{nota}</span>}
     </div>
   );
 }
@@ -71,7 +72,11 @@ export default function Resultados({ semana, votos, equipo }) {
       {c && (
         <>
           <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
-            <CardOpcion tag="1ª opción · más votada" bg="bg-[#85C8FF]" r={c.r1} flex={c.flex} />
+            <CardOpcion
+              tag={c.porSegunda ? "1ª opción · por segunda opción" : "1ª opción · más votada"}
+              bg="bg-[#85C8FF]" r={c.r1} flex={c.flexExtra}
+              nota={c.porSegunda ? "Todos flexibles: decide la 2ª opción" : null}
+            />
             <CardOpcion tag="2ª opción" bg="bg-[#8BE1E9]" r={c.r2} flex={0} />
             <CardSimple tag="Taper / Glovo" bg="bg-[#FFE761]" n={c.taper} icon={IconTaper} />
             <CardSimple tag="No estoy" bg="bg-[#F7F8F8] border border-[#001391]/15" n={c.no} icon={IconCasa} />
@@ -82,10 +87,16 @@ export default function Resultados({ semana, votos, equipo }) {
             {c.r1 && (
               <p>
                 <b className="font-bold text-serene">{c.r1.nombre}:</b> {c.r1.quien.join(", ")}
-                {c.flex > 0 && <span className="opacity-70"> (+{c.flex} flexibles)</span>}
+                {c.flexExtra > 0 && <span className="opacity-70"> (+{c.flexExtra} flexibles)</span>}
               </p>
             )}
             {c.r2 && <p><b className="font-bold text-serene">{c.r2.nombre}:</b> {c.r2.quien.join(", ")}</p>}
+            {c.whoFlex.length > 0 && (
+              <p>
+                <b className="font-bold text-serene">Flexibles ({c.whoFlex.length}):</b> {c.whoFlex.join(", ")}
+                <span className="opacity-70"> — se unen a lo más votado</span>
+              </p>
+            )}
             {c.whoTaper.length > 0 && <p><b className="font-bold text-serene">Taper/Glovo:</b> {c.whoTaper.join(", ")}</p>}
             {c.whoNo.length > 0 && <p><b className="font-bold text-serene">No estoy:</b> {c.whoNo.join(", ")}</p>}
             {faltan.length > 0 && (

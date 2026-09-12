@@ -98,8 +98,11 @@ export default function VotoPanel({
 
       {estado === "fuera" && (
         <>
+          {/* Sin opción por defecto: hay que elegir a mano (antes salía el
+              flexible preseleccionado y se votaba sin querer). */}
           <Field id="comidas-e1" label="Prioridad 1">
             <select id="comidas-e1" className={SELECT_CLS} value={e1} onChange={(e) => onE1(e.target.value)}>
+              <option value="">Selecciona un restaurante…</option>
               {opciones.map((n) => <option key={n} value={n}>{n === FLEX ? `★ ${FLEX}` : n}</option>)}
             </select>
           </Field>
@@ -124,7 +127,8 @@ export default function VotoPanel({
 
       <p className="mt-2.5 text-xs leading-relaxed text-sand/65">
         ¿Te da igual? Elige <b className="inline-flex items-center gap-1 text-mandarin"><IconEstrella size={11} />«{FLEX}»</b> y
-        te unes a la opción ganadora. Si ya votaste esta semana, tu elección se actualizará.
+        te unes a la opción ganadora; pon una prioridad 2 y será la que decida si todo el mundo va flexible.
+        Si ya votaste esta semana, tu elección se actualizará.
       </p>
     </section>
   );

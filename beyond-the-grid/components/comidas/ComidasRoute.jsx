@@ -6,7 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useLinks } from "@/lib/links";
 import { useAuth } from "../chrome/AuthGate";
 import { PALETTE } from "@/lib/palette";
-import { FLEX, FALLBACK_RESTAURANTES, FALLBACK_SEMANAS, norm, semanasVotables } from "./logic";
+import { FALLBACK_RESTAURANTES, FALLBACK_SEMANAS, norm, semanasVotables } from "./logic";
 import ComidasSkeleton from "./ComidasSkeleton";
 import VotoPanel from "./VotoPanel";
 import Resultados from "./Resultados";
@@ -120,7 +120,7 @@ export default function ComidasRoute() {
   const [quien, setQuien] = useState("");
   const [semana, setSemana] = useState("");
   const [estado, setEstado] = useState("fuera");
-  const [e1, setE1] = useState(FLEX);
+  const [e1, setE1] = useState(""); // sin preselección: se elige a mano
   const [e2, setE2] = useState("");
   const [sending, setSending] = useState(false);
 
@@ -147,16 +147,17 @@ export default function ComidasRoute() {
   useEffect(() => {
     if (!quien || !semana || !votosRef.current) return;
     const prev = votosRef.current.find((x) => x.companero === quien && x.semana === semana);
-    if (!prev) { setEstado("fuera"); setE1(FLEX); setE2(""); return; }
+    if (!prev) { setEstado("fuera"); setE1(""); setE2(""); return; }
     if (norm(prev.noEstoy)) setEstado("no");
     else if (norm(prev.taperGlovo)) setEstado("taper");
-    else { setEstado("fuera"); setE1(prev.eleccion1 || FLEX); setE2(prev.eleccion2 || ""); }
+    else { setEstado("fuera"); setE1(prev.eleccion1 || ""); setE2(prev.eleccion2 || ""); }
   }, [quien, semana]);
 
   /* ---------- enviar voto (mismo contrato POST del legacy) ---------- */
   const enviarVoto = useCallback(async () => {
     if (!quien) { showToast("Elige quién eres"); return; }
     if (!semana) { showToast("Elige un jueves"); return; }
+    if (estado === "fuera" && !e1) { showToast("Elige tu prioridad 1"); return; }
     const payload = {
       nombre: quien,
       semana,
