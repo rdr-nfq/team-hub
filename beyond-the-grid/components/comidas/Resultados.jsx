@@ -7,7 +7,7 @@ import { IconTaper, IconCasa } from "./icons";
 /* Tarjetas de acento sólido: texto SIEMPRE Electric Blue (regla dura nº9).
    Superficies con hex LITERAL (no utilidades temadas): estos tiles BBVA se ven
    idénticos en modo claro y oscuro. */
-function CardOpcion({ tag, bg, r, flex, nota }) {
+function CardOpcion({ tag, bg, r, flex }) {
   if (!r) {
     return (
       <div className="flex min-h-[118px] flex-col rounded-xl border border-dashed border-white/15 bg-white/[0.05] p-4 text-sand">
@@ -24,8 +24,10 @@ function CardOpcion({ tag, bg, r, flex, nota }) {
         <span className="font-display text-3xl font-bold leading-none tabular-nums">{r.n}</span>
         <span className="text-[11px] font-bold uppercase tracking-[0.06em] opacity-70">{r.n === 1 ? "voto" : "votos"}</span>
       </span>
+      {r.n2 > 0 && (
+        <span className="mt-1 text-[11px] opacity-70">{r.n1} de 1ª · {r.n2} de 2ª</span>
+      )}
       {flex > 0 && <span className="mt-1.5 text-[11px] opacity-75">+ {flex} flexible{flex > 1 ? "s" : ""} se unirán</span>}
-      {nota && <span className="mt-1 text-[11px] font-bold opacity-80">{nota}</span>}
     </div>
   );
 }
@@ -44,8 +46,9 @@ function CardSimple({ tag, bg, n, icon: Icon }) {
 }
 
 /**
- * Panel "Resultados" de la semana seleccionada: ranking (1ª/2ª opción),
- * taper y ausencias + detalle de quién va a qué y quién falta por votar.
+ * Panel "Resultados" de la semana seleccionada: las dos primeras del ranking
+ * (que suma los votos de prioridad 1 y 2), taper y ausencias, más el detalle
+ * de quién ha votado qué, quiénes van flexibles y quién falta por votar.
  */
 export default function Resultados({ semana, votos, equipo }) {
   const c = useMemo(() => (semana ? computeWeek(votos, semana) : null), [votos, semana]);
@@ -72,11 +75,7 @@ export default function Resultados({ semana, votos, equipo }) {
       {c && (
         <>
           <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
-            <CardOpcion
-              tag={c.porSegunda ? "1ª opción · por segunda opción" : "1ª opción · más votada"}
-              bg="bg-[#85C8FF]" r={c.r1} flex={c.flexExtra}
-              nota={c.porSegunda ? "Todos flexibles: decide la 2ª opción" : null}
-            />
+            <CardOpcion tag="1ª opción · más votada" bg="bg-[#85C8FF]" r={c.r1} flex={c.flex} />
             <CardOpcion tag="2ª opción" bg="bg-[#8BE1E9]" r={c.r2} flex={0} />
             <CardSimple tag="Taper / Glovo" bg="bg-[#FFE761]" n={c.taper} icon={IconTaper} />
             <CardSimple tag="No estoy" bg="bg-[#F7F8F8] border border-[#001391]/15" n={c.no} icon={IconCasa} />
@@ -87,7 +86,7 @@ export default function Resultados({ semana, votos, equipo }) {
             {c.r1 && (
               <p>
                 <b className="font-bold text-serene">{c.r1.nombre}:</b> {c.r1.quien.join(", ")}
-                {c.flexExtra > 0 && <span className="opacity-70"> (+{c.flexExtra} flexibles)</span>}
+                {c.flex > 0 && <span className="opacity-70"> (+{c.flex} flexibles)</span>}
               </p>
             )}
             {c.r2 && <p><b className="font-bold text-serene">{c.r2.nombre}:</b> {c.r2.quien.join(", ")}</p>}

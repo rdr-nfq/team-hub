@@ -60,52 +60,47 @@ export function semanasPasadas(semanas) {
 }
 
 /**
- * Recuento de una semana:
+ * Recuento de una semana.
  * - noEstoy / taperGlovo tienen prioridad sobre la elección.
- * - Sin eleccion1 (o FLEX) cuenta como flexible.
- * - Si TODO EL MUNDO vota flexible no habría ganador, así que en ese caso
- *   decide la SEGUNDA opción de quien la haya puesto (el resto de flexibles
- *   se une igual). Se marca con `porSegunda` para poder decirlo en pantalla.
- * - Desempate del ranking: nº de votos desc y, a igualdad, alfabético.
+ * - RANKING de restaurantes: suma los votos de prioridad 1 y los de
+ *   prioridad 2 (valen lo mismo). La web enseña el 1º y el 2º del ranking.
+ * - Quien vota flexible NO suma al ranking: se une a la opción ganadora.
+ * - Desempate: primero quien tenga más votos de prioridad 1 y, si siguen
+ *   iguales, por orden alfabético.
  */
 export function computeWeek(votos, semana) {
   const v = votos.filter((x) => x.semana === semana);
-  const count = {}, whoRest = {};    // primeras opciones
-  const count2 = {}, whoRest2 = {};  // segundas opciones de quien va flexible
+  const rank = {}; // restaurante -> { n1, n2, quien: [] }
   let flex = 0, taper = 0, no = 0;
   const whoTaper = [], whoNo = [], whoFlex = [];
+  const anota = (nombre, persona, prioridad) => {
+    const r = (rank[nombre] = rank[nombre] || { n1: 0, n2: 0, quien: [] });
+    if (prioridad === 1) r.n1++; else r.n2++;
+    if (!r.quien.includes(persona)) r.quien.push(persona);
+  };
   v.forEach((x) => {
     if (norm(x.noEstoy)) { no++; whoNo.push(x.companero); return; }
     if (norm(x.taperGlovo)) { taper++; whoTaper.push(x.companero); return; }
     const e1 = (x.eleccion1 || "").trim();
     const e2 = (x.eleccion2 || "").trim();
-    if (!e1 || e1 === FLEX) {
-      flex++;
-      whoFlex.push(x.companero);
-      if (e2 && e2 !== FLEX) {
-        count2[e2] = (count2[e2] || 0) + 1;
-        (whoRest2[e2] = whoRest2[e2] || []).push(x.companero);
-      }
-    } else {
-      count[e1] = (count[e1] || 0) + 1;
-      (whoRest[e1] = whoRest[e1] || []).push(x.companero);
-    }
+    if (!e1 || e1 === FLEX) { flex++; whoFlex.push(x.companero); return; } // no suma
+    anota(e1, x.companero, 1);
+    if (e2 && e2 !== FLEX) anota(e2, x.companero, 2);
   });
-  const orden = (c) => Object.entries(c).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-  // Nadie ha elegido restaurante en primera opción: manda la segunda.
-  const porSegunda = orden(count).length === 0 && orden(count2).length > 0;
-  const sorted = porSegunda ? orden(count2) : orden(count);
-  const quienes = porSegunda ? whoRest2 : whoRest;
+  const sorted = Object.entries(rank).sort(
+    (a, b) =>
+      (b[1].n1 + b[1].n2) - (a[1].n1 + a[1].n2) || // más votos en total
+      b[1].n1 - a[1].n1 ||                         // a igualdad, más de prioridad 1
+      a[0].localeCompare(b[0])
+  );
   const puesto = (i) =>
-    sorted[i] ? { nombre: sorted[i][0], n: sorted[i][1], quien: quienes[sorted[i][0]] } : null;
-  const r1 = puesto(0), r2 = puesto(1);
-  // Flexibles que NO están ya contados en el ranking (si decide la segunda
-  // opción, quien la puso ya aparece en su tarjeta: no se cuenta dos veces).
-  const contados = porSegunda ? (r1 ? r1.n : 0) + (r2 ? r2.n : 0) : 0;
+    sorted[i]
+      ? { nombre: sorted[i][0], n: sorted[i][1].n1 + sorted[i][1].n2, n1: sorted[i][1].n1, n2: sorted[i][1].n2, quien: sorted[i][1].quien }
+      : null;
   return {
     total: v.length,
-    r1, r2, porSegunda,
-    flex, flexExtra: Math.max(0, flex - contados),
-    taper, no, whoTaper, whoNo, whoFlex,
+    ranking: sorted.map((x) => x[0]),
+    r1: puesto(0), r2: puesto(1),
+    flex, taper, no, whoTaper, whoNo, whoFlex,
   };
 }

@@ -153,26 +153,26 @@ export default function ComidasRoute() {
     else { setEstado("fuera"); setE1(prev.eleccion1 || ""); setE2(prev.eleccion2 || ""); }
   }, [quien, semana]);
 
-  /* Restaurante ya elegido para ese jueves por EL RESTO del equipo. Si lo hay,
-     no se abren más frentes: quien vote después se une (flexible), se lleva
-     taper o no viene. Dos matices:
-     - se calcula SIN el voto propio, para poder seguir cambiando el tuyo si
-       eres quien lo eligió;
-     - solo cuenta una elección REAL (prioridad 1). El ganador provisional que
-       sale del desempate por segundas opciones (porSegunda) no bloquea a
-       nadie: ahí todavía no ha elegido restaurante ninguna persona. */
-  const yaElegido = useMemo(() => {
-    if (!semana || !votos) return null;
-    const c = computeWeek(votos.filter((x) => x.companero !== quien), semana);
-    return c.porSegunda ? null : c.r1?.nombre || null;
+  /* El voto flexible necesita que YA haya algo a lo que unirse: mientras el
+     ranking del resto esté vacío (nadie ha elegido restaurante todavía), no se
+     puede votar "el que más se vote". Se mira sin el voto propio, para que
+     quien es el único que ha elegido no pueda dejar la semana sin decidir. */
+  const puedeFlexible = useMemo(() => {
+    if (!semana || !votos) return false;
+    return !!computeWeek(votos.filter((x) => x.companero !== quien), semana).r1;
   }, [votos, semana, quien]);
 
-  // El flexible exige prioridad 2 (si no, un voto flexible no aporta nada al
-  // recuento). No hace falta cuando ya hay restaurante elegido: hay algo a lo
-  // que unirse, así que no puede quedar la semana sin decidir.
+  // Quien va flexible no expresa preferencia: su prioridad 2 no suma al
+  // ranking, así que se limpia para no enviarla.
   useEffect(() => {
-    if (!yaElegido && e1 === FLEX && (!e2 || e2 === FLEX)) setE1("");
-  }, [e1, e2, yaElegido]);
+    if (e1 === FLEX && e2) setE2("");
+  }, [e1, e2]);
+
+  // Si deja de haber a quién unirse (cambio de jueves, voto retirado), el
+  // flexible no puede quedarse seleccionado.
+  useEffect(() => {
+    if (!puedeFlexible && e1 === FLEX) setE1("");
+  }, [puedeFlexible, e1]);
 
   /* ---------- enviar voto (mismo contrato POST del legacy) ---------- */
   const enviarVoto = useCallback(async () => {
@@ -295,7 +295,7 @@ export default function ComidasRoute() {
                   e1={e1} onE1={setE1}
                   e2={e2} onE2={setE2}
                   restaurantes={base.restaurantes}
-                  yaElegido={yaElegido}
+                  puedeFlexible={puedeFlexible}
                   onEnviar={enviarVoto}
                   sending={sending}
                   disabled={!base.configured}
