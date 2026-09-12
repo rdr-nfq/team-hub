@@ -3,9 +3,11 @@
  *  GENERADOR DE OFERTAS RDR  ·  Apps Script (backend de la página /ofertas)
  * ============================================================================
  *
- *  Recibe los 11 datos de una oferta y genera, a partir de las plantillas,
+ *  Recibe los 12 datos de una oferta y genera, a partir de las plantillas,
  *  un Google Doc y un Google Sheet en la carpeta de ofertas, sustituyendo
- *  los marcadores {{DATO1}} … {{DATO11}}.
+ *  los marcadores {{DATO1}} … {{DATO12}}. El DATO12 es el firmante: para las
+ *  ofertas de España siempre BBVA S.A.; para las de LATAM, la entidad que
+ *  firme (México, Colombia… ampliable desde la propia web).
  *
  *  DESPLIEGUE (proyecto Apps Script INDEPENDIENTE, no ligado a ningún Excel):
  *   1. script.google.com -> Nuevo proyecto -> pegar este fichero entero.
@@ -18,21 +20,35 @@
  *
  *  API:
  *    GET  ?action=ping                  -> { ok:true }
+ *    GET  ?action=firmantes             -> { latam:[...] }
  *    POST text/plain JSON:
- *      { action:'generarOferta', plantilla:'bbva-sa', datos:{ dato1..dato11 } }
- *      -> { ok:true, data:{ docUrl, sheetUrl, carpetaUrl } }
+ *      { action:'generarOferta', plantilla:'bbva-sa'|'latam', datos:{ dato1..dato12 } }
+ *      -> { ok:true, data:{ docUrl, sheetUrl, pdfUrl, carpetaUrl, ruta } }
+ *      { action:'guardarFirmante', firmante:'BBVA PERÚ S.A.' }
+ *      -> { ok:true, data:{ latam:[...] } }   (queda guardado para todos)
  * ============================================================================
  */
 
 var CONFIG = {
-  // Plantillas por tipo de oferta. 'bbva-mx' quedará aquí cuando exista.
   PLANTILLAS: {
     'bbva-sa': {
       nombre: 'Oferta BBVA SA',
       doc:   '1zSDmYSZRAbQ23Iiov66eSwDzsh2yq5Ff',
       sheet: '1o0EmAnxV8d9Lx40r2Mh1WsK__aD033AH'
+    },
+    // LATAM usa HOY la misma plantilla: lo único que cambia es el firmante
+    // (DATO12) y que no lleva IVA, y de eso se encarga la web. El día que
+    // haya una plantilla propia de LATAM, basta con poner aquí sus ids.
+    'latam': {
+      nombre: 'Oferta LATAM',
+      doc:   '1zSDmYSZRAbQ23Iiov66eSwDzsh2yq5Ff',
+      sheet: '1o0EmAnxV8d9Lx40r2Mh1WsK__aD033AH'
     }
   },
+  // Firmantes de LATAM que vienen de serie. Los que se añadan desde la web
+  // se guardan en Propiedades del script y se suman a estos, así que los ve
+  // todo el equipo (ver acción 'guardarFirmante').
+  FIRMANTES_LATAM: ['BBVA MÉXICO S.A.', 'BBVA COLOMBIA S.A.'],
   // Carpeta RAÍZ de ofertas. Cada oferta se genera en 20XX/QX/<Dato 11>/
   // (año y Q de la oferta), creando las carpetas que no existan.
   CARPETA_ID: '1YCuxgv5wdFniaBTAi5l6qU0Rxlwpbtj0'
@@ -69,6 +85,8 @@ function _serve(e) {
     var data;
     switch (action) {
       case 'ping': data = { ok: true, plantillas: Object.keys(CONFIG.PLANTILLAS) }; break;
+      case 'firmantes': data = { latam: firmantesLatam() }; break;
+      case 'guardarFirmante': data = { latam: guardarFirmante(p.firmante) }; break;
       case 'generarOferta': data = generarOferta(p.plantilla, p.datos); break;
       default: throw new Error('Acción desconocida: ' + action);
     }
@@ -81,6 +99,42 @@ function _serve(e) {
 function _json(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+/* ── Firmantes de LATAM (DATO12) ──────────────────────────────────────────
+   Los de CONFIG más los añadidos desde la web, sin repetidos y en orden
+   alfabético. Se guardan en Propiedades del script para que sean los mismos
+   para todo el equipo, no del navegador de quien los añadió. */
+var _PROP_FIRMANTES = 'FIRMANTES_LATAM';
+
+function firmantesLatam() {
+  var extra = [];
+  try {
+    extra = JSON.parse(PropertiesService.getScriptProperties().getProperty(_PROP_FIRMANTES) || '[]');
+  } catch (e) {}
+  var vistos = {}, out = [];
+  CONFIG.FIRMANTES_LATAM.concat(extra).forEach(function (f) {
+    var v = String(f || '').trim();
+    var k = v.toUpperCase();
+    if (!v || vistos[k]) return;
+    vistos[k] = 1;
+    out.push(v);
+  });
+  return out.sort(function (a, b) { return a.localeCompare(b, 'es'); });
+}
+
+function guardarFirmante(firmante) {
+  var v = String(firmante || '').trim();
+  if (!v) throw new Error('Falta el firmante que se quiere guardar.');
+  var props = PropertiesService.getScriptProperties();
+  var extra = [];
+  try { extra = JSON.parse(props.getProperty(_PROP_FIRMANTES) || '[]'); } catch (e) {}
+  var yaEsta = firmantesLatam().some(function (f) { return f.toUpperCase() === v.toUpperCase(); });
+  if (!yaEsta) {
+    extra.push(v);
+    props.setProperty(_PROP_FIRMANTES, JSON.stringify(extra));
+  }
+  return firmantesLatam();
 }
 
 /**
@@ -116,8 +170,9 @@ function _subcarpeta(padre, nombre) {
 
 /**
  * Genera el Doc + Sheet (+ PDF del Doc) de una oferta sustituyendo
- * {{DATO1}}..{{DATO11}}, en la carpeta 20XX/QX/<Dato 11>/ bajo la raíz.
- * Los tres ficheros se llaman igual (el Dato 11).
+ * {{DATO1}}..{{DATO12}}, en la carpeta 20XX/QX/<Dato 11>/ bajo la raíz.
+ * Los tres ficheros se llaman igual (el Dato 11). Los datos que lleguen
+ * vacíos (en LATAM, las horas y el importe con IVA) borran su marcador.
  */
 function generarOferta(plantilla, datos) {
   var tpl = CONFIG.PLANTILLAS[plantilla || 'bbva-sa'];
@@ -139,7 +194,7 @@ function generarOferta(plantilla, datos) {
   var docId = _copiarComoNativo(tpl.doc, base, 'application/vnd.google-apps.document', carpeta.getId());
   var doc = DocumentApp.openById(docId);
   var partes = [doc.getBody(), doc.getHeader(), doc.getFooter()];
-  for (var i = 1; i <= 11; i++) {
+  for (var i = 1; i <= 12; i++) {
     var v = _valor(datos, i);
     for (var s = 0; s < partes.length; s++) {
       // replaceText usa regex: llaves escapadas para buscar el literal {{DATOi}}.
@@ -154,7 +209,7 @@ function generarOferta(plantilla, datos) {
   // ── Google Sheet (copia con conversión a Sheet nativo, mismo nombre) ──
   var sheetId = _copiarComoNativo(tpl.sheet, base, 'application/vnd.google-apps.spreadsheet', carpeta.getId());
   var ss = SpreadsheetApp.openById(sheetId);
-  for (var j = 1; j <= 11; j++) {
+  for (var j = 1; j <= 12; j++) {
     // TextFinder busca el LITERAL (sin regex): las llaves no molestan.
     ss.createTextFinder('{{DATO' + j + '}}').matchEntireCell(false).replaceAllWith(_valor(datos, j));
   }
