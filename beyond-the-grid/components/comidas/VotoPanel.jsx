@@ -45,7 +45,11 @@ export default function VotoPanel({
   e1, onE1, e2, onE2,
   restaurantes, onEnviar, sending, disabled,
 }) {
-  const opciones = [FLEX, ...restaurantes.map((r) => r.nombre)];
+  const nombres = restaurantes.map((r) => r.nombre);
+  // "El que más se vote" solo se ofrece si hay una prioridad 2 de verdad: un
+  // voto flexible sin ningún restaurante detrás no aporta nada al recuento y,
+  // si votara así todo el mundo, no habría forma de decidir dónde se come.
+  const hayRespaldo = !!e2 && e2 !== FLEX;
 
   return (
     <section
@@ -103,13 +107,18 @@ export default function VotoPanel({
           <Field id="comidas-e1" label="Prioridad 1">
             <select id="comidas-e1" className={SELECT_CLS} value={e1} onChange={(e) => onE1(e.target.value)}>
               <option value="">Selecciona un restaurante…</option>
-              {opciones.map((n) => <option key={n} value={n}>{n === FLEX ? `★ ${FLEX}` : n}</option>)}
+              {nombres.map((n) => <option key={n} value={n}>{n}</option>)}
+              <option value={FLEX} disabled={!hayRespaldo}>
+                {`★ ${FLEX}`}{hayRespaldo ? "" : " — elige antes una prioridad 2"}
+              </option>
             </select>
           </Field>
+          {/* La prioridad 2 es siempre un restaurante concreto: es la que
+              desempata si todo el mundo va flexible. */}
           <Field id="comidas-e2" label="Prioridad 2" optional>
             <select id="comidas-e2" className={SELECT_CLS} value={e2} onChange={(e) => onE2(e.target.value)}>
               <option value="">— Ninguna —</option>
-              {opciones.map((n) => <option key={n} value={n}>{n === FLEX ? `★ ${FLEX}` : n}</option>)}
+              {nombres.map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
           </Field>
         </>
@@ -126,8 +135,9 @@ export default function VotoPanel({
       </button>
 
       <p className="mt-2.5 text-xs leading-relaxed text-sand/65">
-        ¿Te da igual? Elige <b className="inline-flex items-center gap-1 text-mandarin"><IconEstrella size={11} />«{FLEX}»</b> y
-        te unes a la opción ganadora; pon una prioridad 2 y será la que decida si todo el mundo va flexible.
+        ¿Te da igual? Pon una <b className="text-sand/85">prioridad 2</b> y ya puedes elegir{" "}
+        <b className="inline-flex items-center gap-1 text-mandarin"><IconEstrella size={11} />«{FLEX}»</b>:
+        te unes a la opción ganadora y, si todo el mundo va flexible, decide tu prioridad 2.
         Si ya votaste esta semana, tu elección se actualizará.
       </p>
     </section>

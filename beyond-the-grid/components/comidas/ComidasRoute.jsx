@@ -6,7 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useLinks } from "@/lib/links";
 import { useAuth } from "../chrome/AuthGate";
 import { PALETTE } from "@/lib/palette";
-import { FALLBACK_RESTAURANTES, FALLBACK_SEMANAS, norm, semanasVotables } from "./logic";
+import { FLEX, FALLBACK_RESTAURANTES, FALLBACK_SEMANAS, norm, semanasVotables } from "./logic";
 import ComidasSkeleton from "./ComidasSkeleton";
 import VotoPanel from "./VotoPanel";
 import Resultados from "./Resultados";
@@ -152,6 +152,12 @@ export default function ComidasRoute() {
     else if (norm(prev.taperGlovo)) setEstado("taper");
     else { setEstado("fuera"); setE1(prev.eleccion1 || ""); setE2(prev.eleccion2 || ""); }
   }, [quien, semana]);
+
+  // El flexible exige prioridad 2: si se quita, la prioridad 1 vuelve a vacío
+  // (si no, se enviaría un voto flexible sin ningún restaurante detrás).
+  useEffect(() => {
+    if (e1 === FLEX && (!e2 || e2 === FLEX)) setE1("");
+  }, [e1, e2]);
 
   /* ---------- enviar voto (mismo contrato POST del legacy) ---------- */
   const enviarVoto = useCallback(async () => {
