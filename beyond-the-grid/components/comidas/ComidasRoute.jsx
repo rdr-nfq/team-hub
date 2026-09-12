@@ -6,7 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useLinks } from "@/lib/links";
 import { useAuth } from "../chrome/AuthGate";
 import { PALETTE } from "@/lib/palette";
-import { FLEX, FALLBACK_RESTAURANTES, FALLBACK_SEMANAS, norm, semanasVotables } from "./logic";
+import { FLEX, FALLBACK_RESTAURANTES, FALLBACK_SEMANAS, computeWeek, norm, semanasVotables } from "./logic";
 import ComidasSkeleton from "./ComidasSkeleton";
 import VotoPanel from "./VotoPanel";
 import Resultados from "./Resultados";
@@ -153,11 +153,26 @@ export default function ComidasRoute() {
     else { setEstado("fuera"); setE1(prev.eleccion1 || ""); setE2(prev.eleccion2 || ""); }
   }, [quien, semana]);
 
-  // El flexible exige prioridad 2: si se quita, la prioridad 1 vuelve a vacío
-  // (si no, se enviaría un voto flexible sin ningún restaurante detrás).
+  /* Restaurante ya elegido para ese jueves por EL RESTO del equipo. Si lo hay,
+     no se abren más frentes: quien vote después se une (flexible), se lleva
+     taper o no viene. Dos matices:
+     - se calcula SIN el voto propio, para poder seguir cambiando el tuyo si
+       eres quien lo eligió;
+     - solo cuenta una elección REAL (prioridad 1). El ganador provisional que
+       sale del desempate por segundas opciones (porSegunda) no bloquea a
+       nadie: ahí todavía no ha elegido restaurante ninguna persona. */
+  const yaElegido = useMemo(() => {
+    if (!semana || !votos) return null;
+    const c = computeWeek(votos.filter((x) => x.companero !== quien), semana);
+    return c.porSegunda ? null : c.r1?.nombre || null;
+  }, [votos, semana, quien]);
+
+  // El flexible exige prioridad 2 (si no, un voto flexible no aporta nada al
+  // recuento). No hace falta cuando ya hay restaurante elegido: hay algo a lo
+  // que unirse, así que no puede quedar la semana sin decidir.
   useEffect(() => {
-    if (e1 === FLEX && (!e2 || e2 === FLEX)) setE1("");
-  }, [e1, e2]);
+    if (!yaElegido && e1 === FLEX && (!e2 || e2 === FLEX)) setE1("");
+  }, [e1, e2, yaElegido]);
 
   /* ---------- enviar voto (mismo contrato POST del legacy) ---------- */
   const enviarVoto = useCallback(async () => {
@@ -280,6 +295,7 @@ export default function ComidasRoute() {
                   e1={e1} onE1={setE1}
                   e2={e2} onE2={setE2}
                   restaurantes={base.restaurantes}
+                  yaElegido={yaElegido}
                   onEnviar={enviarVoto}
                   sending={sending}
                   disabled={!base.configured}

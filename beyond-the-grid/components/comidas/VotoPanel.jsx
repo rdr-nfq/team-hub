@@ -43,13 +43,15 @@ export default function VotoPanel({
   semanas, semana, onSemana,
   estado, onEstado,
   e1, onE1, e2, onE2,
-  restaurantes, onEnviar, sending, disabled,
+  restaurantes, yaElegido, onEnviar, sending, disabled,
 }) {
   const nombres = restaurantes.map((r) => r.nombre);
   // "El que más se vote" solo se ofrece si hay una prioridad 2 de verdad: un
   // voto flexible sin ningún restaurante detrás no aporta nada al recuento y,
   // si votara así todo el mundo, no habría forma de decidir dónde se come.
+  // Con restaurante ya elegido no hace falta respaldo: hay algo a lo que unirse.
   const hayRespaldo = !!e2 && e2 !== FLEX;
+  const flexLibre = !!yaElegido || hayRespaldo;
 
   return (
     <section
@@ -104,23 +106,34 @@ export default function VotoPanel({
         <>
           {/* Sin opción por defecto: hay que elegir a mano (antes salía el
               flexible preseleccionado y se votaba sin querer). */}
-          <Field id="comidas-e1" label="Prioridad 1">
+          {/* Con restaurante ya elegido por el resto, los demás quedan
+              bloqueados: o te unes, o taper, o no estás. */}
+          <Field id="comidas-e1" label={yaElegido ? "Tu elección" : "Prioridad 1"}>
             <select id="comidas-e1" className={SELECT_CLS} value={e1} onChange={(e) => onE1(e.target.value)}>
-              <option value="">Selecciona un restaurante…</option>
-              {nombres.map((n) => <option key={n} value={n}>{n}</option>)}
-              <option value={FLEX} disabled={!hayRespaldo}>
-                {`★ ${FLEX}`}{hayRespaldo ? "" : " — elige antes una prioridad 2"}
+              <option value="">{yaElegido ? "Selecciona…" : "Selecciona un restaurante…"}</option>
+              {nombres.map((n) => <option key={n} value={n} disabled={!!yaElegido}>{n}</option>)}
+              <option value={FLEX} disabled={!flexLibre}>
+                {`★ ${FLEX}`}
+                {yaElegido ? ` (${yaElegido})` : flexLibre ? "" : " — elige antes una prioridad 2"}
               </option>
             </select>
           </Field>
-          {/* La prioridad 2 es siempre un restaurante concreto: es la que
-              desempata si todo el mundo va flexible. */}
-          <Field id="comidas-e2" label="Prioridad 2" optional>
-            <select id="comidas-e2" className={SELECT_CLS} value={e2} onChange={(e) => onE2(e.target.value)}>
-              <option value="">— Ninguna —</option>
-              {nombres.map((n) => <option key={n} value={n}>{n}</option>)}
-            </select>
-          </Field>
+
+          {yaElegido ? (
+            <p className="-mt-2 mb-4 text-[11.5px] leading-relaxed text-sand/60">
+              Este jueves ya hay restaurante elegido: <b className="text-mandarin">{yaElegido}</b>. Solo puedes unirte al
+              grupo, llevarte taper o no venir.
+            </p>
+          ) : (
+            /* La prioridad 2 es siempre un restaurante concreto: es la que
+               desempata si todo el mundo va flexible. */
+            <Field id="comidas-e2" label="Prioridad 2" optional>
+              <select id="comidas-e2" className={SELECT_CLS} value={e2} onChange={(e) => onE2(e.target.value)}>
+                <option value="">— Ninguna —</option>
+                {nombres.map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </Field>
+          )}
         </>
       )}
 
@@ -135,10 +148,19 @@ export default function VotoPanel({
       </button>
 
       <p className="mt-2.5 text-xs leading-relaxed text-sand/65">
-        ¿Te da igual? Pon una <b className="text-sand/85">prioridad 2</b> y ya puedes elegir{" "}
-        <b className="inline-flex items-center gap-1 text-mandarin"><IconEstrella size={11} />«{FLEX}»</b>:
-        te unes a la opción ganadora y, si todo el mundo va flexible, decide tu prioridad 2.
-        Si ya votaste esta semana, tu elección se actualizará.
+        {yaElegido ? (
+          <>
+            Con <b className="inline-flex items-center gap-1 text-mandarin"><IconEstrella size={11} />«{FLEX}»</b> te unes
+            a {yaElegido}. Si ya votaste esta semana, tu elección se actualizará.
+          </>
+        ) : (
+          <>
+            ¿Te da igual? Pon una <b className="text-sand/85">prioridad 2</b> y ya puedes elegir{" "}
+            <b className="inline-flex items-center gap-1 text-mandarin"><IconEstrella size={11} />«{FLEX}»</b>:
+            te unes a la opción ganadora y, si todo el mundo va flexible, decide tu prioridad 2.
+            Si ya votaste esta semana, tu elección se actualizará.
+          </>
+        )}
       </p>
     </section>
   );
