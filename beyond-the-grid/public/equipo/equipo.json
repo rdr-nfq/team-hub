@@ -185,18 +185,10 @@
       "coordinador": false
     },
     {
-      "id": "-",
+      "id": "T074204",
       "nombre": "Juan Carlos Botello",
       "email": "juan.botella@nfq.es",
-      "emailBBVA": "-",
-      "track": "funcional",
-      "coordinador": false
-    },
-    {
-      "id": "-",
-      "nombre": "Natalia",
-      "email": " natalia.jimenez@nfq.es",
-      "emailBBVA": "-",
+      "emailBBVA": "juancarlos.botella.contractor@bbva.com",
       "track": "funcional",
       "coordinador": false
     }
