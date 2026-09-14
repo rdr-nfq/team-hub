@@ -7,6 +7,7 @@ import { useAuth } from "../chrome/AuthGate";
 import { GLASS, FIELD, TEXT, EmptyCard, PanelSkeleton } from "../coordinacion/ui";
 import { IconClock, IconAlert, IconExternal } from "../coordinacion/icons";
 import { useTimeReport, useEquipo } from "./datos";
+import { mismoEmail } from "@/lib/email";
 import {
   num, curQ, hoyISO, quincenasDeQ, quincenaDe, horasDe,
   filasTR, tsvTR, esFinde, SOPORTE_ID, NIVEL2_ANALISIS, etiquetaEvidencias, nombreFichero,
@@ -41,8 +42,7 @@ export default function MiTimeReportRoute() {
 
   const data = snap?.data;
   const yo = useMemo(() => {
-    const e = String(email || "").toLowerCase();
-    return (equipo || []).find((m) => String(m.email || "").toLowerCase() === e) || null;
+    return (equipo || []).find((m) => mismoEmail(m.email, email)) || null;
   }, [equipo, email]);
 
   const misFilas = useMemo(

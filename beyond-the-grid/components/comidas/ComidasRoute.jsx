@@ -15,6 +15,7 @@ import Historico from "./Historico";
 import { IconSemana, IconHistorial, IconAviso, IconVolver } from "./icons";
 import ArtBanner from "@/components/chrome/ArtBanner";
 import { ART } from "@/lib/art";
+import { mismoEmail } from "@/lib/email";
 
 const EQUIPO_URL = "/team-hub/equipo/equipo.json"; // absoluto: funciona bajo /comidas/ (basePath)
 
@@ -133,8 +134,7 @@ export default function ComidasRoute() {
   // Preselecciones iniciales: nombre por email autenticado + jueves más próximo.
   useEffect(() => {
     if (!team || !email) return;
-    const mail = String(email).toLowerCase();
-    const yo = team.find((p) => [p.email, p.emailBBVA].map((x) => String(x || "").toLowerCase()).includes(mail));
+    const yo = team.find((p) => mismoEmail(p.email, email) || mismoEmail(p.emailBBVA, email));
     if (yo) setQuien((q) => q || yo.nombre);
   }, [team, email]);
   useEffect(() => {

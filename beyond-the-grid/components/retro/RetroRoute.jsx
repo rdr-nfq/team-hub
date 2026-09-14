@@ -12,6 +12,7 @@ import { Blobs, DialogHost, GLASS, RetroToast, Skel } from "./ui";
 import { IconArrowL } from "./icons";
 import ArtBanner from "@/components/chrome/ArtBanner";
 import { ART } from "@/lib/art";
+import { mismoEmail } from "@/lib/email";
 
 const EQUIPO_URL = "/team-hub/equipo/equipo.json";
 
@@ -51,7 +52,7 @@ export default function RetroRoute() {
       .then((eq) => {
         if (!alive || !eq) return;
         const m = (eq.team || []).find(
-          (p) => String(p.email || "").toLowerCase() === String(email || "").toLowerCase()
+          (p) => mismoEmail(p.email, email)
         );
         if (m && m.nombre) setNombre(m.nombre);
       })

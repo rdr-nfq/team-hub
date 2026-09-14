@@ -53,8 +53,12 @@ export default function EquipoGestionRoute() {
   const hayCambios = team && JSON.stringify(team) !== original.current;
   const coordinadores = (team || []).filter((m) => m.coordinador).length;
 
+  // Los textos se guardan sin espacios sobrantes: un " correo@nfq.es" con un
+  // espacio delante impedía entrar en la web a esa persona.
   const upd = (i, campo, valor) =>
-    setTeam((t) => t.map((m, j) => (j === i ? { ...m, [campo]: valor } : m)));
+    setTeam((t) =>
+      t.map((m, j) => (j === i ? { ...m, [campo]: typeof valor === "string" ? valor.trim() : valor } : m))
+    );
   const alta = () => {
     const extras = Object.fromEntries(campos.filter((c) => !CAMPOS_BASE.includes(c)).map((c) => [c, esBool(c, team) ? false : ""]));
     setTeam((t) => [...t, { ...PLANTILLA_MIEMBRO, ...extras }]);

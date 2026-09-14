@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import Script from "next/script";
+import { normEmail } from "@/lib/email";
 
 /**
  * Puerta de acceso del hub con Google Identity Services (GIS).
@@ -54,15 +55,17 @@ export default function AuthGate({ children, onAuthed }) {
   const btnRef = useRef(null);
 
   // Solo se permite el correo NFQ (p.email). El @bbva.com (emailBBVA) NO entra.
+  // Los dos lados se normalizan: un espacio de más en equipo.json dejaba a esa
+  // persona sin poder entrar, sin que nada lo explicara.
   const emailPermitido = useCallback((e) => {
-    const x = String(e || "").trim().toLowerCase();
+    const x = normEmail(e);
     if (!x) return false;
-    return team.current.some((p) => String(p.email || "").toLowerCase() === x);
+    return team.current.some((p) => normEmail(p.email) === x);
   }, []);
 
   const esCoordinador = useCallback((e) => {
-    const x = String(e || "").trim().toLowerCase();
-    const m = team.current.find((p) => String(p.email || "").toLowerCase() === x);
+    const x = normEmail(e);
+    const m = team.current.find((p) => normEmail(p.email) === x);
     return !!(m && m.coordinador);
   }, []);
 

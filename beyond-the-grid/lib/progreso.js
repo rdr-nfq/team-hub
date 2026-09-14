@@ -5,6 +5,7 @@
 // (se actualiza al completar un curso y refresca el mapa al instante).
 
 import { NIVELES, FORMACIONES, isDisponible } from "./formaciones";
+import { mismoEmail } from "./email";
 
 const LS_PREFIX = "rdr_prog_";
 const REMOTE_PREFIX = "rdr_remote_"; // caché SWR del progreso real del backend
@@ -99,7 +100,7 @@ export async function cargarRemoto(email) {
     const url = L && L.formacionesBackend && L.formacionesBackend.url;
     if (!url) return new Set();
     const team = (eq && eq.team) || [];
-    const me = team.find((p) => String(p.email || "").toLowerCase() === String(email).toLowerCase());
+    const me = team.find((p) => mismoEmail(p.email, email));
     if (!me) return new Set();
     const data = await fetch(url, { method: "GET" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
     const records = (data && data.records) || [];

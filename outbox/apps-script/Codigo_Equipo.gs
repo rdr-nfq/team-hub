@@ -78,13 +78,21 @@ function guardarEquipo(clave, team) {
   // equipo sin poder entrar en la web (equipo.json manda en el login).
   if (!Array.isArray(team) || !team.length) throw new Error('El equipo no puede quedar vacío.');
   var emails = {};
-  team.forEach(function (m, i) {
+  team = team.map(function (m, i) {
     if (!m || typeof m !== 'object') throw new Error('Miembro ' + (i + 1) + ' inválido.');
-    var email = String(m.email || '').trim().toLowerCase();
-    if (!m.nombre || !email) throw new Error('Miembro ' + (i + 1) + ': nombre y email son obligatorios.');
-    if (email.indexOf('@') < 1) throw new Error('Email inválido: ' + email);
-    if (emails[email]) throw new Error('Email duplicado: ' + email);
-    emails[email] = 1;
+    // Se guarda lo ya LIMPIO, no lo que llegó: antes se validaba el email sin
+    // espacios pero se escribía tal cual, y un " correo@nfq.es" con un espacio
+    // delante dejaba a esa persona sin poder entrar en la web.
+    var limpio = {};
+    Object.keys(m).forEach(function (k) {
+      limpio[k] = typeof m[k] === 'string' ? m[k].trim() : m[k];
+    });
+    limpio.email = String(limpio.email || '').toLowerCase();
+    if (!limpio.nombre || !limpio.email) throw new Error('Miembro ' + (i + 1) + ': nombre y email son obligatorios.');
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(limpio.email)) throw new Error('Email inválido: ' + limpio.email);
+    if (emails[limpio.email]) throw new Error('Email duplicado: ' + limpio.email);
+    emails[limpio.email] = 1;
+    return limpio;
   });
   var hayCoordinador = team.some(function (m) { return !!m.coordinador; });
   if (!hayCoordinador) throw new Error('Debe quedar al menos una persona con rol de coordinador.');
