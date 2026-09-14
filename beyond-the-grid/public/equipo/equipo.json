@@ -191,6 +191,14 @@
       "emailBBVA": "-",
       "track": "funcional",
       "coordinador": false
+    },
+    {
+      "id": "",
+      "nombre": "Natalia",
+      "email": " natalia.jimenez@nfq.es",
+      "emailBBVA": "",
+      "track": "funcional",
+      "coordinador": false
     }
   ]
 }
