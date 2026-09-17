@@ -167,7 +167,7 @@ export default function OfertasRoute() {
     // (13) van vacíos, y sus marcadores desaparecen del documento.
     dato9: esLatam ? "" : horas ? eurTxt(conIva) : "",
     dato10: hoyDDMMYYYY(),
-    dato11: nombre.trim() && sdatoolValor ? `RDR - ${sdatoolValor}.${nombre.trim()}` : "",
+    dato11: nombre.trim() && sdatoolValor ? `RDR - ${sdatoolValor}. ${nombre.trim()}` : "",
     dato12: firmanteFinal,
     dato13: esLatam ? "" : String(horas || ""),
   }), [nombre, sdatoolValor, mmf, fechaIni, fechaFin, detalle, horas, sinIva, conIva, esLatam, firmanteFinal]);
