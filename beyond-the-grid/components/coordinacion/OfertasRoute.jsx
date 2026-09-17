@@ -151,9 +151,12 @@ export default function OfertasRoute() {
   const cambiaSdatool = (v) => setSdatool(String(v).replace(/^\s*sdatool[\s-]*/i, "").trim());
 
   const [fechaIni, fechaFin] = fechasDeQ(q);
+  // En BBVA S.A. el SDATOOL es opcional: sin código se manda "BAU". En LATAM
+  // sigue siendo obligatorio (vacío hasta que se rellena).
+  const sdatoolValor = sdatool.trim() ? `SDATOOL-${sdatool.trim()}` : (esLatam ? "" : "BAU");
   const datos = useMemo(() => ({
     dato1: nombre.trim() ? `RDR - ${nombre.trim()}` : "",
-    dato2: sdatool.trim() ? `SDATOOL-${sdatool.trim()}` : "",
+    dato2: sdatoolValor,
     dato3: mmf.trim() ? `MMF - ${mmf.trim()}` : "",
     dato4: fechaIni,
     dato5: fechaFin,
@@ -164,10 +167,10 @@ export default function OfertasRoute() {
     // (13) van vacíos, y sus marcadores desaparecen del documento.
     dato9: esLatam ? "" : horas ? eurTxt(conIva) : "",
     dato10: hoyDDMMYYYY(),
-    dato11: nombre.trim() && sdatool.trim() ? `RDR - SDATOOL-${sdatool.trim()}.${nombre.trim()}` : "",
+    dato11: nombre.trim() && sdatoolValor ? `RDR - ${sdatoolValor}.${nombre.trim()}` : "",
     dato12: firmanteFinal,
     dato13: esLatam ? "" : String(horas || ""),
-  }), [nombre, sdatool, mmf, fechaIni, fechaFin, detalle, horas, sinIva, conIva, esLatam, firmanteFinal]);
+  }), [nombre, sdatoolValor, mmf, fechaIni, fechaFin, detalle, horas, sinIva, conIva, esLatam, firmanteFinal]);
 
   const listo = !!(datos.dato1 && datos.dato2 && datos.dato6 && horas > 0 && datos.dato12);
 
@@ -305,12 +308,19 @@ export default function OfertasRoute() {
                   />
                 </div>
               </Campo>
-              <Campo etiqueta="SDATOOL" ayuda="Puedes pegarlo completo (SDATOOL-5454): se queda el código.">
+              <Campo
+                etiqueta="SDATOOL"
+                ayuda={
+                  esLatam
+                    ? "Puedes pegarlo completo (SDATOOL-5454): se queda el código."
+                    : "Puedes pegarlo completo (SDATOOL-5454): se queda el código. Si lo dejas vacío, se usa «BAU»."
+                }
+              >
                 <div className={`${FIELD} flex items-center gap-0 !py-0`}>
                   <span className="shrink-0 py-2 text-sand/45">SDATOOL-</span>
                   <input
                     type="text" value={sdatool} onChange={(e) => cambiaSdatool(e.target.value)}
-                    placeholder="5454" aria-label="Código SDATOOL"
+                    placeholder={esLatam ? "5454" : "5454 (opcional, BAU si se deja vacío)"} aria-label="Código SDATOOL"
                     className="w-full bg-transparent py-2 focus:outline-none"
                   />
                 </div>
@@ -414,7 +424,7 @@ export default function OfertasRoute() {
               </button>
               {!listo && (
                 <p className="text-[11px] text-sand/45">
-                  Necesarios: nombre, SDATOOL, detalle, horas (o importe){esLatam ? " y firmante" : ""}.
+                  Necesarios: nombre, {esLatam ? "SDATOOL, " : ""}detalle, horas (o importe){esLatam ? " y firmante" : ""}.
                 </p>
               )}
             </div>
