@@ -450,10 +450,18 @@ export default function OfertasRoute() {
                         {o.base} <span className="font-normal text-sand/45">· {o.hora}{o.ruta ? ` · ${o.ruta.split("/").slice(0, 2).join("/")}` : ""}</span>
                       </p>
                       <p className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
-                        <a className="inline-flex items-center gap-1 underline decoration-dotted underline-offset-2 text-sand/85 hover:text-serene" href={o.docUrl} target="_blank" rel="noreferrer"><IconExternal size={11} /> Doc</a>
-                        <a className="inline-flex items-center gap-1 underline decoration-dotted underline-offset-2 text-sand/85 hover:text-serene" href={o.sheetUrl} target="_blank" rel="noreferrer"><IconExternal size={11} /> Sheet</a>
-                        {o.pdfUrl && <a className="inline-flex items-center gap-1 underline decoration-dotted underline-offset-2 text-sand/85 hover:text-serene" href={o.pdfUrl} target="_blank" rel="noreferrer"><IconExternal size={11} /> PDF</a>}
-                        <a className="inline-flex items-center gap-1 underline decoration-dotted underline-offset-2 text-sand/60 hover:text-serene" href={o.carpetaUrl} target="_blank" rel="noreferrer"><IconExternal size={11} /> Carpeta</a>
+                        {o.docUrl
+                          ? <a className="inline-flex items-center gap-1 underline decoration-dotted underline-offset-2 text-sand/85 hover:text-serene" href={o.docUrl} target="_blank" rel="noreferrer"><IconExternal size={11} /> Doc</a>
+                          : <span className="text-sand/30">Doc no disponible</span>}
+                        {o.sheetUrl
+                          ? <a className="inline-flex items-center gap-1 underline decoration-dotted underline-offset-2 text-sand/85 hover:text-serene" href={o.sheetUrl} target="_blank" rel="noreferrer"><IconExternal size={11} /> Sheet</a>
+                          : <span className="text-sand/30">Sheet no disponible</span>}
+                        {o.pdfUrl
+                          ? <a className="inline-flex items-center gap-1 underline decoration-dotted underline-offset-2 text-sand/85 hover:text-serene" href={o.pdfUrl} target="_blank" rel="noreferrer"><IconExternal size={11} /> PDF</a>
+                          : <span className="text-sand/30">PDF no disponible</span>}
+                        {o.carpetaUrl
+                          ? <a className="inline-flex items-center gap-1 underline decoration-dotted underline-offset-2 text-sand/60 hover:text-serene" href={o.carpetaUrl} target="_blank" rel="noreferrer"><IconExternal size={11} /> Carpeta</a>
+                          : <span className="text-sand/30">Carpeta no disponible</span>}
                       </p>
                     </li>
                   ))}

@@ -204,8 +204,15 @@ function generarOferta(plantilla, datos) {
   }
   doc.saveAndClose();
 
-  // ── PDF del Doc ya relleno (mismo nombre) ──
-  var pdf = carpeta.createFile(DriveApp.getFileById(docId).getAs('application/pdf')).setName(base + '.pdf');
+  // ── PDF del Doc ya relleno (mismo nombre) ── Si falla (p.ej. Drive tarda en
+  // propagar el guardado), no debe tirar abajo el Sheet ni la oferta entera:
+  // se manda pdfUrl vacío y el botón "PDF" simplemente no sale en la web.
+  var pdfUrl = '';
+  try {
+    pdfUrl = carpeta.createFile(DriveApp.getFileById(docId).getAs('application/pdf')).setName(base + '.pdf').getUrl();
+  } catch (err) {
+    Logger.log('No se pudo generar el PDF de "' + base + '": ' + (err && err.message ? err.message : err));
+  }
 
   // ── Google Sheet (copia con conversión a Sheet nativo, mismo nombre) ──
   var sheetId = _copiarComoNativo(tpl.sheet, base, 'application/vnd.google-apps.spreadsheet', carpeta.getId());
@@ -219,7 +226,7 @@ function generarOferta(plantilla, datos) {
   return {
     docUrl: 'https://docs.google.com/document/d/' + docId + '/edit',
     sheetUrl: 'https://docs.google.com/spreadsheets/d/' + sheetId + '/edit',
-    pdfUrl: pdf.getUrl(),
+    pdfUrl: pdfUrl,
     carpetaUrl: carpeta.getUrl(),
     ruta: anyo + '/' + qn + '/' + base
   };
