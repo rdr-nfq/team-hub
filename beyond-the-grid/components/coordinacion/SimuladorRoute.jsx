@@ -300,7 +300,14 @@ export default function SimuladorRoute() {
     const margen = ingresos - costes;
     const rent = ingresos > 0 ? margen / ingresos : 0;
     const objetivo = rentObjetivoTotal(costeNFQ, costeNTER, num(bloque.rentObjetivoNFQ) || 0.25, num(bloque.rentObjetivoNTER) || 0.2);
-    return { costeNFQ, costeNTER, costes, horasEquipo, horasProyectos, horasBolsa, horasFacturables, ingresos, margen, rent, objetivo };
+    // Ingresos y horas que faltan para llegar AL OBJETIVO (no al margen actual):
+    // con costes fijos, ingresos objetivo = costes / (1 − objetivo), porque
+    // margen = ingresos − costes = objetivo × ingresos. Las horas que faltan
+    // son ese dinero a la tarifa actual (asume que la capacidad ya existe).
+    const ingresosObjetivo = objetivo < 1 ? costes / (1 - objetivo) : Infinity;
+    const faltaIngresos = Math.max(0, ingresosObjetivo - ingresos);
+    const faltaHoras = sim.tarifa > 0 ? faltaIngresos / sim.tarifa : 0;
+    return { costeNFQ, costeNTER, costes, horasEquipo, horasProyectos, horasBolsa, horasFacturables, ingresos, margen, rent, objetivo, faltaIngresos, faltaHoras };
   }, [sim, data, q]);
 
   return (
@@ -632,7 +639,7 @@ export default function SimuladorRoute() {
                   }`}>
                     {r.rent >= r.objetivo
                       ? `Por encima del objetivo: ${pct(r.rent)} de rentabilidad (${eur.format(r.margen)} de margen).`
-                      : `Por debajo del objetivo (${pct(r.objetivo)}): faltan ${eur.format(Math.max(0, r.ingresos * r.objetivo - r.margen))} de margen.`}
+                      : `Por debajo del objetivo (${pct(r.objetivo)}): faltan ${eur.format(Math.max(0, r.ingresos * r.objetivo - r.margen))} de margen — para llegar al ${pct(r.objetivo)} harían falta ${h(r.faltaHoras)} más de trabajo facturable (${eur.format(r.faltaIngresos)} a la tarifa actual), con los costes de esta simulación.`}
                     {r.horasFacturables > r.horasEquipo &&
                       ` ⚠️ Ojo: hay ${h(r.horasFacturables - r.horasEquipo)} más de trabajo que de capacidad.`}
                   </p>
