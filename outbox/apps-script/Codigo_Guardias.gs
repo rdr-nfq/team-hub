@@ -44,6 +44,16 @@ var G_CONFIG = {
   IMPORTES_RAPIDOS: [30, 70, 120, 240]
 };
 
+/* Envío de correo: NUNCA noReply:true. Mismo diagnóstico que Comidas
+   (Comidas_Recordatorios.gs, probarEntrega()): noreply@ llega a bbva.com
+   (por eso los avisos de pases funcionan) pero Workspace RETIENE en
+   silencio — sin rebote, sin error — el correo desde una dirección
+   "noreply@<dominio>" inventada hacia buzones del propio dominio, y
+   nter.es también lo filtra. Los correos de Guardias van SIEMPRE desde la
+   cuenta que ejecuta el script (el remitente real, sin decorar): a
+   coordinación en copia oculta (varios destinatarios a la vez, como
+   'cuenta-bcc' en Comidas) y al solicitante directo (uno solo). */
+
 var G_HOJA = ['Guardias', [
   'Id', 'CreadoEn', 'Persona', 'Email', 'Fecha', 'HoraEntrada', 'HoraSalida',
   'Descripcion', 'Estado', 'Importe', 'Motivo', 'ResueltoEn', 'ResueltoPor', 'Prueba'
@@ -328,7 +338,11 @@ function _avisarCoordinacionNuevaGuardia(g) {
   var html = _envoltorio((g.prueba ? '🧪 [PRUEBA] ' : '') + '📋 Nueva solicitud de guardia', g.persona + ' · ' + _fechaTxt(g.fecha), cuerpo);
   var asunto = (g.prueba ? '🧪 [PRUEBA] ' : '') + '[RDR Hub] Nueva solicitud de guardia — ' + g.persona + ' — ' + _fechaTxt(g.fecha);
   var texto = (g.prueba ? '[PRUEBA] ' : '') + 'Nueva solicitud de guardia de ' + g.persona + ' para el ' + _fechaTxt(g.fecha) + ' (' + g.horaEntrada + '-' + g.horaSalida + ').\n' + g.descripcion + '\nResuélvela en: ' + link;
-  GmailApp.sendEmail(dest.join(','), asunto, texto, { htmlBody: html, name: G_CONFIG.REMITE, noReply: true });
+  // Desde la cuenta que ejecuta el script, coordinación en copia oculta (varios
+  // destinatarios a la vez): es el único modo que confirmó entregar de verdad
+  // (ver comentario de G_CONFIG). Responder va directo a quien solicitó.
+  var yo = Session.getEffectiveUser().getEmail();
+  GmailApp.sendEmail(yo, asunto, texto, { htmlBody: html, name: G_CONFIG.REMITE, bcc: dest.join(','), replyTo: g.email || yo });
 }
 
 function _avisarSolicitanteResolucion(g) {
@@ -361,7 +375,9 @@ function _avisarSolicitanteResolucion(g) {
   var asunto = (g.prueba ? '🧪 [PRUEBA] ' : '') + (aprobada ? '✅ Guardia aprobada — ' : '❌ Guardia rechazada — ') + _fechaTxt(g.fecha);
   var texto = (g.prueba ? '[PRUEBA] ' : '') + 'Tu guardia del ' + _fechaTxt(g.fecha) + ' ha sido ' + g.estado + '.'
     + (aprobada ? ' Importe: ' + g.importe + ' €.' : ' Motivo: ' + g.motivo + '.') + '\n' + link;
-  GmailApp.sendEmail(g.email, asunto, texto, { htmlBody: html, name: G_CONFIG.REMITE, noReply: true });
+  // Un solo destinatario: directo, desde la cuenta que ejecuta el script (sin
+  // noReply — ver comentario de G_CONFIG).
+  GmailApp.sendEmail(g.email, asunto, texto, { htmlBody: html, name: G_CONFIG.REMITE });
 }
 
 /* ─────────────────────────────────── Pruebas ─────────────────────────────────── */
