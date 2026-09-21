@@ -70,6 +70,10 @@
     "url": "https://script.google.com/macros/s/AKfycbwb8bJedskF2tmsusz4PdXNhtNu1V9dUxhq0QOM9n3Hc3abjolN1UO7F3pydzzp-8sy/exec",
     "note": "Backend Apps Script del Time Report web (/timereport y /timereport-gestion): proyectos, reparto, imputación, evidencias en Drive y recordatorio por email. Desplegar outbox/apps-script/Codigo_TimeReport.gs como aplicación web (Ejecutar como Yo, Cualquier persona), con EVIDENCIAS_FOLDER_ID en Propiedades del script, ejecutar autorizar() y crearTriggerRecordatorioTR() una vez, y pegar aquí la URL /exec."
   },
+  "guardiasBackend": {
+    "url": "PEGAR_AQUI_LA_URL_DEL_DEPLOY_DE_Codigo_Guardias",
+    "note": "Backend Apps Script de Guardias (/guardias y /guardias-gestion): alta y resolución de guardias, con aviso por email a coordinación al solicitar y al solicitante al resolver. Desplegar outbox/apps-script/Codigo_Guardias.gs como aplicación web (Ejecutar como Yo, Cualquier persona), ejecutar autorizar() una vez y pegar aquí la URL /exec."
+  },
   "equipoBackend": {
     "url": "https://script.google.com/macros/s/AKfycbwuMCo7nocD2bik28Yot-bTzepFuq1k8hy9PWmGTpos3BsTgb0-Llvbn6_lQVz5ptBDng/exec",
     "note": "Backend Apps Script de gestión del equipo (/equipo-gestion): commitea equipo.json a GitHub. Desplegar outbox/apps-script/Codigo_Equipo.gs (con GITHUB_TOKEN y CLAVE_EQUIPO en Propiedades del script) y pegar aquí la URL /exec."

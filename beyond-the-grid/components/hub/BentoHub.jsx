@@ -35,6 +35,7 @@ const SECTIONS = [
       { label: "Vacaciones", desc: "Calendario y política", icon: IconCalendar, action: "route", target: "/vacaciones" },
       { label: "Retrospectiva", desc: "Retros y mejoras", icon: IconRefresh, action: "route", target: "/retro" },
       { label: "Time Report", desc: "Tu imputación de la quincena", icon: IconClock, action: "route", target: "/timereport" },
+      { label: "Guardias", desc: "Solicita y consulta tus guardias", icon: IconShield, action: "route", target: "/guardias" },
     ],
   },
   {
@@ -58,6 +59,7 @@ const COORD_SECTION = {
     { label: "Capacidad", desc: "Personas y proyectos", icon: IconShield, action: "route", target: "/capacidad" },
     { label: "Ofertas", desc: "Generador de ofertas", icon: IconRocket, action: "route", target: "/ofertas" },
     { label: "Time Report", desc: "Proyectos y reparto de horas", icon: IconClock, action: "route", target: "/timereport-gestion" },
+    { label: "Guardias", desc: "Solicitudes del equipo", icon: IconShield, action: "route", target: "/guardias-gestion" },
     { label: "Gestión de equipo", desc: "Miembros, roles y tracks", icon: IconShield, action: "route", target: "/equipo-gestion" },
   ],
 };
