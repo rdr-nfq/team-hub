@@ -6,11 +6,11 @@ import { useAuth } from "../chrome/AuthGate";
 import { useEquipo } from "../timereport/datos";
 import { mismoEmail } from "@/lib/email";
 import { FIELD, TEXT, EmptyCard, PanelSkeleton } from "./ui";
-import { IconClock, IconAlert, IconX } from "./icons";
+import { IconClock, IconAlert, IconX, IconPlus } from "./icons";
 import { IconCheck } from "../icons";
 import { curQ } from "./model";
 import { useGuardias } from "../guardias/datos";
-import { qDeFecha, fechaEs, eur, ESTADO } from "../guardias/model";
+import { qDeFecha, fechaEs, eur, ESTADO, hoyISO } from "../guardias/model";
 
 /* Guardias · vista de COORDINACIÓN.
    Todas las guardias solicitadas por el equipo, filtrables por Q, con las
@@ -61,6 +61,11 @@ function GuardiaRow({ g, resaltada, resolver }) {
         <span className="text-sand/50">{fechaEs(g.fecha)} · {g.horaEntrada}–{g.horaSalida}</span>
         <span className="text-sand/30">· {qDeFecha(g.fecha)}</span>
         <EstadoBadge estado={g.estado} />
+        {g.prueba && (
+          <span className="inline-block whitespace-nowrap rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-sand/70">
+            🧪 Prueba
+          </span>
+        )}
         {g.estado === "aprobada" && g.importe != null && (
           <span className={`font-bold tabular-nums ${TEXT.lime}`}>{eur.format(g.importe)}</span>
         )}
@@ -190,6 +195,32 @@ export default function GuardiasRoute() {
     reload();
   };
 
+  /* Guardia de PRUEBA: un clic, sin formulario — solo para comprobar que el
+     aviso llega a coordinación y que aprobar/rechazar responde por email.
+     Va con la identidad de quien la pulsa (persona y email = quien está en
+     esta página, ya filtrada por SoloCoordinacion), así el circuito entero
+     queda entre coordinadores: el aviso de alta ya solo va a coordinación,
+     y la respuesta al resolverla vuelve a quien la creó. */
+  const [prueba, setPrueba] = useState({ fase: "quieto" }); // quieto | enviando | ok | error
+  const crearPrueba = async () => {
+    setPrueba({ fase: "enviando" });
+    try {
+      const ahora = new Date();
+      const fin = new Date(ahora.getTime() + 60 * 60 * 1000);
+      const hhmm = (d) => String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+      await post("crear", {
+        persona: resueltoPor, email: yo?.email || email,
+        fecha: hoyISO(), horaEntrada: hhmm(ahora), horaSalida: hhmm(fin),
+        descripcion: `Guardia de prueba generada por ${resueltoPor} desde Coordinación para comprobar los avisos.`,
+        prueba: true,
+      });
+      reload();
+      setPrueba({ fase: "ok" });
+    } catch (e) {
+      setPrueba({ fase: "error", error: String(e.message || e) });
+    }
+  };
+
   return (
     <main className="relative min-h-dvh w-full">
       <div aria-hidden className="pointer-events-none fixed inset-[-3%] -z-10 overflow-hidden">
@@ -206,6 +237,29 @@ export default function GuardiasRoute() {
           <p className="mt-3 max-w-2xl text-pretty text-sm text-sand/65">
             Solicitudes de guardia del equipo. Las pendientes salen siempre destacadas arriba, sea cual sea el Q elegido.
           </p>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={prueba.fase === "enviando" || !!snap?.error}
+              onClick={crearPrueba}
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.055] px-4 py-2 text-xs font-bold uppercase tracking-wider text-sand/80 transition hover:border-white/30 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene"
+            >
+              {prueba.fase === "enviando" ? (
+                <><span aria-hidden className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-sand/30 border-t-sand" /> Enviando…</>
+              ) : (
+                <>🧪 <IconPlus size={13} /> Guardia de prueba</>
+              )}
+            </button>
+            <span className="text-[11px] text-sand/45">
+              Solo entre coordinadores: el aviso y la resolución se quedan aquí, no llegan a nadie más.
+            </span>
+          </div>
+          {prueba.fase === "ok" && (
+            <p className="mt-2 text-[11.5px] font-bold text-lime">Enviada — revisa el correo de coordinación y resuélvela abajo, en pendientes.</p>
+          )}
+          {prueba.fase === "error" && (
+            <p className="mt-2 text-[11.5px] font-bold text-mandarin">No se pudo enviar: {prueba.error}</p>
+          )}
         </header>
 
         {!snap ? (

@@ -25,8 +25,11 @@
  *  API (GET query o POST text/plain JSON):
  *   ?action=misGuardias&email=persona@nfq.es -> { guardias:[...] } (últimas 20)
  *   ?action=todas                            -> { guardias:[...] } (todas, coordinación)
- *   POST { action:'crear', persona, email, fecha, horaEntrada, horaSalida, descripcion }
+ *   POST { action:'crear', persona, email, fecha, horaEntrada, horaSalida, descripcion, prueba }
  *        -> { guardia }  — Estado nace 'pendiente'; avisa a coordinación.
+ *        `prueba:true` (botón de /guardias-gestion, solo coordinadores) la marca
+ *        como guardia de PRUEBA: mismo circuito de avisos, pero etiquetado
+ *        "[PRUEBA]" en los correos para no confundirla con una solicitud real.
  *   POST { action:'resolver', id, estado:'aprobada'|'rechazada', importe, motivo, resueltoPor }
  *        -> { guardia }  — avisa por email a quien la solicitó.
  * ============================================================================
@@ -43,7 +46,7 @@ var G_CONFIG = {
 
 var G_HOJA = ['Guardias', [
   'Id', 'CreadoEn', 'Persona', 'Email', 'Fecha', 'HoraEntrada', 'HoraSalida',
-  'Descripcion', 'Estado', 'Importe', 'Motivo', 'ResueltoEn', 'ResueltoPor'
+  'Descripcion', 'Estado', 'Importe', 'Motivo', 'ResueltoEn', 'ResueltoPor', 'Prueba'
 ]];
 
 /* Ejecutar UNA vez desde el editor para conceder los permisos (Sheets, Gmail,
@@ -73,6 +76,10 @@ function _hoja() {
     sh.getRange(1, 1, 1, G_HOJA[1].length).setValues([G_HOJA[1]]);
     sh.getRange(1, 1, sh.getMaxRows(), 5).setNumberFormat('@'); // Id/CreadoEn/Persona/Email/Fecha como texto plano
     sh.getRange(1, 6, sh.getMaxRows(), 2).setNumberFormat('@'); // HoraEntrada/HoraSalida como texto (nunca hora-serie)
+  } else if (sh.getLastColumn() < G_HOJA[1].length) {
+    // Hoja creada con una versión anterior (menos columnas, p.ej. sin "Prueba"):
+    // añade la cabecera que falte. Las filas antiguas simplemente no tienen esas celdas.
+    sh.getRange(1, 1, 1, G_HOJA[1].length).setValues([G_HOJA[1]]);
   }
   return sh;
 }
@@ -142,7 +149,8 @@ function _aObjeto(r, rowNumber) {
     importe: r[9] === '' || r[9] == null ? null : Number(r[9]),
     motivo: String(r[10] || ''),
     resueltoEn: r[11] instanceof Date ? r[11].toISOString() : String(r[11] || ''),
-    resueltoPor: String(r[12] || '')
+    resueltoPor: String(r[12] || ''),
+    prueba: r[13] === true || String(r[13] || '').toUpperCase() === 'TRUE'
   };
 }
 
@@ -184,6 +192,11 @@ function crearGuardia(p) {
   var horaEntrada = String(p.horaEntrada || '').trim();
   var horaSalida = String(p.horaSalida || '').trim();
   var descripcion = String(p.descripcion || '').trim();
+  // Guardia de PRUEBA: la activa un coordinador desde /guardias-gestion (única
+  // página que ofrece el botón) para comprobar el circuito de avisos sin tocar
+  // solicitudes reales. El backend no vuelve a comprobar el rol — como el
+  // resto de la app, la puerta es la propia página (SoloCoordinacion).
+  var prueba = p.prueba === true || p.prueba === 'true';
   if (!persona || !email) throw new Error('Falta identificar a quién solicita la guardia.');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) throw new Error('Falta el día del Pase Calendado.');
   if (!horaEntrada || !horaSalida) throw new Error('Faltan la hora de entrada y de salida.');
@@ -194,12 +207,12 @@ function crearGuardia(p) {
   var sh = _hoja();
   sh.getRange(sh.getLastRow() + 1, 1, 1, G_HOJA[1].length).setValues([[
     id, ahora, persona, email, fecha, horaEntrada, horaSalida, descripcion,
-    'pendiente', '', '', '', ''
+    'pendiente', '', '', '', '', prueba
   ]]);
 
   var guardia = { id: id, creadoEn: ahora.toISOString(), persona: persona, email: email, fecha: fecha,
     horaEntrada: horaEntrada, horaSalida: horaSalida, descripcion: descripcion, estado: 'pendiente',
-    importe: null, motivo: '', resueltoEn: '', resueltoPor: '' };
+    importe: null, motivo: '', resueltoEn: '', resueltoPor: '', prueba: prueba };
 
   try { _avisarCoordinacionNuevaGuardia(guardia); } catch (e) { Logger.log('Aviso a coordinación: ' + e); }
   return guardia;
@@ -300,7 +313,10 @@ function _avisarCoordinacionNuevaGuardia(g) {
   var dest = _emailsCoordinadores();
   if (!dest.length) { Logger.log('Sin coordinadores en equipo.json: no se avisa por email.'); return; }
   var link = G_CONFIG.WEB_URL_GESTION + '?id=' + encodeURIComponent(g.id);
-  var cuerpo = '<p style="margin:0 0 14px;font-size:15px;">Nueva solicitud de guardia pendiente de resolución.</p>'
+  var aviso = g.prueba
+    ? '<p style="margin:0 0 14px;font-size:13px;color:#46536D;">🧪 <strong>Guardia de PRUEBA</strong> — solo para comprobar el circuito de avisos entre coordinadores. No es una solicitud real.</p>'
+    : '';
+  var cuerpo = aviso + '<p style="margin:0 0 14px;font-size:15px;">Nueva solicitud de guardia pendiente de resolución.</p>'
     + _filaDatos([
         ['Solicita', g.persona],
         ['Día del Pase Calendado', _fechaTxt(g.fecha)],
@@ -309,9 +325,9 @@ function _avisarCoordinacionNuevaGuardia(g) {
       ])
     + _boton(link, 'Ver solicitud →', '#88E783')
     + '<p style="margin:14px 0 0;font-size:12px;color:#46536D;">Si el botón no va: <a href="' + link + '" style="color:#001391;">' + link + '</a></p>';
-  var html = _envoltorio('📋 Nueva solicitud de guardia', g.persona + ' · ' + _fechaTxt(g.fecha), cuerpo);
-  var asunto = '[RDR Hub] Nueva solicitud de guardia — ' + g.persona + ' — ' + _fechaTxt(g.fecha);
-  var texto = 'Nueva solicitud de guardia de ' + g.persona + ' para el ' + _fechaTxt(g.fecha) + ' (' + g.horaEntrada + '-' + g.horaSalida + ').\n' + g.descripcion + '\nResuélvela en: ' + link;
+  var html = _envoltorio((g.prueba ? '🧪 [PRUEBA] ' : '') + '📋 Nueva solicitud de guardia', g.persona + ' · ' + _fechaTxt(g.fecha), cuerpo);
+  var asunto = (g.prueba ? '🧪 [PRUEBA] ' : '') + '[RDR Hub] Nueva solicitud de guardia — ' + g.persona + ' — ' + _fechaTxt(g.fecha);
+  var texto = (g.prueba ? '[PRUEBA] ' : '') + 'Nueva solicitud de guardia de ' + g.persona + ' para el ' + _fechaTxt(g.fecha) + ' (' + g.horaEntrada + '-' + g.horaSalida + ').\n' + g.descripcion + '\nResuélvela en: ' + link;
   GmailApp.sendEmail(dest.join(','), asunto, texto, { htmlBody: html, name: G_CONFIG.REMITE, noReply: true });
 }
 
@@ -337,10 +353,13 @@ function _avisarSolicitanteResolucion(g) {
           ['Resuelta por', g.resueltoPor]
         ]);
   }
+  if (g.prueba) {
+    cuerpo = '<p style="margin:0 0 14px;font-size:13px;color:#46536D;">🧪 <strong>Guardia de PRUEBA</strong> — resultado del circuito de avisos entre coordinadores, no de una solicitud real.</p>' + cuerpo;
+  }
   cuerpo += _boton(link, 'Ver mis guardias →', aprobada ? '#88E783' : '#FFB56B');
-  var html = _envoltorio(aprobada ? '✅ Guardia aprobada' : '❌ Guardia rechazada', _fechaTxt(g.fecha), cuerpo);
-  var asunto = (aprobada ? '✅ Guardia aprobada — ' : '❌ Guardia rechazada — ') + _fechaTxt(g.fecha);
-  var texto = 'Tu guardia del ' + _fechaTxt(g.fecha) + ' ha sido ' + g.estado + '.'
+  var html = _envoltorio((g.prueba ? '🧪 [PRUEBA] ' : '') + (aprobada ? '✅ Guardia aprobada' : '❌ Guardia rechazada'), _fechaTxt(g.fecha), cuerpo);
+  var asunto = (g.prueba ? '🧪 [PRUEBA] ' : '') + (aprobada ? '✅ Guardia aprobada — ' : '❌ Guardia rechazada — ') + _fechaTxt(g.fecha);
+  var texto = (g.prueba ? '[PRUEBA] ' : '') + 'Tu guardia del ' + _fechaTxt(g.fecha) + ' ha sido ' + g.estado + '.'
     + (aprobada ? ' Importe: ' + g.importe + ' €.' : ' Motivo: ' + g.motivo + '.') + '\n' + link;
   GmailApp.sendEmail(g.email, asunto, texto, { htmlBody: html, name: G_CONFIG.REMITE, noReply: true });
 }

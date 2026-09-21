@@ -167,6 +167,11 @@ export default function MisGuardiasRoute() {
                     <span className="text-sand/50">{g.horaEntrada} – {g.horaSalida}</span>
                     <span className="text-sand/30">· {qDeFecha(g.fecha)}</span>
                     <EstadoBadge estado={g.estado} />
+                    {g.prueba && (
+                      <span className="inline-block whitespace-nowrap rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-sand/70">
+                        🧪 Prueba
+                      </span>
+                    )}
                     {g.estado === "aprobada" && g.importe != null && (
                       <span className={`font-bold tabular-nums ${TEXT.lime}`}>{eur.format(g.importe)}</span>
                     )}
