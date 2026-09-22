@@ -97,14 +97,6 @@
       "coordinador": false
     },
     {
-      "id": "T060787",
-      "nombre": "Verónica Fernández",
-      "email": "veronica.fernandez@nter.es",
-      "emailBBVA": "veronica.fernandezg.contractor@bbva.com",
-      "track": "tecnico",
-      "coordinador": false
-    },
-    {
       "id": "T061576",
       "nombre": "Iker Cid",
       "email": "iker.cid@nfq.es",
@@ -141,14 +133,6 @@
       "nombre": "Eduardo Varona",
       "email": "eduardo.varona@nfq.es",
       "emailBBVA": "eduardo.varona.contractor@bbva.com",
-      "track": "funcional",
-      "coordinador": false
-    },
-    {
-      "id": "T067605",
-      "nombre": "Álvaro Albelda",
-      "email": "alvaro.albelda@nfq.es",
-      "emailBBVA": "alvaro.albelda.contractor@bbva.com",
       "track": "funcional",
       "coordinador": false
     },
