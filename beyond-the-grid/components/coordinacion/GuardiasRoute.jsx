@@ -26,11 +26,13 @@ function EstadoBadge({ estado }) {
   return <span className={`inline-block whitespace-nowrap rounded-full border border-white/15 bg-white/[0.06] px-2 py-0.5 text-[11px] font-bold ${TEXT[e.accent]}`}>{e.label}</span>;
 }
 
-function GuardiaRow({ g, resaltada, resolver }) {
+function GuardiaRow({ g, resaltada, resolver, onMyNfq, onBorrar }) {
   const [modo, setModo] = useState(null); // null | 'otro' | 'rechazar'
   const [otro, setOtro] = useState("");
   const [motivo, setMotivo] = useState("");
   const [estado, setEstado] = useState({ fase: "quieto" }); // quieto | enviando | error
+  const [myNfqOcupado, setMyNfqOcupado] = useState(false);
+  const [borrando, setBorrando] = useState(false);
   const ref = useRef(null);
 
   useEffect(() => {
@@ -45,6 +47,17 @@ function GuardiaRow({ g, resaltada, resolver }) {
     } catch (e) {
       setEstado({ fase: "error", error: String(e.message || e) });
     }
+  };
+
+  const toggleMyNfq = async () => {
+    setMyNfqOcupado(true);
+    try { await onMyNfq(g.id, !g.aprobadaMyNfq); } finally { setMyNfqOcupado(false); }
+  };
+
+  const borrar = async () => {
+    if (!window.confirm(`¿Borrar esta guardia de prueba (${g.persona}, ${fechaEs(g.fecha)})? No se puede deshacer.`)) return;
+    setBorrando(true);
+    try { await onBorrar(g.id); } finally { setBorrando(false); }
   };
 
   const ocupado = estado.fase === "enviando";
@@ -69,11 +82,32 @@ function GuardiaRow({ g, resaltada, resolver }) {
         {g.estado === "aprobada" && g.importe != null && (
           <span className={`font-bold tabular-nums ${TEXT.lime}`}>{eur.format(g.importe)}</span>
         )}
+        {onBorrar && (
+          <button
+            type="button"
+            disabled={borrando}
+            onClick={borrar}
+            className="ml-auto inline-flex items-center gap-1 rounded-lg border border-mandarin/40 bg-mandarin/10 px-2.5 py-1 text-[11px] font-bold text-mandarin transition hover:bg-mandarin/20 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <IconX size={12} /> {borrando ? "Borrando…" : "Borrar"}
+          </button>
+        )}
       </div>
       <p className="mt-1.5 text-sand/70">{g.descripcion}</p>
       {g.estado === "rechazada" && g.motivo && <p className="mt-1.5 text-mandarin">Motivo: {g.motivo}</p>}
       {g.estado !== "pendiente" && g.resueltoPor && (
         <p className="mt-1 text-[11px] text-sand/40">Resuelta por {g.resueltoPor}</p>
+      )}
+      {g.estado === "aprobada" && onMyNfq && (
+        <label className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 text-[11.5px] text-sand/80">
+          <input
+            type="checkbox" checked={!!g.aprobadaMyNfq} disabled={myNfqOcupado}
+            onChange={toggleMyNfq}
+            className="h-3.5 w-3.5 accent-[#88E783]"
+          />
+          Aprobada en myNfq
+          {g.aprobadaMyNfq && <IconCheck size={12} className="text-lime" />}
+        </label>
       )}
 
       {g.estado === "pendiente" && (
@@ -180,18 +214,35 @@ export default function GuardiasRoute() {
     return [...set].sort();
   }, [todas]);
 
+  // Las de PRUEBA nunca entran en Pendientes ni en el Q: tienen su propia
+  // sección aparte, para que no salgan mezcladas con solicitudes reales en
+  // ningún sitio.
   const pendientes = useMemo(
-    () => todas.filter((g) => g.estado === "pendiente").sort((a, b) => (a.fecha < b.fecha ? -1 : 1)),
+    () => todas.filter((g) => g.estado === "pendiente" && !g.prueba).sort((a, b) => (a.fecha < b.fecha ? -1 : 1)),
     [todas]
   );
   const delQ = useMemo(
-    () => todas.filter((g) => qDeFecha(g.fecha) === q).sort((a, b) => (a.fecha < b.fecha ? 1 : -1)),
+    () => todas.filter((g) => qDeFecha(g.fecha) === q && !g.prueba).sort((a, b) => (a.fecha < b.fecha ? 1 : -1)),
     [todas, q]
+  );
+  const pruebas = useMemo(
+    () => todas.filter((g) => g.prueba).sort((a, b) => (a.creadoEn < b.creadoEn ? 1 : -1)),
+    [todas]
   );
 
   const resolver = async (id, payload) => {
     const body = { id, resueltoPor, ...(payload.motivo ? { estado: "rechazada", motivo: payload.motivo } : { estado: "aprobada", importe: payload.importe }) };
     await post("resolver", body);
+    reload();
+  };
+
+  const marcarMyNfq = async (id, valor) => {
+    await post("marcarMyNfq", { id, valor });
+    reload();
+  };
+
+  const borrarPrueba = async (id) => {
+    await post("borrar", { id });
     reload();
   };
 
@@ -255,7 +306,7 @@ export default function GuardiasRoute() {
             </span>
           </div>
           {prueba.fase === "ok" && (
-            <p className="mt-2 text-[11.5px] font-bold text-lime">Enviada — revisa el correo de coordinación y resuélvela abajo, en pendientes.</p>
+            <p className="mt-2 text-[11.5px] font-bold text-lime">Enviada — revisa el correo de coordinación y resuélvela abajo, en "🧪 Pruebas".</p>
           )}
           {prueba.fase === "error" && (
             <p className="mt-2 text-[11.5px] font-bold text-mandarin">No se pudo enviar: {prueba.error}</p>
@@ -280,14 +331,14 @@ export default function GuardiasRoute() {
               ) : (
                 <ul className="space-y-2">
                   {pendientes.map((g) => (
-                    <GuardiaRow key={g.id} g={g} resaltada={g.id === idResaltado} resolver={resolver} />
+                    <GuardiaRow key={g.id} g={g} resaltada={g.id === idResaltado} resolver={resolver} onMyNfq={marcarMyNfq} />
                   ))}
                 </ul>
               )}
             </section>
 
             {/* ── Todas las del Q ── */}
-            <section>
+            <section className="mb-6">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <h2 className="font-display text-lg font-bold text-sand">Guardias del Q</h2>
                 <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-sand/60">
@@ -302,11 +353,26 @@ export default function GuardiasRoute() {
               ) : (
                 <ul className="space-y-2">
                   {delQ.map((g) => (
-                    <GuardiaRow key={g.id} g={g} resaltada={g.id === idResaltado} resolver={resolver} />
+                    <GuardiaRow key={g.id} g={g} resaltada={g.id === idResaltado} resolver={resolver} onMyNfq={marcarMyNfq} />
                   ))}
                 </ul>
               )}
             </section>
+
+            {/* ── Pruebas: aparte de todo lo demás, con opción de borrarlas ── */}
+            {pruebas.length > 0 && (
+              <section>
+                <h2 className="mb-3 font-display text-lg font-bold text-sand">🧪 Pruebas ({pruebas.length})</h2>
+                <p className="mb-3 text-[11px] text-sand/45">
+                  No cuentan como guardias reales y no salen en Pendientes ni en el Q. Bórralas cuando termines de probar.
+                </p>
+                <ul className="space-y-2">
+                  {pruebas.map((g) => (
+                    <GuardiaRow key={g.id} g={g} resaltada={g.id === idResaltado} resolver={resolver} onBorrar={borrarPrueba} />
+                  ))}
+                </ul>
+              </section>
+            )}
           </>
         )}
       </div>

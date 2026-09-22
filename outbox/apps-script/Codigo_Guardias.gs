@@ -32,6 +32,12 @@
  *        "[PRUEBA]" en los correos para no confundirla con una solicitud real.
  *   POST { action:'resolver', id, estado:'aprobada'|'rechazada', importe, motivo, resueltoPor }
  *        -> { guardia }  — avisa por email a quien la solicitó.
+ *   POST { action:'marcarMyNfq', id, valor:true|false }
+ *        -> { guardia }  — solo en aprobadas: segundo check de que el importe
+ *        ya está dado de alta en myNfq (de cara al pago). Sin email.
+ *   POST { action:'borrar', id }
+ *        -> { id, borrada:true }  — solo guardias de PRUEBA (prueba:true):
+ *        las reales no se pueden borrar por aquí, quedan como registro.
  * ============================================================================
  */
 
@@ -56,7 +62,7 @@ var G_CONFIG = {
 
 var G_HOJA = ['Guardias', [
   'Id', 'CreadoEn', 'Persona', 'Email', 'Fecha', 'HoraEntrada', 'HoraSalida',
-  'Descripcion', 'Estado', 'Importe', 'Motivo', 'ResueltoEn', 'ResueltoPor', 'Prueba'
+  'Descripcion', 'Estado', 'Importe', 'Motivo', 'ResueltoEn', 'ResueltoPor', 'Prueba', 'AprobadaMyNfq'
 ]];
 
 /* Ejecutar UNA vez desde el editor para conceder los permisos (Sheets, Gmail,
@@ -113,6 +119,8 @@ function _serve(e) {
       case 'todas': data = { guardias: todasLasGuardias() }; break;
       case 'crear': data = { guardia: crearGuardia(p) }; break;
       case 'resolver': data = { guardia: resolverGuardia(p) }; break;
+      case 'marcarMyNfq': data = { guardia: marcarMyNfq(p) }; break;
+      case 'borrar': data = borrarGuardia(p); break;
       default: throw new Error('Acción desconocida: ' + action);
     }
     return _json({ ok: true, action: action, data: data });
@@ -160,17 +168,23 @@ function _aObjeto(r, rowNumber) {
     motivo: String(r[10] || ''),
     resueltoEn: r[11] instanceof Date ? r[11].toISOString() : String(r[11] || ''),
     resueltoPor: String(r[12] || ''),
-    prueba: r[13] === true || String(r[13] || '').toUpperCase() === 'TRUE'
+    prueba: r[13] === true || String(r[13] || '').toUpperCase() === 'TRUE',
+    aprobadaMyNfq: r[14] === true || String(r[14] || '').toUpperCase() === 'TRUE'
   };
 }
 
+// Las de PRUEBA nunca salen aquí: es la vista personal de cada miembro (incluido
+// el coordinador que las genera), y no deben aparecer en ningún sitio ni quedar
+// como si fueran una guardia real suya.
 function misGuardias(email) {
   var x = String(email || '').trim().toLowerCase();
   if (!x) throw new Error('Falta el email.');
   var out = [];
   _filas().forEach(function (r, i) {
     if (String(r[3] || '').trim().toLowerCase() !== x) return;
-    out.push(_aObjeto(r, i + 2));
+    var o = _aObjeto(r, i + 2);
+    if (o.prueba) return;
+    out.push(o);
   });
   out.sort(function (a, b) { return b.creadoEn < a.creadoEn ? -1 : b.creadoEn > a.creadoEn ? 1 : 0; });
   return out.slice(0, 20);
@@ -217,12 +231,12 @@ function crearGuardia(p) {
   var sh = _hoja();
   sh.getRange(sh.getLastRow() + 1, 1, 1, G_HOJA[1].length).setValues([[
     id, ahora, persona, email, fecha, horaEntrada, horaSalida, descripcion,
-    'pendiente', '', '', '', '', prueba
+    'pendiente', '', '', '', '', prueba, false
   ]]);
 
   var guardia = { id: id, creadoEn: ahora.toISOString(), persona: persona, email: email, fecha: fecha,
     horaEntrada: horaEntrada, horaSalida: horaSalida, descripcion: descripcion, estado: 'pendiente',
-    importe: null, motivo: '', resueltoEn: '', resueltoPor: '', prueba: prueba };
+    importe: null, motivo: '', resueltoEn: '', resueltoPor: '', prueba: prueba, aprobadaMyNfq: false };
 
   try { _avisarCoordinacionNuevaGuardia(guardia); } catch (e) { Logger.log('Aviso a coordinación: ' + e); }
   return guardia;
@@ -262,6 +276,29 @@ function resolverGuardia(p) {
 
   try { _avisarSolicitanteResolucion(guardia); } catch (e) { Logger.log('Aviso al solicitante: ' + e); }
   return guardia;
+}
+
+/* Segundo check, solo visual/de seguimiento (sin email): que el importe ya
+   está dado de alta en myNfq, de cara a cuándo le llega el dinero a quien
+   hizo la guardia. Se puede marcar y desmarcar. */
+function marcarMyNfq(p) {
+  var id = String(p.id || '').trim();
+  var valor = p.valor === true || p.valor === 'true';
+  var actual = _porId(id);
+  if (actual.estado !== 'aprobada') throw new Error('Solo se puede marcar en guardias aprobadas.');
+  _hoja().getRange(actual.row, 15, 1, 1).setValues([[valor]]);
+  return Object.assign({}, actual, { aprobadaMyNfq: valor });
+}
+
+/* Borra una guardia de PRUEBA (fila entera del Sheet): así no se queda
+   almacenada ni sale en ningún listado para nadie. Las reales no se pueden
+   borrar por aquí — quedan como registro de lo aprobado/rechazado. */
+function borrarGuardia(p) {
+  var id = String(p.id || '').trim();
+  var actual = _porId(id);
+  if (!actual.prueba) throw new Error('Solo se pueden borrar guardias de prueba.');
+  _hoja().deleteRow(actual.row);
+  return { id: id, borrada: true };
 }
 
 /* ──────────────────────────── Equipo / coordinadores ──────────────────────────── */

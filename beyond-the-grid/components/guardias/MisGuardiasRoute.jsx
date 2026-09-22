@@ -167,11 +167,6 @@ export default function MisGuardiasRoute() {
                     <span className="text-sand/50">{g.horaEntrada} – {g.horaSalida}</span>
                     <span className="text-sand/30">· {qDeFecha(g.fecha)}</span>
                     <EstadoBadge estado={g.estado} />
-                    {g.prueba && (
-                      <span className="inline-block whitespace-nowrap rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-sand/70">
-                        🧪 Prueba
-                      </span>
-                    )}
                     {g.estado === "aprobada" && g.importe != null && (
                       <span className={`font-bold tabular-nums ${TEXT.lime}`}>{eur.format(g.importe)}</span>
                     )}
@@ -179,6 +174,13 @@ export default function MisGuardiasRoute() {
                   <p className="mt-1.5 text-sand/70">{g.descripcion}</p>
                   {g.estado === "rechazada" && g.motivo && (
                     <p className="mt-1.5 text-mandarin">Motivo: {g.motivo}</p>
+                  )}
+                  {g.estado === "aprobada" && (
+                    <p className="mt-1.5 text-[11px] text-sand/45">
+                      {g.aprobadaMyNfq
+                        ? <span className={TEXT.lime}>✓ Ya dada de alta en myNfq</span>
+                        : "Pendiente de dar de alta en myNfq"}
+                    </p>
                   )}
                 </li>
               ))}
