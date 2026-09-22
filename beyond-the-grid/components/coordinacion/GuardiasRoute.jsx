@@ -55,7 +55,7 @@ function GuardiaRow({ g, resaltada, resolver, onMyNfq, onBorrar }) {
   };
 
   const borrar = async () => {
-    if (!window.confirm(`¿Borrar esta guardia de prueba (${g.persona}, ${fechaEs(g.fecha)})? No se puede deshacer.`)) return;
+    if (!window.confirm(`¿Borrar esta guardia (${g.persona}, ${fechaEs(g.fecha)})? No se puede deshacer.`)) return;
     setBorrando(true);
     try { await onBorrar(g.id); } finally { setBorrando(false); }
   };
@@ -241,7 +241,9 @@ export default function GuardiasRoute() {
     reload();
   };
 
-  const borrarPrueba = async (id) => {
+  // Borra cualquier guardia (pendiente, aprobada o rechazada; prueba o real):
+  // para limpiar pruebas y para corregir una guardia dada de alta por error.
+  const borrar = async (id) => {
     await post("borrar", { id });
     reload();
   };
@@ -331,7 +333,7 @@ export default function GuardiasRoute() {
               ) : (
                 <ul className="space-y-2">
                   {pendientes.map((g) => (
-                    <GuardiaRow key={g.id} g={g} resaltada={g.id === idResaltado} resolver={resolver} onMyNfq={marcarMyNfq} />
+                    <GuardiaRow key={g.id} g={g} resaltada={g.id === idResaltado} resolver={resolver} onMyNfq={marcarMyNfq} onBorrar={borrar} />
                   ))}
                 </ul>
               )}
@@ -353,13 +355,13 @@ export default function GuardiasRoute() {
               ) : (
                 <ul className="space-y-2">
                   {delQ.map((g) => (
-                    <GuardiaRow key={g.id} g={g} resaltada={g.id === idResaltado} resolver={resolver} onMyNfq={marcarMyNfq} />
+                    <GuardiaRow key={g.id} g={g} resaltada={g.id === idResaltado} resolver={resolver} onMyNfq={marcarMyNfq} onBorrar={borrar} />
                   ))}
                 </ul>
               )}
             </section>
 
-            {/* ── Pruebas: aparte de todo lo demás, con opción de borrarlas ── */}
+            {/* ── Pruebas: aparte de todo lo demás ── */}
             {pruebas.length > 0 && (
               <section>
                 <h2 className="mb-3 font-display text-lg font-bold text-sand">🧪 Pruebas ({pruebas.length})</h2>
@@ -368,7 +370,7 @@ export default function GuardiasRoute() {
                 </p>
                 <ul className="space-y-2">
                   {pruebas.map((g) => (
-                    <GuardiaRow key={g.id} g={g} resaltada={g.id === idResaltado} resolver={resolver} onBorrar={borrarPrueba} />
+                    <GuardiaRow key={g.id} g={g} resaltada={g.id === idResaltado} resolver={resolver} onBorrar={borrar} />
                   ))}
                 </ul>
               </section>

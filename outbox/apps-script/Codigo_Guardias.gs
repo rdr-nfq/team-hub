@@ -36,8 +36,10 @@
  *        -> { guardia }  — solo en aprobadas: segundo check de que el importe
  *        ya está dado de alta en myNfq (de cara al pago). Sin email.
  *   POST { action:'borrar', id }
- *        -> { id, borrada:true }  — solo guardias de PRUEBA (prueba:true):
- *        las reales no se pueden borrar por aquí, quedan como registro.
+ *        -> { id, borrada:true }  — quita la fila entera del Sheet (para
+ *        todos, no un ocultado local). Vale para pruebas y para reales dadas
+ *        de alta por error; sin marcha atrás. Solo coordinación llega aquí
+ *        (botón de /guardias-gestion).
  * ============================================================================
  */
 
@@ -290,13 +292,12 @@ function marcarMyNfq(p) {
   return Object.assign({}, actual, { aprobadaMyNfq: valor });
 }
 
-/* Borra una guardia de PRUEBA (fila entera del Sheet): así no se queda
-   almacenada ni sale en ningún listado para nadie. Las reales no se pueden
-   borrar por aquí — quedan como registro de lo aprobado/rechazado. */
+/* Borra una guardia (fila entera del Sheet): sirve tanto para limpiar las
+   de PRUEBA como para quitar una real dada de alta por error — pendiente,
+   aprobada o rechazada. Sin marcha atrás; la confirmación va en la web. */
 function borrarGuardia(p) {
   var id = String(p.id || '').trim();
   var actual = _porId(id);
-  if (!actual.prueba) throw new Error('Solo se pueden borrar guardias de prueba.');
   _hoja().deleteRow(actual.row);
   return { id: id, borrada: true };
 }
