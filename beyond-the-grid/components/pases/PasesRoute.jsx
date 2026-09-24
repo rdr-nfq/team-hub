@@ -26,7 +26,6 @@ import {
 } from "./backend";
 import { computeValidador } from "./validador";
 import { computeMergeUnits } from "./mergeos";
-import { rolDe } from "./roles";
 import { useAuth } from "@/components/chrome/AuthGate";
 import { ACCENT, BTN, CARD_CLS, Field, SELECT_CLS, INPUT_CLS } from "./ui";
 import { IconRocket, IconSave, IconMoon, IconCheck, IconLock, IconRefresh, IconArrowLeft, IconExternal } from "./icons";
@@ -149,8 +148,11 @@ export default function PasesRoute() {
   const links = useLinks();
   const reduce = useReducedMotion();
   const accent = useAccent(ACCENT); // lime temado para estilos inline (texto/borde legible en claro)
-  const { email } = useAuth();
-  const isAdmin = rolDe(email) === "admin"; // puede conmutar el modo debug
+  const { isCoordinador } = useAuth();
+  // Modo debug y DEBUG · Reset: solo coordinación (equipo/equipo.json, campo
+  // "coordinador"), igual que el resto de páginas de Coordinación — antes
+  // dependía de una lista de emails aparte (roles.js) que se desincronizaba.
+  const isAdmin = isCoordinador;
 
   // URLs desde links.json (fuente única) — misma resolución que el legacy.
   const apiUrl = links?.getUrl ? links.getUrl("pasesBackend") : null;
