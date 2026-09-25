@@ -50,7 +50,13 @@ function PreviewReparto({ preview, qs, nombreProy, onConfirm, onDiscard }) {
     <div className="mt-3 space-y-2 text-[12px]">
       <p className="text-sand/70">
         Reparto desde la quincena <strong className="text-sand">{qs[preview.desde - 1]?.label}</strong>.
+        {preview.finDefecto === 6 && " Solo queda la última quincena: los proyectos sin fin propio se reparten en ella."}
       </p>
+      {preview.pasadas && (
+        <p className="rounded-lg border border-mandarin/50 bg-mandarin/10 px-2.5 py-1.5 text-[11.5px] font-bold text-mandarin">
+          ⚠ Incluye quincenas ya pasadas: al guardar se reescribe lo que ya estaba imputado en ellas (y lo que se copió al TR de BBVA habrá que corregirlo a mano).
+        </p>
+      )}
       {preview.sinHueco.length > 0 && (
         <p className="rounded-lg border border-mandarin/50 bg-mandarin/10 px-2.5 py-1.5 text-[11.5px] font-bold text-mandarin">
           ⚠ No caben: {preview.sinHueco.map((s) => `${s.proyecto} (${s.horas} h${s.motivo ? " · " + s.motivo : ""})`).join(" · ")}
@@ -110,7 +116,8 @@ export default function GestionRoute() {
   const personas = useMemo(() => (equipo || []).map((m) => m.nombre), [equipo]);
   const qs = quincenasDeQ(q);
   const hoy = hoyISO();
-  const qActualN = Math.min(6, Math.max(1, quincenaDe(q, hoy) || 1));
+  const hoyQ = quincenaDe(q, hoy); // 0 = Q futuro, 7 = Q ya terminado
+  const qActualN = Math.min(6, Math.max(1, hoyQ || 1));
 
   /* Estado LOCAL (optimista): los cambios se pintan al instante y el guardado
      va en segundo plano — sin recargar el snapshot en cada edición. Solo se
@@ -217,6 +224,8 @@ export default function GestionRoute() {
       estados,
       personas: [],
       incurridas: 0,
+      inicio: 1,
+      fin: 0, // 0 = automático (15 del último mes)
     };
     aplicaProyectos([...proyectos, p]);
     setNuevo({ nombre: "", sdatool: "", feature: "", horas: "" });
@@ -261,6 +270,10 @@ export default function GestionRoute() {
   const cambiaEstado = (id, quincena, valor) =>
     aplicaProyectos(proyectos.map((p) => (p.id === id ? { ...p, estados: { ...p.estados, [quincena]: valor } } : p)));
 
+  // Ventana del proyecto: quincena de inicio (1..6) y de fin (1..6, 0 = automático).
+  const cambiaVentana = (id, campo, valor) =>
+    aplicaProyectos(proyectos.map((p) => (p.id === id ? { ...p, [campo]: Math.round(num(valor)) } : p)));
+
   const borraProyecto = (id) => {
     aplicaProyectos(proyectos.filter((p) => p.id !== id));
     setConfirmarBorrado(null);
@@ -274,10 +287,13 @@ export default function GestionRoute() {
     salva(() => post("guardarBloqueadas", { q, personas: [...next] }));
   };
 
-  const calcularReparto = (desdeMin) => {
-    const r = repartir({ q, proyectos, repartoActual: reparto, personas, bloqueadas: [...bloqueadas], festivos: festivos || {}, hoy, desdeMin });
+  // desdeMin: nunca antes de la quincena actual; desde: quincena exacta, aunque
+  // ya haya pasado (lo elige coordinación en «Repartir horas»).
+  const calcularReparto = ({ desdeMin, desde } = {}) => {
+    const r = repartir({ q, proyectos, repartoActual: reparto, personas, bloqueadas: [...bloqueadas], festivos: festivos || {}, hoy, desdeMin, desde });
     setPreview(r);
   };
+  const [desdeReparto, setDesdeReparto] = useState(""); // "" = desde la quincena actual
 
   const confirmarReparto = () => {
     const { desde } = preview;
@@ -449,7 +465,8 @@ export default function GestionRoute() {
             <p className="mb-4 text-[11px] text-sand/45">
               <strong className="text-sand/65">Imputadas</strong>: horas del reparto ya pasadas a fecha de hoy (lo que debería estar en el TR).{" "}
               <strong className="text-sand/65">Incurridas</strong>: horas reales trabajadas, se anotan a mano en «Proyectos y reparto».{" "}
-              Capacidad máxima informativa: 24 h × persona no bloqueada × día laborable desde hoy hasta el 15 del último mes.
+              Capacidad máxima informativa: 24 h × persona no bloqueada × día laborable desde hoy hasta el 15 del último mes
+              (o hasta fin de trimestre, si ya solo queda la última quincena).
             </p>
             <div className="mb-3 flex flex-wrap gap-2">
               <button type="button" onClick={() => setVerQuincenas((v) => !v)} className={BTN.ghost}>
@@ -533,8 +550,12 @@ export default function GestionRoute() {
                       Descartar cambios
                     </button>
                     <button
-                      type="button" onClick={() => calcularReparto(quincenaVista + 1)} disabled={dirtyQ != null}
-                      title={dirtyQ != null ? "Guarda primero los cambios de la quincena" : "Reparte lo pendiente a partir de la quincena siguiente, respetando esta tal cual"}
+                      type="button" onClick={() => calcularReparto({ desdeMin: quincenaVista + 1 })} disabled={dirtyQ != null || quincenaVista >= 6}
+                      title={
+                        dirtyQ != null ? "Guarda primero los cambios de la quincena"
+                        : quincenaVista >= 6 ? "Es la última quincena del Q: no hay siguientes que recalcular"
+                        : "Reparte lo pendiente a partir de la quincena siguiente (o la actual, si esta ya pasó), respetando esta tal cual"
+                      }
                       className={BTN.primario}
                     >
                       <IconReload size={13} /> Recalcular las siguientes quincenas
@@ -827,6 +848,36 @@ export default function GestionRoute() {
                     </div>
                   )}
 
+                  {/* Ventana del proyecto: el reparto solo le pone horas entre
+                      estas dos quincenas. Fin automático = hasta el 15 del
+                      último mes (o la última quincena, si es la única que queda). */}
+                  {(() => {
+                    const ini = num(p.inicio) || 1;
+                    const fin = num(p.fin) || 0;
+                    return (
+                      <div className="mb-3 flex flex-wrap items-end gap-2">
+                        <label className="block">
+                          <span className="text-[9.5px] font-bold uppercase tracking-wide text-sand/45">Quincena de inicio</span>
+                          <select value={ini} onChange={(e) => cambiaVentana(p.id, "inicio", e.target.value)}
+                            aria-label={`Quincena de inicio de ${p.nombre}`} className={`${FIELD} block !py-1.5 text-[12px]`}>
+                            {qs.map((x) => <option key={x.n} value={x.n}>{x.label}</option>)}
+                          </select>
+                        </label>
+                        <label className="block">
+                          <span className="text-[9.5px] font-bold uppercase tracking-wide text-sand/45">Quincena de fin</span>
+                          <select value={fin} onChange={(e) => cambiaVentana(p.id, "fin", e.target.value)}
+                            aria-label={`Quincena de fin de ${p.nombre}`} className={`${FIELD} block !py-1.5 text-[12px]`}>
+                            <option value={0}>Automático (15 del último mes)</option>
+                            {qs.map((x) => <option key={x.n} value={x.n}>{x.label}</option>)}
+                          </select>
+                        </label>
+                        {fin > 0 && fin < ini && (
+                          <span className="pb-1.5 text-[11px] font-bold text-mandarin">⚠ El fin es anterior al inicio: no se le repartirá nada.</span>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                   <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-sand/45">Estado (Nivel 2) por quincena</p>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                     {qs.map((x) => (
@@ -911,11 +962,30 @@ export default function GestionRoute() {
               <div className={`${GLASS} p-4`}>
                 <h2 className="mb-1 font-display text-base font-bold text-sand">Repartir horas</h2>
                 <p className="mb-3 text-[11px] text-sand/50">
-                  Reparte lo pendiente entre las personas no bloqueadas (quincena actual → 15 del último mes,
-                  mínimo de personas por proyecto), rellena la jornada con Soporte a Usuarios y deja la última
-                  quincena entera a Soporte. Antes de guardar verás quién queda afectado.
+                  Reparte lo pendiente entre las personas no bloqueadas (mínimo de personas por proyecto), dentro de la
+                  ventana de cada proyecto (por defecto, hasta el 15 del último mes), y rellena la jornada con Soporte a
+                  Usuarios. La última quincena se deja a Soporte salvo que sea la única que queda o que un proyecto
+                  termine en ella. Antes de guardar verás quién queda afectado; después, todo se puede corregir a mano
+                  en «Imputación» y volver a recalcular.
                 </p>
-                <button type="button" onClick={() => calcularReparto()} className={BTN.ok}>
+                <label className="mb-3 flex flex-wrap items-center gap-2 text-[11px] text-sand/60">
+                  <span className="font-bold uppercase tracking-wide text-sand/50">Recalcular desde</span>
+                  <select value={desdeReparto} onChange={(e) => { setPreview(null); setDesdeReparto(e.target.value); }}
+                    className={`${FIELD} !py-1.5 text-[12px]`}>
+                    <option value="">
+                      {hoyQ > 6 ? "Automático (el trimestre ya terminó: elige una quincena)" : `La quincena actual (${qs[qActualN - 1]?.label})`}
+                    </option>
+                    {qs.map((x) => (
+                      <option key={x.n} value={x.n}>{x.label}{x.n < hoyQ ? " · ya pasada" : x.n === hoyQ ? " · actual" : ""}</option>
+                    ))}
+                  </select>
+                </label>
+                {desdeReparto !== "" && Number(desdeReparto) < hoyQ && (
+                  <p className="mb-3 rounded-lg border border-mandarin/40 bg-mandarin/10 px-2.5 py-1.5 text-[11px] font-bold text-mandarin">
+                    Reescribirá quincenas ya pasadas (lo ya imputado en ellas se recalcula).
+                  </p>
+                )}
+                <button type="button" onClick={() => calcularReparto(desdeReparto === "" ? {} : { desde: Number(desdeReparto) })} className={BTN.ok}>
                   <IconReload size={13} /> Calcular reparto
                 </button>
                 <PreviewReparto preview={preview} qs={qs} nombreProy={nombreProy} onConfirm={confirmarReparto} onDiscard={() => setPreview(null)} />

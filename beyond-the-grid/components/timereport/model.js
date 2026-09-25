@@ -6,10 +6,16 @@
      imputación). Mínimo la jornada en días laborables: 9 h L-J y 6 h V,
      salvo julio y agosto que son 6 h todos los días.
    - Festivos (España) y fines de semana: 0 h.
-   - Todos los proyectos deben quedar incurridos al 100 % el día 15 del
-     último mes del Q: la ventana de reparto de proyectos son las quincenas
-     1..5; la 6ª es SIEMPRE Soporte a Usuarios.
-   - El reparto solo toca la quincena ACTUAL y futuras: lo pasado se respeta.
+   - Por defecto los proyectos deben quedar incurridos al 100 % el día 15
+     del último mes del Q: la ventana de reparto son las quincenas 1..5 y la
+     6ª se deja a Soporte a Usuarios. Si la 6ª es la ÚNICA que queda, se
+     usa también para proyectos (si no, lo pendiente no tendría dónde ir).
+   - Cada proyecto puede acotar su ventana con una quincena de INICIO y otra
+     de FIN (1..6; fin 0 = automático, la regla anterior). Con fin = 6 el
+     proyecto sí se reparte en la última quincena.
+   - El reparto toca por defecto la quincena ACTUAL y futuras: lo pasado se
+     respeta. Coordinación puede forzar recalcular desde una quincena
+     anterior (reescribe lo ya imputado; se avisa en la previsualización).
    - Personas BLOQUEADAS: su imputación existente se congela; el reparto no
      les añade ni les quita nada.
    - Cada proyecto se reparte entre el MENOR número de personas posible
@@ -133,57 +139,93 @@ function colocar(h, dias, usado) {
   return { asignado: out, resto: h };
 }
 
+/* Quincena 1..6 válida, o 0 si no lo es (0 = "sin acotar"/automático). */
+const qValida = (v) => {
+  const n = Math.round(num(v));
+  return n >= 1 && n <= 6 ? n : 0;
+};
+
 /**
- * ALGORITMO DE REPARTO. Devuelve { reparto, avisos, notificar, sinHueco }.
- *  - proyectos: [{id, sdatool, nombre, feature, horas, estados, personas?}]
- *    (personas: si el proyecto trae una lista, SOLO se reparte entre ellas)
+ * ALGORITMO DE REPARTO. Devuelve { reparto, desde, pasadas, notificar, sinHueco }.
+ *  - proyectos: [{id, sdatool, nombre, feature, horas, estados, personas?, inicio?, fin?}]
+ *    (personas: si el proyecto trae una lista, SOLO se reparte entre ellas;
+ *     inicio/fin: quincenas 1..6 que acotan su ventana, fin 0 = automático)
  *  - repartoActual: [{quincena, persona, proyectoId, dias:{iso:h}}] (todo el Q)
  *  - personas: nombres del equipo; bloqueadas: Set/array de nombres congelados
  *  - festivos: {iso: "ES"|"MX"|"AMBOS"}; hoy: ISO (para la ventana)
- *  - desdeMin (opcional): primera quincena a recalcular (>= la actual). Sirve
- *    para, tras corregir a mano lo que alguien imputó de verdad en una
- *    quincena, repartir lo que falta en las SIGUIENTES.
+ *  - desdeMin (opcional): primera quincena a recalcular, nunca antes de la
+ *    actual. Sirve para, tras corregir a mano lo que alguien imputó de verdad
+ *    en una quincena, repartir lo que falta en las SIGUIENTES.
+ *  - desde (opcional): quincena EXACTA desde la que recalcular, aunque ya
+ *    haya pasado. Solo lo usa coordinación a propósito.
  */
-export function repartir({ q, proyectos, repartoActual, personas, bloqueadas, festivos, hoy, desdeMin }) {
+export function repartir({ q, proyectos, repartoActual, personas, bloqueadas, festivos, hoy, desdeMin, desde: desdeForzado }) {
   const qs = quincenasDeQ(q);
   if (!qs.length) return { error: "Q inválido" };
   const bloq = new Set(bloqueadas || []);
   const hoyQ = quincenaDe(q, hoy || hoyISO());
-  let desde = Math.max(1, Math.min(hoyQ === 0 ? 1 : hoyQ, 7));
-  // desdeMin: recalcular SOLO a partir de esa quincena (p.ej. la siguiente a
-  // una que se ha corregido a mano). Nunca antes de la actual: lo pasado se
-  // respeta igual que siempre.
-  if (desdeMin != null) desde = Math.max(desde, Math.min(7, Math.round(num(desdeMin))));
-  if (desde > 5)
+  let desde;
+  if (desdeForzado != null && qValida(desdeForzado)) {
+    desde = qValida(desdeForzado);
+  } else {
+    desde = Math.max(1, Math.min(hoyQ === 0 ? 1 : hoyQ, 7));
+    if (desdeMin != null) desde = Math.max(desde, Math.min(7, Math.round(num(desdeMin))));
+  }
+  if (desde > 6)
     return {
-      error: desdeMin != null && desdeMin > 5
-        ? "La siguiente quincena es la última del Q (solo Soporte): no queda nada de proyectos que recalcular."
-        : "Ya ha pasado el 15 del último mes: no queda ventana de reparto de proyectos.",
+      error: desdeMin != null && desdeMin > 6
+        ? "No quedan quincenas después de esta en el Q: no hay nada que recalcular."
+        : "El trimestre ya ha terminado: no queda ninguna quincena que repartir.",
     };
+
+  // Por defecto los proyectos terminan en la 5ª (15 del último mes); si la
+  // única quincena que queda es la 6ª, se usa esa en vez de dejarlos fuera.
+  const finDefecto = desde <= 5 ? 5 : 6;
+  const ventanaDe = (p) => {
+    const ini = Math.max(desde, qValida(p.inicio) || 1);
+    const fin = qValida(p.fin) || finDefecto;
+    return qs.filter((x) => x.n >= ini && x.n <= fin);
+  };
 
   // Se conserva: todo lo anterior a `desde` + TODO lo de personas bloqueadas.
   const fijas = (repartoActual || []).filter((r) => r.quincena < desde || bloq.has(r.persona));
   const previas = (repartoActual || []).filter((r) => r.quincena >= desde && !bloq.has(r.persona));
 
   const libres = (personas || []).filter((p) => !bloq.has(p));
-  const ventanaProy = qs.filter((x) => x.n >= desde && x.n <= 5);
-  const diasProy = ventanaProy.flatMap((x) => x.dias).filter((d) => esLaborable(d, festivos));
 
-  // Capacidad usada por persona/día (solo hace falta para libres en ventana).
+  // Capacidad usada por persona/día.
   const usado = {}; // persona -> {iso: h}
   libres.forEach((p) => { usado[p] = {}; });
 
   // Pendiente de cada proyecto = horas − lo ya fijado (pasado + bloqueadas).
+  // Primero los de ventana más corta (los más difíciles de encajar); a igual
+  // ventana, el más grande primero.
   const pendientes = (proyectos || [])
-    .map((p) => ({ ...p, pendiente: num(p.horas) - horasProyecto(fijas, p.id) }))
+    .map((p) => {
+      const ventana = ventanaDe(p);
+      const dias = ventana.flatMap((x) => x.dias).filter((d) => esLaborable(d, festivos));
+      return { ...p, ventana, dias, pendiente: num(p.horas) - horasProyecto(fijas, p.id) };
+    })
     .filter((p) => p.pendiente > 0)
-    .sort((a, b) => b.pendiente - a.pendiente);
+    .sort((a, b) => a.dias.length - b.dias.length || b.pendiente - a.pendiente);
 
   const nuevas = []; // filas nuevas {quincena, persona, proyectoId, dias}
   const sinHueco = [];
 
   for (const p of pendientes) {
     let resto = Math.round(p.pendiente);
+    if (!p.dias.length) {
+      const ini = qValida(p.inicio) || 1, fin = qValida(p.fin) || finDefecto;
+      sinHueco.push({
+        proyecto: p.nombre, horas: resto,
+        motivo: fin < ini
+          ? `su quincena de fin (${qs[fin - 1]?.label}) es anterior a la de inicio (${qs[ini - 1]?.label})`
+          : fin < desde
+            ? `su ventana (${qs[ini - 1]?.label} → ${qs[fin - 1]?.label}) ya pasó: amplía la quincena de fin`
+            : "su ventana no tiene días laborables",
+      });
+      continue;
+    }
     // Si el proyecto tiene lista de personas, SOLO se reparte entre ellas
     // (las bloqueadas quedan fuera igualmente).
     const candidatas = p.personas && p.personas.length
@@ -193,7 +235,7 @@ export function repartir({ q, proyectos, repartoActual, personas, bloqueadas, fe
       // Candidata con MÁS capacidad restante (menos personas por proyecto).
       let mejor = null, mejorCap = 0;
       for (const per of candidatas) {
-        const cap = diasProy.reduce((a, d) => a + (MAX_DIA - (usado[per][d] || 0)), 0);
+        const cap = p.dias.reduce((a, d) => a + (MAX_DIA - (usado[per][d] || 0)), 0);
         if (cap > mejorCap) { mejorCap = cap; mejor = per; }
       }
       if (!mejor || mejorCap <= 0) {
@@ -201,10 +243,10 @@ export function repartir({ q, proyectos, repartoActual, personas, bloqueadas, fe
         break;
       }
       const meter = Math.min(resto, mejorCap);
-      const { asignado } = colocar(meter, diasProy, usado[mejor]);
+      const { asignado } = colocar(meter, p.dias, usado[mejor]);
       resto -= meter;
       // Trocear lo asignado por quincena.
-      for (const qn of ventanaProy) {
+      for (const qn of p.ventana) {
         const dias = {};
         qn.dias.forEach((d) => { if (asignado[d]) dias[d] = asignado[d]; });
         if (Object.keys(dias).length) nuevas.push({ quincena: qn.n, persona: mejor, proyectoId: p.id, dias });
@@ -212,16 +254,15 @@ export function repartir({ q, proyectos, repartoActual, personas, bloqueadas, fe
     }
   }
 
-  // SOPORTE: en toda la ventana (incluida la quincena 6, que es solo soporte),
-  // cada persona libre completa la jornada mínima de cada día laborable.
+  // SOPORTE: en todas las quincenas recalculadas, cada persona libre completa
+  // la jornada mínima de cada día laborable con lo que no tenga de proyectos.
   const ventanaTodo = qs.filter((x) => x.n >= desde);
   for (const per of libres) {
     for (const qn of ventanaTodo) {
       const dias = {};
       for (const d of qn.dias) {
         if (!esLaborable(d, festivos)) continue;
-        const u = qn.n <= 5 ? usado[per][d] || 0 : 0; // la 6ª parte de cero (solo soporte)
-        const falta = jornada(d) - u;
+        const falta = jornada(d) - (usado[per][d] || 0);
         if (falta > 0) dias[d] = falta;
       }
       if (Object.keys(dias).length) nuevas.push({ quincena: qn.n, persona: per, proyectoId: SOPORTE_ID, dias });
@@ -241,17 +282,19 @@ export function repartir({ q, proyectos, repartoActual, personas, bloqueadas, fe
     );
   const notificar = libres.filter((per) => firma(previas, per) !== firma(nuevas, per));
 
-  return { reparto, desde, notificar, sinHueco };
+  return { reparto, desde, pasadas: hoyQ > desde, finDefecto, notificar, sinHueco };
 }
 
 /* Capacidad máxima informativa que queda: días laborables desde `hoy` (incl.)
-   hasta el 15 del último mes × 24 h × nº de personas. */
+   hasta el 15 del último mes (o hasta fin de Q si ya solo queda la última
+   quincena) × 24 h × nº de personas. */
 export function capacidadMaxima({ q, personas, festivos, hoy }) {
   const qs = quincenasDeQ(q);
   if (!qs.length) return 0;
   const h = hoy || hoyISO();
+  const hasta = quincenaDe(q, h) >= 6 ? 6 : 5;
   const dias = qs
-    .filter((x) => x.n <= 5)
+    .filter((x) => x.n <= hasta)
     .flatMap((x) => x.dias)
     .filter((d) => d >= h && esLaborable(d, festivos));
   return dias.length * MAX_DIA * (personas || []).length;

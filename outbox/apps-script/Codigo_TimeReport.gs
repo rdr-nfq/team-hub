@@ -33,7 +33,8 @@
  *
  *  API (GET query o POST text/plain JSON):
  *   ?action=snapshot&q=2026Q3 -> { proyectos, reparto, bloqueadas, qs }
- *   POST { action:'guardarProyectos', q, proyectos:[{id,sdatool,nombre,feature,horas,estados,personas,incurridas}] }
+ *   POST { action:'guardarProyectos', q, proyectos:[{id,sdatool,nombre,feature,horas,estados,personas,incurridas,inicio,fin}] }
+ *        (inicio/fin: quincenas 1..6 que acotan el reparto del proyecto; fin 0 = automático)
  *   POST { action:'guardarReparto',  q, desdeQuincena, filas:[{quincena,persona,proyectoId,dias}] }
  *        (borra las filas del Q con quincena >= desdeQuincena y escribe las nuevas;
  *         las filas de personas bloqueadas que se conservan YA vienen incluidas)
@@ -63,9 +64,9 @@ var TR_CONFIG = {
 var MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
 var HOJAS = {
-  // 'Personas' e 'Incurridas' van al FINAL para no romper hojas creadas con
-  // versiones previas (las filas antiguas simplemente no tienen esas celdas).
-  proyectos: ['TR_Proyectos', ['Q', 'Id', 'SDATOOL', 'Nombre', 'Feature', 'Horas', 'Estados', 'Actualizado', 'Personas', 'Incurridas']],
+  // 'Personas', 'Incurridas', 'Inicio' y 'Fin' van al FINAL para no romper hojas
+  // creadas con versiones previas (las filas antiguas no tienen esas celdas).
+  proyectos: ['TR_Proyectos', ['Q', 'Id', 'SDATOOL', 'Nombre', 'Feature', 'Horas', 'Estados', 'Actualizado', 'Personas', 'Incurridas', 'Inicio', 'Fin']],
   reparto: ['TR_Reparto', ['Q', 'Quincena', 'Persona', 'ProyectoId', 'Dias', 'Actualizado']],
   bloqueadas: ['TR_Bloqueadas', ['Q', 'Personas', 'Actualizado']]
 };
@@ -160,7 +161,8 @@ function getSnapshot(q) {
     proyectos.push({
       id: String(r[1]), sdatool: String(r[2] || ''), nombre: String(r[3] || ''), feature: String(r[4] || ''),
       horas: Number(r[5]) || 0, estados: estados, personas: personasProy,
-      incurridas: Number(r[9]) || 0
+      incurridas: Number(r[9]) || 0,
+      inicio: Number(r[10]) || 1, fin: Number(r[11]) || 0
     });
   });
   var reparto = [];
@@ -207,7 +209,8 @@ function guardarProyectos(q, proyectos) {
   var now = new Date();
   var rows = (proyectos || []).map(function (p) {
     return [q, String(p.id), String(p.sdatool || ''), String(p.nombre || ''), String(p.feature || ''), Number(p.horas) || 0,
-      JSON.stringify(p.estados || {}), now, JSON.stringify(p.personas || []), Number(p.incurridas) || 0];
+      JSON.stringify(p.estados || {}), now, JSON.stringify(p.personas || []), Number(p.incurridas) || 0,
+      Number(p.inicio) || 1, Number(p.fin) || 0];
   });
   if (rows.length) sh.getRange(sh.getLastRow() + 1, 1, rows.length, cab.length).setValues(rows);
   return { n: rows.length };
