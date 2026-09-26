@@ -9,7 +9,7 @@ import { FIELD, TEXT, EmptyCard, PanelSkeleton } from "./ui";
 import { IconClock, IconAlert, IconX, IconPlus } from "./icons";
 import { IconCheck } from "../icons";
 import { curQ } from "./model";
-import { useGuardias } from "../guardias/datos";
+import { useGuardias, errorAviso } from "../guardias/datos";
 import { qDeFecha, fechaEs, eur, ESTADO, hoyISO } from "../guardias/model";
 
 /* Guardias · vista de COORDINACIÓN.
@@ -230,10 +230,19 @@ export default function GuardiasRoute() {
     [todas]
   );
 
+  // Si la guardia se guarda pero el correo no sale, se dice aquí arriba en
+  // vez de callarlo (el backend devuelve aviso:{ok:false, error}).
+  const [avisoEmail, setAvisoEmail] = useState("");
+
   const resolver = async (id, payload) => {
     const body = { id, resueltoPor, ...(payload.motivo ? { estado: "rechazada", motivo: payload.motivo } : { estado: "aprobada", importe: payload.importe }) };
-    await post("resolver", body);
-    reload();
+    try {
+      const d = await post("resolver", body);
+      const err = errorAviso(d);
+      setAvisoEmail(err ? `La guardia se resolvió, pero no se pudo avisar por correo a quien la pidió (${err}).` : "");
+    } finally {
+      reload(); // también tras un error: puede que se guardara igualmente
+    }
   };
 
   const marcarMyNfq = async (id, valor) => {
@@ -257,21 +266,22 @@ export default function GuardiasRoute() {
   const [prueba, setPrueba] = useState({ fase: "quieto" }); // quieto | enviando | ok | error
   const crearPrueba = async () => {
     setPrueba({ fase: "enviando" });
+    let d;
     try {
       const ahora = new Date();
       const fin = new Date(ahora.getTime() + 60 * 60 * 1000);
       const hhmm = (d) => String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
-      await post("crear", {
+      d = await post("crear", {
         persona: resueltoPor, email: yo?.email || email,
         fecha: hoyISO(), horaEntrada: hhmm(ahora), horaSalida: hhmm(fin),
         descripcion: `Guardia de prueba generada por ${resueltoPor} desde Coordinación para comprobar los avisos.`,
         prueba: true,
       });
-      reload();
-      setPrueba({ fase: "ok" });
+      setPrueba({ fase: "ok", avisoError: errorAviso(d) });
     } catch (e) {
       setPrueba({ fase: "error", error: String(e.message || e) });
     }
+    reload();
   };
 
   return (
@@ -307,11 +317,19 @@ export default function GuardiasRoute() {
               Solo entre coordinadores: el aviso y la resolución se quedan aquí, no llegan a nadie más.
             </span>
           </div>
-          {prueba.fase === "ok" && (
+          {prueba.fase === "ok" && !prueba.avisoError && (
             <p className="mt-2 text-[11.5px] font-bold text-lime">Enviada — revisa el correo de coordinación y resuélvela abajo, en "🧪 Pruebas".</p>
+          )}
+          {prueba.fase === "ok" && prueba.avisoError && (
+            <p className="mt-2 text-[11.5px] font-bold text-canary">Guardada en "🧪 Pruebas", pero el correo a coordinación no salió: {prueba.avisoError}</p>
           )}
           {prueba.fase === "error" && (
             <p className="mt-2 text-[11.5px] font-bold text-mandarin">No se pudo enviar: {prueba.error}</p>
+          )}
+          {avisoEmail && (
+            <p className="mt-2 rounded-lg border border-canary/50 bg-canary/10 px-3 py-2 text-[11.5px] font-bold text-canary">
+              {avisoEmail}
+            </p>
           )}
         </header>
 

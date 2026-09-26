@@ -26,12 +26,14 @@
  *   ?action=misGuardias&email=persona@nfq.es -> { guardias:[...] } (últimas 20)
  *   ?action=todas                            -> { guardias:[...] } (todas, coordinación)
  *   POST { action:'crear', persona, email, fecha, horaEntrada, horaSalida, descripcion, prueba }
- *        -> { guardia }  — Estado nace 'pendiente'; avisa a coordinación.
+ *        -> { guardia, aviso:{ok, error?} }  — Estado nace 'pendiente'; avisa a
+ *        coordinación. Si el correo falla, la guardia queda guardada igual y
+ *        `aviso.error` dice por qué (la web lo enseña).
  *        `prueba:true` (botón de /guardias-gestion, solo coordinadores) la marca
  *        como guardia de PRUEBA: mismo circuito de avisos, pero etiquetado
  *        "[PRUEBA]" en los correos para no confundirla con una solicitud real.
  *   POST { action:'resolver', id, estado:'aprobada'|'rechazada', importe, motivo, resueltoPor }
- *        -> { guardia }  — avisa por email a quien la solicitó.
+ *        -> { guardia, aviso:{ok, error?} }  — avisa por email a quien la solicitó.
  *   POST { action:'marcarMyNfq', id, valor:true|false }
  *        -> { guardia }  — solo en aprobadas: segundo check de que el importe
  *        ya está dado de alta en myNfq (de cara al pago). Sin email.
@@ -59,8 +61,9 @@ var G_CONFIG = {
    "noreply@<dominio>" inventada hacia buzones del propio dominio, y
    nter.es también lo filtra. Los correos de Guardias van SIEMPRE desde la
    cuenta que ejecuta el script (el remitente real, sin decorar): a
-   coordinación en copia oculta (varios destinatarios a la vez, como
-   'cuenta-bcc' en Comidas) y al solicitante directo (uno solo). */
+   coordinación en el PARA y al solicitante directo. Si un envío falla, la
+   web lo muestra (campo `aviso` de la respuesta) en vez de callarlo, y
+   probarCorreo() lo comprueba desde el editor. */
 
 var G_HOJA = ['Guardias', [
   'Id', 'CreadoEn', 'Persona', 'Email', 'Fecha', 'HoraEntrada', 'HoraSalida',
@@ -119,8 +122,8 @@ function _serve(e) {
       case 'ping': data = { ok: 1, importesRapidos: G_CONFIG.IMPORTES_RAPIDOS }; break;
       case 'misGuardias': data = { guardias: misGuardias(p.email) }; break;
       case 'todas': data = { guardias: todasLasGuardias() }; break;
-      case 'crear': data = { guardia: crearGuardia(p) }; break;
-      case 'resolver': data = { guardia: resolverGuardia(p) }; break;
+      case 'crear': data = crearGuardia(p); break;
+      case 'resolver': data = resolverGuardia(p); break;
       case 'marcarMyNfq': data = { guardia: marcarMyNfq(p) }; break;
       case 'borrar': data = borrarGuardia(p); break;
       default: throw new Error('Acción desconocida: ' + action);
@@ -240,8 +243,20 @@ function crearGuardia(p) {
     horaEntrada: horaEntrada, horaSalida: horaSalida, descripcion: descripcion, estado: 'pendiente',
     importe: null, motivo: '', resueltoEn: '', resueltoPor: '', prueba: prueba, aprobadaMyNfq: false };
 
-  try { _avisarCoordinacionNuevaGuardia(guardia); } catch (e) { Logger.log('Aviso a coordinación: ' + e); }
-  return guardia;
+  return { guardia: guardia, aviso: _intentar('Aviso a coordinación', function () { _avisarCoordinacionNuevaGuardia(guardia); }) };
+}
+
+/* Ejecuta un envío de correo sin que un fallo tumbe el guardado (la guardia
+   ya está escrita): devuelve {ok} o {ok:false, error} para que la web avise. */
+function _intentar(que, fn) {
+  try {
+    fn();
+    return { ok: true };
+  } catch (e) {
+    var msg = String(e && e.message ? e.message : e);
+    Logger.log(que + ': ' + msg);
+    return { ok: false, error: msg };
+  }
 }
 
 /* ────────────────────────────── Resolución ────────────────────────────── */
@@ -276,8 +291,7 @@ function resolverGuardia(p) {
     resueltoEn: ahora.toISOString(), resueltoPor: resueltoPor
   });
 
-  try { _avisarSolicitanteResolucion(guardia); } catch (e) { Logger.log('Aviso al solicitante: ' + e); }
-  return guardia;
+  return { guardia: guardia, aviso: _intentar('Aviso al solicitante', function () { _avisarSolicitanteResolucion(guardia); }) };
 }
 
 /* Segundo check, solo visual/de seguimiento (sin email): que el importe ya
@@ -359,7 +373,7 @@ function _filaDatos(pares) {
 
 function _avisarCoordinacionNuevaGuardia(g) {
   var dest = _emailsCoordinadores();
-  if (!dest.length) { Logger.log('Sin coordinadores en equipo.json: no se avisa por email.'); return; }
+  if (!dest.length) throw new Error('no hay coordinadores con email en equipo.json');
   var link = G_CONFIG.WEB_URL_GESTION + '?id=' + encodeURIComponent(g.id);
   var aviso = g.prueba
     ? '<p style="margin:0 0 14px;font-size:13px;color:#46536D;">🧪 <strong>Guardia de PRUEBA</strong> — solo para comprobar el circuito de avisos entre coordinadores. No es una solicitud real.</p>'
@@ -376,11 +390,15 @@ function _avisarCoordinacionNuevaGuardia(g) {
   var html = _envoltorio((g.prueba ? '🧪 [PRUEBA] ' : '') + '📋 Nueva solicitud de guardia', g.persona + ' · ' + _fechaTxt(g.fecha), cuerpo);
   var asunto = (g.prueba ? '🧪 [PRUEBA] ' : '') + '[RDR Hub] Nueva solicitud de guardia — ' + g.persona + ' — ' + _fechaTxt(g.fecha);
   var texto = (g.prueba ? '[PRUEBA] ' : '') + 'Nueva solicitud de guardia de ' + g.persona + ' para el ' + _fechaTxt(g.fecha) + ' (' + g.horaEntrada + '-' + g.horaSalida + ').\n' + g.descripcion + '\nResuélvela en: ' + link;
-  // Desde la cuenta que ejecuta el script, coordinación en copia oculta (varios
-  // destinatarios a la vez): es el único modo que confirmó entregar de verdad
-  // (ver comentario de G_CONFIG). Responder va directo a quien solicitó.
-  var yo = Session.getEffectiveUser().getEmail();
-  GmailApp.sendEmail(yo, asunto, texto, { htmlBody: html, name: G_CONFIG.REMITE, bcc: dest.join(','), replyTo: g.email || yo });
+  // Desde la cuenta que ejecuta el script, coordinación en el PARA (ver
+  // comentario de G_CONFIG). NO usar Session.getEffectiveUser() para mandarlo
+  // "a uno mismo con copia oculta": pide el permiso userinfo.email, y si no está
+  // autorizado Apps Script aborta la ejecución con su página HTML de
+  // "Authorization is required" — la web veía "<!DOCTYPE…" y no salía ningún
+  // correo. Responder va directo a quien solicitó.
+  var opciones = { htmlBody: html, name: G_CONFIG.REMITE };
+  if (g.email) opciones.replyTo = g.email;
+  GmailApp.sendEmail(dest.join(','), asunto, texto, opciones);
 }
 
 function _avisarSolicitanteResolucion(g) {
@@ -421,3 +439,15 @@ function _avisarSolicitanteResolucion(g) {
 /* ─────────────────────────────────── Pruebas ─────────────────────────────────── */
 
 function _test_ping() { Logger.log(JSON.stringify(_serve({ parameter: { action: 'ping' } }).getContent())); }
+
+/* Ejecutar desde el editor si no llegan los avisos: manda un correo de prueba
+   a todos los coordinadores con el mismo método que los avisos reales, y deja
+   en el registro a quién se ha enviado o el error exacto. */
+function probarCorreo() {
+  var dest = _emailsCoordinadores();
+  Logger.log('Coordinadores (equipo.json): ' + (dest.join(', ') || 'NINGUNO'));
+  if (!dest.length) return;
+  var html = _envoltorio('🧪 Prueba de correo de Guardias', '', '<p style="font-size:15px;">Si te llega este correo, los avisos de Guardias funcionan. Mira también en spam.</p>');
+  GmailApp.sendEmail(dest.join(','), '🧪 [PRUEBA] Guardias RDR · comprobación de correo', 'Si te llega este correo, los avisos de Guardias funcionan.', { htmlBody: html, name: G_CONFIG.REMITE });
+  Logger.log('Enviado sin error a ' + dest.length + ' coordinadores. Si alguno no lo recibe, revisa su spam.');
+}

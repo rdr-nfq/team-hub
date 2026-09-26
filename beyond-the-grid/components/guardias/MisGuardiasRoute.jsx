@@ -7,7 +7,7 @@ import { useEquipo } from "../timereport/datos";
 import { mismoEmail } from "@/lib/email";
 import { GLASS, FIELD, TEXT, EmptyCard, PanelSkeleton } from "../coordinacion/ui";
 import { IconClock, IconAlert, IconPlus } from "../coordinacion/icons";
-import { useGuardias } from "./datos";
+import { useGuardias, errorAviso } from "./datos";
 import { qDeFecha, fechaEs, eur, ESTADO, hoyISO } from "./model";
 
 /* Guardias · vista de MIEMBRO (todo el equipo).
@@ -42,7 +42,7 @@ export default function MisGuardiasRoute() {
   const guardias = snap?.data?.guardias || [];
 
   const [form, setForm] = useState(FORM_VACIO);
-  const [estado, setEstado] = useState({ fase: "form" }); // form | enviando | error
+  const [estado, setEstado] = useState({ fase: "form" }); // form | enviando | ok | error
 
   const listo = !!(form.fecha && form.horaEntrada && form.horaSalida && form.descripcion.trim() && yo);
 
@@ -50,17 +50,19 @@ export default function MisGuardiasRoute() {
     if (!listo || estado.fase === "enviando") return;
     setEstado({ fase: "enviando" });
     try {
-      await post("crear", {
+      const d = await post("crear", {
         persona: yo.nombre, email: yo.email,
         fecha: form.fecha, horaEntrada: form.horaEntrada, horaSalida: form.horaSalida,
         descripcion: form.descripcion.trim(),
       });
       setForm(FORM_VACIO);
-      setEstado({ fase: "form" });
-      reload();
+      setEstado({ fase: "ok", avisoError: errorAviso(d) });
     } catch (e) {
       setEstado({ fase: "error", error: String(e.message || e) });
     }
+    // También tras un error: puede que se guardara igualmente, y así se ve
+    // antes de volver a enviarla (evita duplicados).
+    reload();
   };
 
   return (
@@ -140,9 +142,17 @@ export default function MisGuardiasRoute() {
               </p>
             )}
           </div>
+          {estado.fase === "ok" && !estado.avisoError && (
+            <p className={`text-xs font-bold ${TEXT.lime}`}>Solicitud enviada: coordinación ha recibido el aviso por correo.</p>
+          )}
+          {estado.fase === "ok" && estado.avisoError && (
+            <p className="rounded-lg border border-canary/50 bg-canary/10 px-3 py-2 text-xs font-bold text-canary">
+              Guardia guardada, pero no se pudo avisar por correo a coordinación ({estado.avisoError}). Avísales tú, por favor.
+            </p>
+          )}
           {estado.fase === "error" && (
             <p className="rounded-lg border border-mandarin/50 bg-mandarin/10 px-3 py-2 text-xs font-bold text-mandarin">
-              No se pudo enviar: {estado.error}
+              No se pudo enviar: {estado.error} Antes de reintentar, comprueba abajo en «Mis últimas guardias» si se guardó igualmente.
             </p>
           )}
         </section>
