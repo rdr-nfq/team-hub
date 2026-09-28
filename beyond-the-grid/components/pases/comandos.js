@@ -311,6 +311,12 @@ export function etiquetaPasoPorCod(E, cod) {
   return etiquetaPorSubida(subida, cod);
 }
 
+/* Un java registrado como "jar/Clase" (p.ej. "rdrRules/MiRegla") vive dentro
+   de UN solo .jar ("rdrRules"): la comprobación va contra el jar
+   ("ls -alrt rdrRules*"), no contra la ruta, que no existe en el directorio
+   de JARs. */
+const nombreJar = (nombre) => String(nombre || "").split("/")[0].trim();
+
 // Mapeo Tipo Componente → bloque de comandos (parametrización confirmada).
 function tipoABloque(tipoLower) {
   const t = tipoLower || "";
@@ -394,7 +400,19 @@ export function resolverBloquesComandos(elemento, E, tpls = {}) {
         bloques.push(resolverPlaceholders(plantilla, { COD: cod }));
         return;
       }
-      const lista = porBloque[bk];
+      let lista = porBloque[bk];
+      if (bk === "JAVAS") {
+        // Varias reglas del mismo jar → una sola comprobación del jar.
+        const vistos = new Set();
+        lista = lista
+          .map((c) => ({ ...c, nombre: nombreJar(c.nombre) }))
+          .filter((c) => {
+            const k = c.nombre.toLowerCase();
+            if (c.nombre && vistos.has(k)) return false;
+            vistos.add(k);
+            return true;
+          });
+      }
       if (lista.length === 1) {
         bloques.push(resolverPlaceholders(plantilla, { NOMBRE: lista[0].nombre || "", COD: cod }));
       } else {
