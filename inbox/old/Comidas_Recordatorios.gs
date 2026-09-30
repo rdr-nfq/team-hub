@@ -130,8 +130,16 @@ function enviarGrupo_(emails, subject, htmlBody) {
     else if (MODO_ENVIO === 'cuenta-bcc') o.replyTo = RESPONDER_A;
     else o.noReply = true;
     if (enPara) return GmailApp.sendEmail(destinos.join(','), subject, texto, o);
-    o.bcc = destinos.join(',');
-    return GmailApp.sendEmail(yo, subject, texto, o);
+    // Copia oculta con UN único destinatario visible. Ese PARA recibe el
+    // correo siempre, así que tiene que ser alguien que de verdad falte por
+    // votar: la propia cuenta solo si está entre los pendientes; si ya ha
+    // votado, va en el PARA el primer pendiente y el resto en copia oculta
+    // (antes el PARA era siempre la cuenta, y le llegaba aunque hubiera votado).
+    const yoPendiente = destinos.some(d => mismoEmail_(d, yo));
+    const para = yoPendiente ? yo : destinos[0];
+    const resto = destinos.filter(d => !mismoEmail_(d, para));
+    if (resto.length) o.bcc = resto.join(',');
+    return GmailApp.sendEmail(para, subject, texto, o);
   };
   try {
     enviar(emails);
@@ -158,9 +166,33 @@ function enviarMail_(destinatarios, subject, htmlBody) {
 }
 
 // ── Datos ─────────────────────────────────────────────────────────────────
+//    Las comparaciones de fecha y nombre van NORMALIZADAS: Sheets puede mostrar
+//    "2/10/2026" donde el script calcula "02/10/2026", y un nombre con un
+//    espacio o una tilde de más no casaría con equipo.json. Con una
+//    comparación exacta, a quien ya había votado se le seguía recordando.
+
+/** Fecha de una celda ("2/10/2026", "02/10/26", "2026-10-02") → "dd/MM/yyyy". */
+function fechaClave_(v) {
+  const s = String(v == null ? '' : v).trim();
+  let m = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/.exec(s);
+  if (m) return ('0' + m[1]).slice(-2) + '/' + ('0' + m[2]).slice(-2) + '/' + (m[3].length === 2 ? '20' + m[3] : m[3]);
+  m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
+  if (m) return ('0' + m[3]).slice(-2) + '/' + ('0' + m[2]).slice(-2) + '/' + m[1];
+  return s;
+}
+
+/** Nombre comparable: sin tildes, espacios de más ni mayúsculas. */
+function nombreClave_(s) {
+  return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function mismoEmail_(a, b) {
+  return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+}
+
 function esOficina_(ss, fecha) {
   return ss.getSheetByName('Semana').getDataRange().getDisplayValues()
-    .some(r => r[0] === fecha && String(r[1]).trim().toUpperCase() === 'N');
+    .some(r => fechaClave_(r[0]) === fecha && String(r[1]).trim().toUpperCase() === 'N');
 }
 
 function equipo_() {
@@ -176,18 +208,25 @@ function equipo_() {
   } catch (e) { Logger.log('equipo.json: ' + e); return []; }
 }
 
-function noVotantes_(ss, fecha) {
+/** Nombres (normalizados) que ya han respondido para esa semana — cualquier
+ *  respuesta cuenta: restaurante, «el que más se vote», Taper/Glovo o No estoy. */
+function votantes_(ss, fecha) {
   const voto = {};
   ss.getSheetByName('Equipo').getDataRange().getDisplayValues()
-    .forEach((r, i) => { if (i && r[0] === fecha && r[1]) voto[r[1]] = true; });
-  return equipo_().filter(p => !voto[p.nombre]).map(p => ({ nombre: p.nombre, email: p.email }));
+    .forEach((r, i) => { if (i && fechaClave_(r[0]) === fecha && String(r[1]).trim()) voto[nombreClave_(r[1])] = String(r[1]).trim(); });
+  return voto;
+}
+
+function noVotantes_(ss, fecha) {
+  const voto = votantes_(ss, fecha);
+  return equipo_().filter(p => !voto[nombreClave_(p.nombre)]).map(p => ({ nombre: p.nombre, email: p.email }));
 }
 
 function lider_(ss, fecha) {
   const c = {};
   ss.getSheetByName('Equipo').getDataRange().getDisplayValues().forEach((r, i) => {
     const e1 = String(r[2] || '').trim();
-    if (i && r[0] === fecha && e1 && e1.toLowerCase() !== 'el que más se vote') c[e1] = (c[e1] || 0) + 1;
+    if (i && fechaClave_(r[0]) === fecha && e1 && e1.toLowerCase() !== 'el que más se vote') c[e1] = (c[e1] || 0) + 1;
   });
   let top = null, max = 0;
   for (const k in c) if (c[k] > max) { max = c[k]; top = k; }
@@ -250,7 +289,19 @@ function diagnosticarComidas() {
   Logger.log('¿Jueves de oficina ("N" en Semana)?: ' + esOficina_(ss, fecha));
   Logger.log('equipo.json: ' + team.length + ' personas · sin email: ' + team.filter(p => !p.email).map(p => p.nombre).join(', '));
   Logger.log('Pendientes de votar (' + pendientes.length + '): ' + pendientes.map(p => p.nombre + ' <' + p.email + '>').join(', '));
+  // Votos de la semana: si alguno no casa con nadie de equipo.json, a esa
+  // persona se le seguiría recordando aunque haya votado.
+  const voto = votantes_(ss, fecha);
+  const delEquipo = {};
+  team.forEach(p => { delEquipo[nombreClave_(p.nombre)] = true; });
+  const huerfanos = Object.keys(voto).filter(k => !delEquipo[k]).map(k => voto[k]);
+  Logger.log('Ya han respondido (' + Object.keys(voto).length + '): ' + Object.keys(voto).map(k => voto[k]).join(', '));
+  if (huerfanos.length) Logger.log('⚠ Votos con un nombre que no está en equipo.json (no cuentan como respondido): ' + huerfanos.join(', '));
   const yo = Session.getEffectiveUser().getEmail();
+  if (MODO_ENVIO === 'cuenta-bcc' && pendientes.length) {
+    const emails = pendientes.map(p => p.email).filter(Boolean);
+    Logger.log('Destinatario visible (PARA): ' + (emails.some(e => mismoEmail_(e, yo)) ? yo : emails[0]) + ' · el resto en copia oculta');
+  }
   const remitente = MODO_ENVIO === 'cuenta-bcc' ? yo
     : MODO_ENVIO === 'alias' ? ALIAS_REMITENTE
     : 'noreply@' + (yo.split('@')[1] || '?');
