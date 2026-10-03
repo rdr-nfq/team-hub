@@ -6,7 +6,7 @@
 // (components/seguimiento/plantillaPptx.js); aquí los logos e iconos se leen
 // de public/seguimiento/ en vez de pedirse por fetch.
 
-import { readFileSync, mkdirSync } from "node:fs";
+import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import PptxGenJS from "pptxgenjs";
@@ -92,6 +92,7 @@ for (const [desc, datos] of ejemplos) {
   const pres = generarPresentacion(PptxGenJS, datos, assets);
   // En Drive el nombre lleva DD/MM/YY; en disco la barra no es válida.
   const fichero = join(salida, nombreFichero(datos.fechaReunion).replaceAll("/", "-"));
-  await pres.writeFile({ fileName: fichero, compression: true });
+  // writeFile() en Node ignora `compression` (bug de pptxgenjs 4); stream() sí comprime.
+  writeFileSync(fichero, await pres.stream({ compression: true }));
   console.log(`${desc}\n  -> ${fichero}\n  Drive: ${rutaDrive(datos.fechaReunion).join("/")}/${nombreFichero(datos.fechaReunion)}`);
 }
