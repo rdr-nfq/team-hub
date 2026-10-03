@@ -17,6 +17,21 @@ const nextConfig = {
 
   // Desactivado: con R3F, StrictMode duplica el montaje del canvas en dev.
   reactStrictMode: false,
+
+  // pptxgenjs (Seguimiento) trae import('node:fs') / import('node:https') para
+  // su modo Node; webpack no entiende el esquema "node:" en el cliente. Se
+  // quita el prefijo y esos módulos se resuelven vacíos (en el navegador no se usan).
+  webpack: (config, { isServer, webpack }) => {
+    if (!isServer) {
+      config.plugins.push(
+        new webpack.NormalModuleReplacementPlugin(/^node:/, (r) => {
+          r.request = r.request.replace(/^node:/, "");
+        }),
+      );
+      config.resolve.fallback = { ...config.resolve.fallback, fs: false, https: false, os: false, path: false };
+    }
+    return config;
+  },
 };
 
 export default nextConfig;

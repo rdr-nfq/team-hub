@@ -29,6 +29,7 @@ export default function Header() {
     ["/timereport", "Mi Time Report · Equipo"],
     ["/guardias-gestion", "Guardias · Coordinación"],
     ["/guardias", "Guardias del equipo"],
+    ["/seguimiento", "Seguimiento RDR · Coordinación"],
     ["/pases", "Pases calendados · Releases"],
     ["/recursos", "Recursos · Biblioteca RDR"],
     ["/que-es-rdr", "¿Qué es RDR? · Introducción"],

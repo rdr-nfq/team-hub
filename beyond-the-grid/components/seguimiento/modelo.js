@@ -1,8 +1,8 @@
 /* Modelo de las Presentaciones de Seguimiento (puro, sin React ni pptxgenjs).
 
    Lo comparten la plantilla .pptx (plantillaPptx.js), el script de ejemplos
-   (scripts/seguimiento-ejemplos.mjs) y, más adelante, el panel de
-   coordinación. Todo lo que la presentación calcula sale de aquí.
+   (scripts/seguimiento-ejemplos.mjs) y el panel de coordinación
+   (/seguimiento, components/coordinacion/SeguimientoRoute.jsx). Todo lo que la presentación calcula sale de aquí.
 
    ESTRUCTURA DE DATOS (un documento por reunión):
    {
