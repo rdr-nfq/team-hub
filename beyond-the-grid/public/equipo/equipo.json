@@ -167,6 +167,14 @@
       "emailBBVA": "",
       "track": "funcional",
       "coordinador": false
+    },
+    {
+      "id": "",
+      "nombre": "Carmen Casado",
+      "email": "carmen.casado@nfq.es",
+      "emailBBVA": "",
+      "track": "funcional",
+      "coordinador": false
     }
   ]
 }
