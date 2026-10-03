@@ -153,3 +153,12 @@ En claude.ai con Project Knowledge activo, **buscar primero con `project_knowled
 ## 7. Libertad creativa
 
 El layout concreto de cada slide, las proporciones dentro de la retícula 8px, el ritmo de combinaciones de color, el uso de acentos para KPIs, la estructura semántica HTML y las animaciones/navegación son decisiones libres. La consistencia viene de la paleta, la tipografía y los radios — no de copiar un layout fijo.
+---
+
+## 8. Flujo de git (todo el repositorio)
+
+**Todo se sube SIEMPRE directamente a `main`**, en cada cambio, sin pull requests (decisión del equipo). Si la sesión trabaja en otra rama, se pushea igualmente a `main` (`git push origin <rama>:main`) y también a esa rama.
+
+- Antes de subir: `git fetch origin main`. Si `main` ha avanzado (p. ej. los commits "Equipo: actualización desde la web" que hace `/equipo-gestion`), se integra con merge o rebase de los commits propios — nunca `push --force` a `main`.
+- Si el commit añade dependencias, `package.json` y `package-lock.json` deben ir juntos y cuadrar (el deploy de GitHub Pages compila en cada push a `main`).
+- Tras subir, si el deploy falla, revisar el log de Actions: un fallo de `next/font` descargando Google Fonts suele ser puntual de Google y se arregla relanzando el job.
