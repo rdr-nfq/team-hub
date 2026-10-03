@@ -92,6 +92,6 @@ for (const [desc, datos] of ejemplos) {
   const pres = generarPresentacion(PptxGenJS, datos, assets);
   // En Drive el nombre lleva DD/MM/YY; en disco la barra no es válida.
   const fichero = join(salida, nombreFichero(datos.fechaReunion).replaceAll("/", "-"));
-  await pres.writeFile({ fileName: fichero });
+  await pres.writeFile({ fileName: fichero, compression: true });
   console.log(`${desc}\n  -> ${fichero}\n  Drive: ${rutaDrive(datos.fechaReunion).join("/")}/${nombreFichero(datos.fechaReunion)}`);
 }
