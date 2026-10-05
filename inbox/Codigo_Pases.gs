@@ -186,7 +186,7 @@ function doPost(e) {
         resultado = obtenerDatosDashboard(ctx, payload.fechaStr);
         break;
       case "cancelarSubida":
-        cancelarSubida(ctx, payload.fila, payload.fechaStr);
+        cancelarSubida(ctx, payload.fila, payload.fechaStr, payload.motivo, payload.faseAnterior);
         invalidarDashboard(payload.fechaStr);
         resultado = obtenerDatosDashboard(ctx, payload.fechaStr);
         break;
@@ -993,18 +993,44 @@ function activarEmergencia(ctx, fila, fechaStr) {
   return "OK";
 }
 
-function cancelarSubida(ctx, fila, fechaStr) {
-  ctx.sheet(CONSTANTES.HOJA_PASES).getRange(fila, 2, 1, 2).setValues([["NO", "FASE_0_DESCANSO"]]);
+/* Cancela el pase esté en la fase que esté (encuesta, preparación, cerrado,
+   implantación o mergeos). Los proyectos y componentes NO se borran: si se
+   reactiva en modo emergencia, el pase vuelve a preparación con todo intacto.
+   motivo y faseAnterior son opcionales (los manda la web para el correo). */
+const NOMBRE_FASE = {
+  PENDIENTE: "sin iniciar",
+  FASE_1_ENCUESTA: "encuesta",
+  FASE_2_3_PREPARACION: "preparación",
+  FASE_4_CERRADO: "pre-implantación",
+  FASE_6_IMPLANTACION: "implantación",
+  FASE_7_POST: "mergeos (post-implantación)",
+};
+
+function cancelarSubida(ctx, fila, fechaStr, motivo, faseAnterior) {
+  const hoja = ctx.sheet(CONSTANTES.HOJA_PASES);
+  const fase = faseAnterior || String(hoja.getRange(fila, 3).getValue() || "");
+  if (fase === "COMPLETADO") throw new Error("El pase ya está completado: no se puede cancelar.");
+  hoja.getRange(fila, 2, 1, 2).setValues([["NO", "FASE_0_DESCANSO"]]);
+
+  const parrafos = [
+    NOMBRE_FASE[fase]
+      ? "El pase se ha cancelado desde la web durante la fase de " + NOMBRE_FASE[fase] + "."
+      : "La subida se ha cancelado desde la web.",
+  ];
+  const m = String(motivo || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").trim();
+  if (m) parrafos.push("<strong>Motivo:</strong> «" + m + "»");
+  if (fase === "FASE_6_IMPLANTACION" || fase === "FASE_7_POST") {
+    parrafos.push("La cancelación llega con la implantación ya iniciada: revisad qué pasos se han ejecutado en producción y si hace falta marcha atrás.");
+  }
+  parrafos.push("Esta semana no se realiza ningún pase. Si surge una urgencia, el pase puede reactivarse en modo emergencia desde la web (proyectos y componentes se conservan).");
+
   const html = htmlCorreoEstado({
     tono: "recordatorio",
-    titulo: "Subida cancelada",
-    parrafos: [
-      "La subida se ha cancelado desde la web.",
-      "Esta semana no se realiza ningún pase. Si surge una urgencia, el pase puede reactivarse en modo emergencia desde la web."
-    ],
+    titulo: "Pase cancelado",
+    parrafos: parrafos,
     fechaPase: fechaStr,
   });
-  enviarCorreoSeguro(ctx, "[CANCELADO] SUBIDA CANCELADA", html, fechaStr, fila, false);
+  enviarCorreoSeguro(ctx, "[CANCELADO] PASE CANCELADO", html, fechaStr, fila, false);
   return "OK";
 }
 

@@ -33,7 +33,7 @@ function StatusBanner() {
     return (
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-lime/40 bg-lime/10 px-4 py-3">
         <span className="text-sm font-bold text-lime">Pase activo · Preparación</span>
-        <button type="button" className={BTN.danger} onClick={actions.cancelarSubida}>Cancelar pase</button>
+        <span className="text-[11px] text-sand/50">«Cancelar pase» está arriba, junto a «Abrir Sheets» (vale en cualquier fase).</span>
       </div>
     );
   if (fase && (fase.includes("CERRADO") || fase.includes("IMPLANTACION") || fase.includes("POST"))) {

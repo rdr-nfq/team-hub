@@ -61,6 +61,17 @@ const FASE_CFG = {
   COMPLETADO: { panel: "COMPLETADO", tabs: ALL_TABS },
 };
 
+// Fases desde las que se puede cancelar el pase (todas salvo ya cancelado o completado).
+const FASE_NOMBRE = {
+  PENDIENTE: "Sin iniciar",
+  FASE_1_ENCUESTA: "Encuesta",
+  FASE_2_3_PREPARACION: "Preparación",
+  FASE_4_CERRADO: "Pre-implantación",
+  FASE_6_IMPLANTACION: "Implantación",
+  FASE_7_POST: "Mergeos (post)",
+};
+const esCancelable = (fase) => !!FASE_NOMBRE[fase];
+
 const TABS = [
   { id: "PROYECTOS", n: 1, t: "Preparación", s: "Proyectos y componentes" },
   { id: "SECUENCIA", n: 2, t: "Orden del pase", s: "Secuencia" },
@@ -176,6 +187,8 @@ export default function PasesRoute() {
   const [validadorFlash, setValidadorFlash] = useState(0);
   const [edicion, setEdicion] = useState(false); // edición puntual con el pase ya cerrado
   const [resumenModal, setResumenModal] = useState(false); // revisión final al cerrar preparación
+  const [cancelModal, setCancelModal] = useState(false); // cancelar el pase (cualquier fase)
+  const [motivoCancel, setMotivoCancel] = useState("");
 
   const hashRef = useRef("");
   const abortRef = useRef(null);
@@ -404,9 +417,24 @@ export default function PasesRoute() {
     estructural("iniciarPase", { fila: ERef.current.fila, fechaStr: ERef.current.fechaSeleccionada }, { loadingMsg: "Abriendo pase…", okMsg: "Pase iniciado" });
   const responderEncuesta = (r) =>
     estructural("responderEncuesta", { respuesta: r, fila: ERef.current.fila, fechaStr: ERef.current.fechaSeleccionada }, { loadingMsg: "Registrando…", okMsg: "Encuesta guardada" });
+  // Abre el diálogo (motivo opcional); confirmarCancelacion hace la llamada.
   const cancelarSubida = () => {
-    if (!confirm("¿Cancelar todo el pase?")) return;
-    estructural("cancelarSubida", { fila: ERef.current.fila, fechaStr: ERef.current.fechaSeleccionada }, { loadingMsg: "Cancelando…", okMsg: "Pase cancelado" });
+    setMotivoCancel("");
+    setCancelModal(true);
+  };
+  const confirmarCancelacion = () => {
+    setCancelModal(false);
+    setEdicion(false);
+    estructural(
+      "cancelarSubida",
+      {
+        fila: ERef.current.fila,
+        fechaStr: ERef.current.fechaSeleccionada,
+        faseAnterior: ERef.current.faseActual,
+        motivo: motivoCancel.trim(),
+      },
+      { loadingMsg: "Cancelando…", okMsg: "Pase cancelado" }
+    );
   };
   const activarEmergencia = () =>
     estructural("activarEmergencia", { fila: ERef.current.fila, fechaStr: ERef.current.fechaSeleccionada }, { loadingMsg: "Reabriendo…", okMsg: "Pase reabierto" });
@@ -909,6 +937,16 @@ export default function PasesRoute() {
                   <IconExternal size={14} /> Abrir Sheets
                 </a>
               )}
+              {boot === "ready" && esCancelable(fase) && (
+                <button
+                  type="button"
+                  className={`${BTN.danger} hover:!border-mandarin/60 hover:!text-mandarin`}
+                  onClick={cancelarSubida}
+                  title="Cancela el pase en la fase en la que esté y avisa al equipo por correo"
+                >
+                  Cancelar pase
+                </button>
+              )}
               <DebugPill on={!!E?.modoDebug} isAdmin={isAdmin} onToggle={setModoDebug} />
               <NetDot inflight={inflight} error={netErr} />
             </div>
@@ -1064,6 +1102,59 @@ export default function PasesRoute() {
                   </button>
                   <button type="button" className={BTN.success} onClick={confirmarCierrePrep}>
                     Todo correcto · Cerrar preparación y notificar
+                  </button>
+                </footer>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Cancelar el pase, esté en la fase que esté. */}
+        <AnimatePresence>
+          {cancelModal && (
+            <div className="fixed inset-0 z-[97] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Cancelar pase">
+              <motion.button
+                type="button"
+                aria-label="Cerrar sin cancelar"
+                onClick={() => setCancelModal(false)}
+                className="absolute inset-0 h-full w-full cursor-default bg-midnight/70 backdrop-blur-sm"
+                {...(reduce ? {} : { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } })}
+              />
+              <motion.div
+                className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-white/15 bg-midnight shadow-2xl"
+                {...(reduce ? {} : { initial: { opacity: 0, y: 16, scale: 0.98 }, animate: { opacity: 1, y: 0, scale: 1 }, exit: { opacity: 0, y: 10, scale: 0.98 }, transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] } })}
+              >
+                <div className="space-y-3 px-5 py-5">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-mandarin/90">Cancelar pase · {E?.fechaSeleccionada}</p>
+                  <h3 className="font-display text-lg font-bold text-sand">
+                    ¿Cancelar el pase en fase de {(FASE_NOMBRE[fase] || "").toLowerCase()}?
+                  </h3>
+                  <p className="text-[13px] text-sand/70">
+                    El pase pasa a «sin subida» y se avisa al equipo por correo. Proyectos y componentes se conservan:
+                    si hace falta, se puede reactivar en modo emergencia y vuelve a preparación.
+                  </p>
+                  {(fase === "FASE_6_IMPLANTACION" || fase === "FASE_7_POST") && (
+                    <p className="rounded-lg border border-mandarin/50 bg-mandarin/10 px-3 py-2 text-xs font-bold text-mandarin">
+                      La implantación ya ha empezado: revisad qué pasos se han ejecutado en producción.
+                    </p>
+                  )}
+                  <label className="block">
+                    <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.08em] text-sand/60">Motivo (opcional, va en el correo)</span>
+                    <textarea
+                      className={`${INPUT_CLS} block min-h-[72px] w-full resize-y`}
+                      value={motivoCancel}
+                      onChange={(e) => setMotivoCancel(e.target.value)}
+                      placeholder="Ej.: BBVA aplaza la ventana del pase"
+                      autoFocus
+                    />
+                  </label>
+                </div>
+                <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-white/10 px-5 py-4">
+                  <button type="button" className={BTN.ghost} onClick={() => setCancelModal(false)}>
+                    Volver
+                  </button>
+                  <button type="button" className={BTN.warn} onClick={confirmarCancelacion}>
+                    Cancelar pase y avisar
                   </button>
                 </footer>
               </motion.div>
