@@ -27,6 +27,14 @@ script.google.com): `formacionesBackend` (`/formacion/equipo`) y
 `retroBackend` (`/retro`). Cuando se toquen, copiar aquí su código en
 `formaciones/` y `retro/`.
 
+**En espera — remitente común de los correos.** Hoy cada script envía a su
+manera y casi todos desde la cuenta personal de quien lo despliega (pases, con
+`noReply` a bbva.com). Plan acordado, pendiente de que IT permita crear el
+grupo `rdr-hub@nfq.es`: añadirlo como alias «Enviar como» y unificar el envío
+en un módulo común `_comun/Correo.gs` (remitente en un solo sitio, plantilla de
+marca, asunto con emojis vía API de Gmail, copia oculta con reintento). A
+medio plazo, cuenta dedicada con un único proyecto de envío.
+
 ## Flujo para cambiar un backend
 
 1. Editar el fichero **aquí**, en su carpeta, y subirlo a `main` como el resto
