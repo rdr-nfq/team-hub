@@ -43,7 +43,8 @@
  *   1. Abrir el Excel principal -> Extensiones -> Apps Script -> pegar este fichero y
  *      Migracion_2026.gs (dos ficheros del mismo proyecto).
  *   2. Ejecutar `autorizar` y aceptar permisos (Hojas, Calendar, correo, UrlFetch).
- *   3. Ejecutar `migrar2026` y revisar la pestaña "Migracion_2026" (informe).
+ *   3. Ejecutar `empezarDeCero` (migración completa) y revisar la pestaña
+ *      "Migracion_2026". Al reabrir el Excel aparece el menú «🌴 Vacaciones».
  *   4. Implementar -> Aplicación web (Ejecutar como: Yo · Acceso: Cualquier
  *      persona). Pegar la URL /exec en links.json -> "vacacionesV2Backend".
  *
@@ -1015,6 +1016,104 @@ function _formatearRejilla(ss, sh, anio) {
   sh.getRange(G.FILA_MES, 1).setNote(
     'Códigos: ' + Object.keys(CODIGOS).map(function (c) { return c + ' ' + CODIGOS[c].texto; }).join(' · ') +
     '\nSolo VA descuenta del saldo. Puedes ocultar o plegar meses (−/+ de arriba), pero no insertes ni borres columnas de días (J = 1 de enero).');
+}
+
+// ── Menú del Excel: botones para ver/ocultar meses ─────────────────────────
+/* Al abrir el Excel aparece el menú "🌴 Vacaciones". Las funciones de ver/
+   ocultar también se pueden asignar a un dibujo (Insertar → Dibujo → ⋮ →
+   Asignar secuencia de comandos: verMesActual, ocultarMesesPasados,
+   mostrarTodosLosMeses) para tener botones en la propia hoja. */
+function onOpen() {
+  const ui = SpreadsheetApp.getUi();
+  const meses = ui.createMenu('Plegar / desplegar un mes');
+  MESES_ES.forEach(function (m, i) { meses.addItem(m, 'alternarMes' + (i + 1)); });
+  ui.createMenu('🌴 Vacaciones')
+    .addItem('📅 Ver solo el mes actual', 'verMesActual')
+    .addItem('⏪ Ocultar meses pasados', 'ocultarMesesPasados')
+    .addItem('👁️ Mostrar todos los meses', 'mostrarTodosLosMeses')
+    .addSubMenu(meses)
+    .addSeparator()
+    .addItem('🎨 Rehacer formato y fórmulas', 'aplicarFormatoVacas')
+    .addItem('🧹 Migrar 2026 desde cero…', 'menuEmpezarDeCero')
+    .addToUi();
+}
+
+/** Hoja Vacas_ activa o, si no es una, la del año en curso. */
+function _hojaVacasMenu() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet() || _ss();
+  let sh = ss.getActiveSheet();
+  let m = sh && /^Vacas_(\d{4})$/.exec(sh.getName());
+  if (!m) {
+    const anio = Number(_hoyISO().slice(0, 4));
+    sh = ss.getSheetByName(_nombreHoja(anio)) || ss.getSheetByName(_nombreHoja(_anios(ss).pop()));
+    if (!sh) throw new Error('No hay ninguna pestaña Vacas_<año>.');
+    ss.setActiveSheet(sh);
+    m = /^Vacas_(\d{4})$/.exec(sh.getName());
+  }
+  return { sh: sh, anio: Number(m[1]) };
+}
+
+function _colsMes(anio, m) {
+  const ini = Math.round((Date.UTC(anio, m, 1) - Date.UTC(anio, 0, 1)) / 86400000);
+  return { col: G.DIA1 + ini, n: new Date(Date.UTC(anio, m + 1, 0)).getUTCDate() };
+}
+function _grupoMes(sh, col) { try { return sh.getColumnGroup(col, 1); } catch (_) { return null; } }
+
+/** Pliega (visible=false) o despliega un mes: con su grupo −/+ si lo tiene. */
+function _ponerMes(sh, anio, m, visible) {
+  const r = _colsMes(anio, m);
+  const g = _grupoMes(sh, r.col);
+  if (g) { if (visible) g.expand(); else g.collapse(); }
+  if (visible) sh.showColumns(r.col, r.n); else if (!g) sh.hideColumns(r.col, r.n);
+}
+function _mesVisible(sh, anio, m) {
+  const r = _colsMes(anio, m);
+  const g = _grupoMes(sh, r.col);
+  return g ? !g.isCollapsed() : !sh.isColumnHiddenByUser(r.col);
+}
+
+function verMesActual() {
+  const h = _hojaVacasMenu();
+  const hoy = _hoyISO();
+  const actual = Number(hoy.slice(0, 4)) === h.anio ? Number(hoy.slice(5, 7)) - 1 : -1;
+  for (let m = 0; m < 12; m++) _ponerMes(h.sh, h.anio, m, actual < 0 || m === actual);
+  if (actual >= 0) h.sh.getRange(G.FILA_1, _colsMes(h.anio, actual).col).activate();
+}
+function ocultarMesesPasados() {
+  const h = _hojaVacasMenu();
+  const hoy = _hoyISO();
+  const actual = Number(hoy.slice(0, 4)) === h.anio ? Number(hoy.slice(5, 7)) - 1 : (Number(hoy.slice(0, 4)) > h.anio ? 12 : 0);
+  for (let m = 0; m < 12; m++) _ponerMes(h.sh, h.anio, m, m >= actual);
+}
+function mostrarTodosLosMeses() {
+  const h = _hojaVacasMenu();
+  try { h.sh.expandAllColumnGroups(); } catch (_) {}
+  h.sh.showColumns(G.DIA1, _diasAnio(h.anio));
+}
+function _alternarMes(m) { const h = _hojaVacasMenu(); _ponerMes(h.sh, h.anio, m, !_mesVisible(h.sh, h.anio, m)); }
+function alternarMes1() { _alternarMes(0); }
+function alternarMes2() { _alternarMes(1); }
+function alternarMes3() { _alternarMes(2); }
+function alternarMes4() { _alternarMes(3); }
+function alternarMes5() { _alternarMes(4); }
+function alternarMes6() { _alternarMes(5); }
+function alternarMes7() { _alternarMes(6); }
+function alternarMes8() { _alternarMes(7); }
+function alternarMes9() { _alternarMes(8); }
+function alternarMes10() { _alternarMes(9); }
+function alternarMes11() { _alternarMes(10); }
+function alternarMes12() { _alternarMes(11); }
+
+function menuEmpezarDeCero() {
+  const ui = SpreadsheetApp.getUi();
+  const ok = ui.alert('Migrar 2026 desde cero',
+    'Se borran y se rehacen Vacas_2026, Festivos, Grupos_Festivos y el informe Migracion_2026 a partir de «Vacaciones 2026». ' +
+    'Si Solicitudes tiene filas se guarda como copia. ¿Seguir?', ui.ButtonSet.OK_CANCEL);
+  if (ok !== ui.Button.OK) return;
+  const r = empezarDeCero();
+  const sh = _ss().getSheetByName(_nombreHoja(MIG.ANIO));
+  if (sh) SpreadsheetApp.getActiveSpreadsheet().setActiveSheet(sh);
+  ui.alert('Migración hecha', r.personas + ' personas · ' + r.diferencias + ' diferencias con 2026_Calendario. Revisa la pestaña Migracion_2026.', ui.ButtonSet.OK);
 }
 
 /* EJECUTAR DESDE EL EDITOR si hace falta: vuelve a poner fórmulas y formato a

@@ -21,7 +21,12 @@
  *  frente al "Vacaciones Pendientes" antiguo) y TODAS las diferencias día a
  *  día con 2026_Calendario. Revísalo antes de dar la migración por buena.
  *
- *  Si hay que repetirla: migrar2026(true) borra Vacas_2026 y la rehace.
+ *  TODO DE UNA, DESDE CERO: empezarDeCero() (o menú 🌴 Vacaciones → «Migrar
+ *  2026 desde cero») borra lo generado antes (Vacas_2026, Festivos,
+ *  Grupos_Festivos, Migracion_2026; Solicitudes se guarda como copia si tiene
+ *  filas) y lo rehace entero: rejilla con fórmulas y formato, grupos y
+ *  festivos, Solicitudes vacía e informe. No hace falta nada más después.
+ *  Los grupos cuyos miembros tienen email .mx se crean como "México DC" (MX).
  *  ⚠ Antes de migrar, resuelve las solicitudes pendientes en el panel antiguo.
  * ============================================================================
  */
@@ -34,11 +39,32 @@ const MIG = {
   MESES: ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
 };
 
+/** Migración completa desde cero (ejecutar desde el editor o desde el menú). */
+function empezarDeCero() {
+  const r = migrar2026(true);
+  diagnosticar();
+  return r;
+}
+
+/** Borra lo que generó una migración anterior. Solicitudes con filas no se
+ *  pierde: se renombra a Solicitudes_copia_<fecha>. */
+function _migLimpiar(ss) {
+  [_nombreHoja(MIG.ANIO), HOJA.FESTIVOS, HOJA.GRUPOS, MIG.INFORME].forEach(function (n) {
+    const sh = ss.getSheetByName(n);
+    if (sh) ss.deleteSheet(sh);
+  });
+  const sol = ss.getSheetByName(HOJA.SOLICITUDES);
+  if (sol) {
+    if (sol.getLastRow() > 1) sol.setName(HOJA.SOLICITUDES + '_copia_' + Utilities.formatDate(new Date(), 'Europe/Madrid', 'yyyyMMdd-HHmm'));
+    else ss.deleteSheet(sol);
+  }
+}
+
 function migrar2026(forzar) {
   const ss = _ss();
   const ya = ss.getSheetByName(_nombreHoja(MIG.ANIO));
-  if (ya && forzar !== true) throw new Error('Ya existe ' + _nombreHoja(MIG.ANIO) + '. Para rehacerla: migrar2026(true).');
-  if (ya) ss.deleteSheet(ya);
+  if (ya && forzar !== true) throw new Error('Ya existe ' + _nombreHoja(MIG.ANIO) + '. Para rehacerlo todo: empezarDeCero().');
+  if (forzar === true) _migLimpiar(ss);
 
   const origen = ss.getSheetByName(MIG.ORIGEN);
   if (!origen) throw new Error('No existe la pestaña "' + MIG.ORIGEN + '".');
@@ -65,18 +91,33 @@ function migrar2026(forzar) {
       pendientesAntiguo: r.pendientes, enResumen: true, enEquipo: !!m, codigos: {} });
   });
 
-  // Grupos de festivos a partir de los FE.
+  // Grupos de festivos a partir de los FE (los de email .mx -> México DC, MX).
   const grupos = _migDeducirGrupos(filas);
+  grupos.lista.forEach(function (g) {
+    g.pais = 'ES';
+    if (g.grupo === 'Madrid') return;
+    const miembros = filas.filter(function (f) { return grupos.dePersona[f.nombre] === g.grupo; });
+    if (miembros.length && miembros.every(function (f) { return /\.mx$/.test(f.email); })
+        && !grupos.lista.some(function (x) { return x.grupo === 'México DC'; })) {
+      const antes = g.grupo;
+      g.grupo = 'México DC'; g.pais = 'MX';
+      miembros.forEach(function (f) { grupos.dePersona[f.nombre] = g.grupo; grupos.notas[f.nombre] = 'Email .mx: grupo México DC (MX)'; });
+      Logger.log('Grupo ' + antes + ' -> México DC (MX)');
+    }
+  });
   const shG = _hoja(ss, HOJA.GRUPOS, ['Grupo', 'País (ES/MX)']);
   const existentes = _leerGrupos(ss).map(function (g) { return g.grupo; });
-  grupos.lista.forEach(function (g) { if (existentes.indexOf(g.grupo) < 0) shG.appendRow([g.grupo, 'ES']); });
+  const nuevosG = grupos.lista.filter(function (g) { return existentes.indexOf(g.grupo) < 0; }).map(function (g) { return [g.grupo, g.pais]; });
+  if (nuevosG.length) shG.getRange(shG.getLastRow() + 1, 1, nuevosG.length, 2).setValues(nuevosG);
   const shF = _hoja(ss, HOJA.FESTIVOS, ['Fecha', 'Grupo', 'Nombre'], [1]);
   const festivosYa = _leerFestivos(ss);
+  const nuevosF = [];
   grupos.lista.forEach(function (g) {
     g.fechas.forEach(function (iso) {
-      if (!festivosYa.some(function (f) { return f.fecha === iso && f.grupo === g.grupo; })) shF.appendRow([iso, g.grupo, 'Festivo (migrado)']);
+      if (!festivosYa.some(function (f) { return f.fecha === iso && f.grupo === g.grupo; })) nuevosF.push([iso, g.grupo, 'Festivo (migrado)']);
     });
   });
+  if (nuevosF.length) shF.getRange(shF.getLastRow() + 1, 1, nuevosF.length, 3).setNumberFormat('@').setValues(nuevosF);
   filas.forEach(function (f) { f.grupo = grupos.dePersona[f.nombre] || ''; });
 
   _crearRejilla(ss, MIG.ANIO, filas);
