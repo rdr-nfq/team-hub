@@ -412,7 +412,8 @@ export default function GestionVacacionesRoute() {
             {d?.anios?.length > 1 && d.anios.map((a) => (
               <Chip key={a} on={a === d.year} onClick={() => setAnio(a)}>{a}</Chip>
             ))}
-            <button type="button" onClick={() => reload()} title="Recargar" className="rounded-full border border-white/15 p-2 text-sand/60 hover:text-sand"><IconReload size={15} /></button>
+            {snap?.actualizando && <span className="text-xs text-sand/50" role="status">Actualizando…</span>}
+            <button type="button" onClick={() => reload(true)} disabled={!!snap?.actualizando} title="Recargar" className="rounded-full border border-white/15 p-2 text-sand/60 hover:text-sand disabled:opacity-50"><IconReload size={15} className={snap?.actualizando ? "animate-spin" : ""} /></button>
           </div>
         </header>
 

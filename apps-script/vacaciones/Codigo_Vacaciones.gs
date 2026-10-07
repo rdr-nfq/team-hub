@@ -54,6 +54,12 @@
  *   4. Implementar -> Aplicación web (Ejecutar como: Yo · Acceso: Cualquier
  *      persona). Pegar la URL /exec en links.json -> "vacacionesV2Backend".
  *
+ *  CACHÉ (velocidad de carga)
+ *   La lectura común (rejilla, festivos, solicitudes) se guarda comprimida en
+ *   CacheService 10 min. Se invalida sola en cada escritura desde la web y en
+ *   cada edición a mano (onEdit). Opcional: instalarPrecalentado() (una vez)
+ *   la recalcula cada 10 min para que ni la primera carga del día lea el Excel.
+ *
  *  API — respuesta { ok, data | error }
  *   GET  ?action=ping
  *   GET  ?action=datos&anio=2026&email=…   calendario + mis solicitudes
@@ -135,7 +141,8 @@ function autorizar() {
   Logger.log('Permisos concedidos. Excel: ' + _ss().getName());
 }
 
-function _ss() { return SpreadsheetApp.openById(V_CONFIG.EXCEL_ID); }
+let _SS = null; // una sola apertura del Excel por petición
+function _ss() { return _SS || (_SS = SpreadsheetApp.openById(V_CONFIG.EXCEL_ID)); }
 
 // ── Entrada HTTP ─────────────────────────────────────────────────────────────
 function doGet(e) {
@@ -171,11 +178,61 @@ function _servir(p) {
       case 'crearAnio': _exigirCoord(p.email); data = crearAnio(p); break;
       default: throw new Error('Acción desconocida: ' + p.action);
     }
+    if (p.action !== 'ping' && p.action !== 'datos') _invalidar();
     return _salida({ ok: true, data: data });
   } catch (err) {
     console.error(err);
+    if (p.action !== 'ping' && p.action !== 'datos') _invalidar(); // por si escribió algo antes de fallar
     return _salida({ ok: false, error: String((err && err.message) || err) });
   }
+}
+
+// ── Caché de lectura ────────────────────────────────────────────────────────
+/* Leer la rejilla, festivos y solicitudes en cada carga es lo lento. La parte
+   común a todos (sin depender de quién mira) se guarda comprimida en la caché
+   del script 10 min y se invalida sola: en cada escritura desde la web y en
+   cada edición a mano del Excel (onEdit). */
+const CACHE_TTL = 600;
+function _cacheVer() {
+  const c = CacheService.getScriptCache();
+  let v = c.get('vac:ver');
+  if (!v) { v = String(Date.now()); c.put('vac:ver', v, 21600); }
+  return v;
+}
+function _invalidar() {
+  try { CacheService.getScriptCache().put('vac:ver', Date.now() + '-' + Math.random(), 21600); } catch (_) {}
+}
+/** Edición a mano en el Excel -> la web deja de ver la versión anterior.
+ *  (Borrar filas o pestañas no dispara onEdit: eso tarda como mucho CACHE_TTL.) */
+function onEdit(e) { _invalidar(); }
+
+/** Opcional (una vez): deja la caché siempre caliente, recalculándola cada
+ *  10 min. Así ni la primera carga del día lee el Excel entero. */
+function instalarPrecalentado() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'precalentarCache') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('precalentarCache').timeBased().everyMinutes(10).create();
+  precalentarCache();
+}
+function precalentarCache() { _base(); }
+
+function _base(anioParam) {
+  const c = CacheService.getScriptCache();
+  const key = 'vac:base:' + _cacheVer() + ':' + (Number(anioParam) || 'hoy');
+  const hit = c.get(key);
+  if (hit) {
+    try {
+      const blob = Utilities.newBlob(Utilities.base64Decode(hit), 'application/x-gzip');
+      return JSON.parse(Utilities.ungzip(blob).getDataAsString());
+    } catch (e) { console.error('caché: ' + e); }
+  }
+  const b = _calcularBase(anioParam);
+  try {
+    const z = Utilities.base64Encode(Utilities.gzip(Utilities.newBlob(JSON.stringify(b), 'application/json')).getBytes());
+    if (z.length < 95000) c.put(key, z, CACHE_TTL);
+  } catch (e) { console.error('caché (guardar): ' + e); }
+  return b;
 }
 
 function _salida(obj) {
@@ -194,7 +251,7 @@ function _diasAnio(anio) { return (Date.UTC(anio + 1, 0, 1) - Date.UTC(anio, 0, 
 function _idxDia(iso) { return Math.round((_utc(iso) - Date.UTC(Number(iso.slice(0, 4)), 0, 1)) / 86400000); }
 function _isoDeIdx(anio, idx) { return _isoDeUtc(Date.UTC(anio, 0, 1) + idx * 86400000); }
 function _rango(desde, hasta) { const out = []; for (let d = desde; d <= hasta; d = _sumar(d, 1)) out.push(d); return out; }
-function _hoyISO() { return Utilities.formatDate(new Date(), _ss().getSpreadsheetTimeZone() || 'Europe/Madrid', 'yyyy-MM-dd'); }
+function _hoyISO() { return Utilities.formatDate(new Date(), 'Europe/Madrid', 'yyyy-MM-dd'); }
 function _fechaEs(iso) { const p = iso.split('-'); return p[2] + '/' + p[1] + '/' + p[0]; }
 
 /** Celda -> ISO: admite Date, "2026-10-08", "8/10/2026". '' si no es fecha. */
@@ -420,18 +477,17 @@ function _laborable(persona, iso, fxg) {
 }
 
 // ── Lectura para la web ─────────────────────────────────────────────────────
-function datos(anioParam, email) {
+/** Todo lo que no depende de quién mira (se cachea en _base). */
+function _calcularBase(anioParam) {
   const ss = _ss();
   const anios = _anios(ss);
   const anioHoy = Number(_hoyISO().slice(0, 4));
   const anio = Number(anioParam) || (anios.indexOf(anioHoy) >= 0 ? anioHoy : anios[anios.length - 1]);
   const grid = anio ? _leerAnio(ss, anio) : null;
-  if (!grid) throw new Error('No existe la pestaña ' + _nombreHoja(anio || anioHoy) + ' en el Excel. ¿Se ha ejecutado migrar2026()?');
+  if (!grid) throw new Error('No existe la pestaña ' + _nombreHoja(anio || anioHoy) + ' en el Excel. ¿Se ha ejecutado empezarDeCero()?');
 
   const grupos = _leerGrupos(ss, anio);
   const festivos = _leerFestivos(ss, anio);
-  const esCoord = _esCoord(email);
-  const yo = email ? _personaPorEmail(grid, email) : null;
 
   // Personas: activas primero y alfabético; color fijo por persona.
   const orden = grid.personas.slice().sort(function (a, b) {
@@ -453,42 +509,64 @@ function datos(anioParam, email) {
     });
   });
 
-  const out = {
-    v: 2, year: anio, anios: anios, generatedAt: new Date().toISOString(),
-    esCoordinador: esCoord,
-    yo: yo ? { nombre: yo.nombre, grupo: yo.grupo } : null,
-    empleados: empleados, empleadosMap: empleadosMap, paletaEquipos: {},
+  return {
+    anio: anio, anios: anios, generatedAt: new Date().toISOString(),
+    personas: grid.personas.map(function (p) {
+      return { nombre: p.nombre, email: p.email, grupo: p.grupo, activo: p.activo,
+        anteriores: p.anteriores, dias: p.dias, total: p.total, va: p.va, quedan: p.quedan };
+    }),
+    empleados: empleados, empleadosMap: empleadosMap,
     ausenciasPorDia: ausenciasPorDia,
     festivos: _festivosVista(festivos, grupos),
     festivosDetalle: festivos.map(function (f) { return { fecha: f.fecha, grupo: f.grupo, nombre: f.nombre }; }),
+    festivosTodos: _leerFestivos(ss).map(function (f) { return { fecha: f.fecha, grupo: f.grupo, nombre: f.nombre }; }),
     grupos: grupos.map(function (g) { return { grupo: g.grupo, pais: g.pais }; }),
+    sols: _leerSolicitudes(ss).map(function (s) { const o = _solPublica(s); o.email = s.email; return o; })
+  };
+}
+
+function datos(anioParam, email) {
+  const b = _base(anioParam);
+  const anio = b.anio;
+  const esCoord = _esCoord(email);
+  const yo = email ? _personaPorEmail(b, email) : null;
+  const sinEmail = function (s) { const o = {}; Object.keys(s).forEach(function (k) { if (k !== 'email') o[k] = s[k]; }); return o; };
+
+  const out = {
+    v: 2, year: anio, anios: b.anios, generatedAt: b.generatedAt,
+    esCoordinador: esCoord,
+    yo: yo ? { nombre: yo.nombre, grupo: yo.grupo } : null,
+    empleados: b.empleados, empleadosMap: b.empleadosMap, paletaEquipos: {},
+    ausenciasPorDia: b.ausenciasPorDia,
+    festivos: b.festivos,
+    festivosDetalle: b.festivosDetalle,
+    grupos: b.grupos,
     tipos: V_CONFIG.TIPOS_SOLICITABLES.map(function (t) { return { id: t, texto: CODIGOS[t].texto }; }),
     misSolicitudes: []
   };
 
-  const sols = _leerSolicitudes(ss);
   if (email) {
     const alias = _aliasEmail(email);
-    out.misSolicitudes = sols.filter(function (s) { return alias.indexOf(s.email) >= 0; })
-      .sort(function (a, b) { return b.creada.localeCompare(a.creada); }).slice(0, 40).map(_solPublica);
+    out.misSolicitudes = b.sols.filter(function (s) { return alias.indexOf(s.email) >= 0; })
+      .sort(function (a, c) { return c.creada.localeCompare(a.creada); }).slice(0, 40).map(sinEmail);
   }
 
   if (esCoord) {
-    const pendientes = sols.filter(function (s) { return s.estado === 'PENDIENTE'; });
-    out.pendientes = pendientes.sort(function (a, b) { return a.desde.localeCompare(b.desde); }).map(_solPublica);
-    out.recientes = sols.filter(function (s) { return s.estado !== 'PENDIENTE'; })
-      .sort(function (a, b) { return String(b.resuelta).localeCompare(String(a.resuelta)); }).slice(0, 25).map(_solPublica);
-    out.saldos = grid.personas.map(function (p) {
+    const pendientes = b.sols.filter(function (s) { return s.estado === 'PENDIENTE'; });
+    out.pendientes = pendientes.slice().sort(function (a, c) { return a.desde.localeCompare(c.desde); }).map(sinEmail);
+    out.recientes = b.sols.filter(function (s) { return s.estado !== 'PENDIENTE'; })
+      .sort(function (a, c) { return String(c.resuelta).localeCompare(String(a.resuelta)); }).slice(0, 25).map(sinEmail);
+    out.saldos = b.personas.map(function (p) {
       // Efecto neto en VA de lo pendiente (las cancelaciones suman, los cambios compensan).
       const pend = pendientes.filter(function (s) { return s.persona === p.nombre && s.desde.slice(0, 4) === String(anio); })
-        .reduce(function (n, s) { return n + _deltaVA(s); }, 0);
+        .reduce(function (n, s) { return n + (Number(s.deltaVA) || 0); }, 0);
       return {
         nombre: p.nombre, email: p.email, grupo: p.grupo, activo: p.activo,
         anteriores: p.anteriores, dias: p.dias, total: p.total, va: p.va, quedan: p.quedan,
         pendientesVA: pend, quedanTrasPendientes: p.quedan - pend
       };
     });
-    out.festivosTodos = _leerFestivos(ss).map(function (f) { return { fecha: f.fecha, grupo: f.grupo, nombre: f.nombre }; });
+    out.festivosTodos = b.festivosTodos;
   }
   return out;
 }
@@ -1245,6 +1323,7 @@ function aplicarFormatoVacas() {
     _formatearRejilla(ss, ss.getSheetByName(_nombreHoja(a)), a);
     Logger.log('Formato y fórmulas aplicados a ' + _nombreHoja(a));
   });
+  _invalidar();
 }
 
 // ── Correos (MailApp: los emojis del asunto llegan bien) ────────────────────

@@ -77,6 +77,8 @@ export default function MisVacacionesRoute() {
           )}
         </header>
 
+        {snap?.actualizando && <p className="mb-3 text-xs text-sand/50" role="status">Actualizando…</p>}
+        {snap?.avisoRecarga && <p className="mb-3 text-xs text-canary">No se pudo refrescar: {snap.avisoRecarga}</p>}
         {snap?.error ? (
           <ErrorCard mensaje={snap.error} onRetry={() => reload()} />
         ) : !d ? (

@@ -25,6 +25,24 @@ async function leerJSON(r) {
   }
 }
 
+/* Caché en el navegador (stale-while-revalidate): al entrar se pinta al
+   instante lo último que se vio y se refresca por detrás. El backend valida
+   cada escritura contra el Excel, así que unos segundos de datos viejos no
+   permiten aprobar ni pedir nada incoherente. */
+const CACHE_MAX_MS = 7 * 24 * 3600 * 1000;
+const claveCache = (email, anio) => `rdr_vac_v2:${(email || "").toLowerCase()}:${anio || "actual"}`;
+function leerCache(clave) {
+  try {
+    const c = JSON.parse(localStorage.getItem(clave) || "null");
+    return c && c.data && Date.now() - c.t < CACHE_MAX_MS ? c.data : null;
+  } catch {
+    return null;
+  }
+}
+function guardarCache(clave, data) {
+  try { localStorage.setItem(clave, JSON.stringify({ t: Date.now(), data })); } catch { /* sin espacio o bloqueado */ }
+}
+
 /** ¿Está configurado el backend nuevo? null mientras carga links.json. */
 export function useV2Configurado() {
   const { getUrl, error } = useLinks();
@@ -46,7 +64,14 @@ export function useVacaciones(anio) {
       setSnap({ data: null, error: linksError ? "no se pudo leer links.json" : `falta ${CLAVE_V2} en links.json` });
       return;
     }
-    if (!silencioso) setSnap(null);
+    const clave = claveCache(email, anio);
+    if (!silencioso) {
+      const previo = leerCache(clave);
+      setSnap(previo ? { data: previo, error: "", actualizando: true } : null);
+      silencioso = !!previo;
+    } else {
+      setSnap((prev) => (prev?.data ? { ...prev, actualizando: true, avisoRecarga: "" } : prev));
+    }
     const qp = new URLSearchParams({ action: "datos", email: email || "", ...(anio ? { anio: String(anio) } : {}) }).toString();
     const u = url + (url.indexOf("?") < 0 ? "?" : "&") + qp;
     for (let intento = 1; ; intento++) {
@@ -54,10 +79,11 @@ export function useVacaciones(anio) {
         const res = await fetch(u, { cache: "no-store", signal: AbortSignal.timeout(60000) }).then(leerJSON);
         if (!res || !res.ok) throw new Error((res && res.error) || "respuesta inesperada");
         setSnap({ data: res.data, error: "" });
+        guardarCache(clave, res.data);
         return;
       } catch (e) {
         if (e.html && intento < 2) { await new Promise((ok) => setTimeout(ok, 1500)); continue; }
-        setSnap((prev) => (silencioso && prev?.data ? { ...prev, avisoRecarga: String(e.message || e) } : { data: null, error: String(e.message || e) }));
+        setSnap((prev) => (silencioso && prev?.data ? { ...prev, actualizando: false, avisoRecarga: String(e.message || e) } : { data: null, error: String(e.message || e) }));
         return;
       }
     }

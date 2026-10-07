@@ -44,6 +44,7 @@ const MIG = {
 function empezarDeCero() {
   const r = migrar2026(true);
   diagnosticar();
+  _invalidar();
   return r;
 }
 
