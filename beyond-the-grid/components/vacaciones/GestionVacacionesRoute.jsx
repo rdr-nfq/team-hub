@@ -188,7 +188,7 @@ function Personas({ d, post, onCambio }) {
   };
   const siguiente = Math.max(...(d.anios || [d.year])) + 1;
   const crearAnio = async () => {
-    if (!confirm(`¿Crear la pestaña Vacas_${siguiente}? Copia las personas activas, su grupo y sus días del año, y les pasa lo que les quede como «Días año anterior».`)) return;
+    if (!confirm(`¿Crear el año ${siguiente}? Se crean Vacas_${siguiente} (personas activas con su grupo y sus días del año; lo que les quede pasa a «Días año anterior»), Festivos_${siguiente} con los mismos grupos (sin festivos: añádelos en la pestaña Festivos) y Solicitudes_${siguiente}.`)) return;
     setError("");
     try { await post("crearAnio", { anio: siguiente }); onCambio(); } catch (e) { setError(String(e.message || e)); }
   };
@@ -274,15 +274,15 @@ function Festivos({ d, post, onCambio }) {
                   onChange={(e) => setRenombrar({ ...renombrar, [g.grupo]: e.target.value })}
                   className={`${FIELD} min-w-0 flex-1 !py-1 text-[13px] font-bold`}
                 />
-                <select value={g.pais} disabled={ocupado} onChange={(e) => hacer("guardarGrupo", { grupo: g.grupo, pais: e.target.value })} className={`${FIELD} !py-1 text-xs`}>
+                <select value={g.pais} disabled={ocupado} onChange={(e) => hacer("guardarGrupo", { anio: d.year, grupo: g.grupo, pais: e.target.value })} className={`${FIELD} !py-1 text-xs`}>
                   <option value="ES">ES</option><option value="MX">MX</option>
                 </select>
-                <button type="button" title="Borrar grupo" disabled={ocupado} onClick={() => confirm(`¿Borrar el grupo ${g.grupo} y sus festivos?`) && hacer("borrarGrupo", { grupo: g.grupo })} className="rounded-lg border border-white/10 p-1.5 text-sand/45 hover:border-mandarin/60 hover:text-mandarin"><IconX size={13} /></button>
+                <button type="button" title="Borrar grupo" disabled={ocupado} onClick={() => confirm(`¿Borrar el grupo ${g.grupo} y sus festivos?`) && hacer("borrarGrupo", { anio: d.year, grupo: g.grupo })} className="rounded-lg border border-white/10 p-1.5 text-sand/45 hover:border-mandarin/60 hover:text-mandarin"><IconX size={13} /></button>
               </div>
               <div className="mt-1 flex items-center gap-2 text-[11px] text-sand/50">
                 {usos[g.grupo] || 0} personas · {nFest[g.grupo] || 0} festivos en {anio}
                 {(renombrar[g.grupo] ?? g.grupo).trim() !== g.grupo && (
-                  <button type="button" disabled={ocupado} onClick={() => hacer("guardarGrupo", { grupo: renombrar[g.grupo].trim(), pais: g.pais, anterior: g.grupo }, () => setRenombrar({}))} className="ml-auto font-bold text-serene hover:underline">Renombrar</button>
+                  <button type="button" disabled={ocupado} onClick={() => hacer("guardarGrupo", { anio: d.year, grupo: renombrar[g.grupo].trim(), pais: g.pais, anterior: g.grupo }, () => setRenombrar({}))} className="ml-auto font-bold text-serene hover:underline">Renombrar</button>
                 )}
               </div>
             </li>
@@ -294,7 +294,7 @@ function Festivos({ d, post, onCambio }) {
             <input value={nuevoGrupo.grupo} onChange={(e) => setNuevoGrupo({ ...nuevoGrupo, grupo: e.target.value })} placeholder="Sevilla" className={`${FIELD} w-full`} />
           </label>
           <select value={nuevoGrupo.pais} onChange={(e) => setNuevoGrupo({ ...nuevoGrupo, pais: e.target.value })} className={FIELD}><option value="ES">ES</option><option value="MX">MX</option></select>
-          <button type="button" disabled={ocupado || !nuevoGrupo.grupo.trim()} onClick={() => hacer("guardarGrupo", { grupo: nuevoGrupo.grupo.trim(), pais: nuevoGrupo.pais }, () => setNuevoGrupo({ grupo: "", pais: "ES" }))} className={`${BTN} text-[#001391]`} style={{ background: PALETTE.serene }}><IconPlus size={13} /></button>
+          <button type="button" disabled={ocupado || !nuevoGrupo.grupo.trim()} onClick={() => hacer("guardarGrupo", { anio: d.year, grupo: nuevoGrupo.grupo.trim(), pais: nuevoGrupo.pais }, () => setNuevoGrupo({ grupo: "", pais: "ES" }))} className={`${BTN} text-[#001391]`} style={{ background: PALETTE.serene }}><IconPlus size={13} /></button>
         </div>
       </section>
 

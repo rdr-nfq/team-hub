@@ -22,10 +22,11 @@
  *  día con 2026_Calendario. Revísalo antes de dar la migración por buena.
  *
  *  TODO DE UNA, DESDE CERO: empezarDeCero() (o menú 🌴 Vacaciones → «Migrar
- *  2026 desde cero») borra lo generado antes (Vacas_2026, Festivos,
- *  Grupos_Festivos, Migracion_2026; Solicitudes se guarda como copia si tiene
- *  filas) y lo rehace entero: rejilla con fórmulas y formato, grupos y
- *  festivos, Solicitudes vacía e informe. No hace falta nada más después.
+ *  2026 desde cero») borra lo generado antes (Vacas_2026, Festivos_2026,
+ *  Migracion_2026 y las pestañas sin año de versiones previas; las de
+ *  solicitudes con filas se guardan como copia) y lo rehace entero: rejilla
+ *  con fórmulas y formato, Festivos_2026 (grupos + festivos), Solicitudes_2026
+ *  vacía e informe. No hace falta nada más después.
  *  Los grupos cuyos miembros tienen email .mx se crean como "México DC" (MX).
  *  ⚠ Antes de migrar, resuelve las solicitudes pendientes en el panel antiguo.
  * ============================================================================
@@ -46,18 +47,20 @@ function empezarDeCero() {
   return r;
 }
 
-/** Borra lo que generó una migración anterior. Solicitudes con filas no se
- *  pierde: se renombra a Solicitudes_copia_<fecha>. */
+/** Borra lo que generó una migración anterior (también las pestañas sin año
+ *  de versiones previas: Festivos, Grupos_Festivos, Solicitudes). Una pestaña
+ *  de solicitudes con filas no se pierde: se renombra a <nombre>_copia_<fecha>. */
 function _migLimpiar(ss) {
-  [_nombreHoja(MIG.ANIO), HOJA.FESTIVOS, HOJA.GRUPOS, MIG.INFORME].forEach(function (n) {
+  [_nombreHoja(MIG.ANIO), _nombreFestivos(MIG.ANIO), 'Festivos', 'Grupos_Festivos', MIG.INFORME].forEach(function (n) {
     const sh = ss.getSheetByName(n);
     if (sh) ss.deleteSheet(sh);
   });
-  const sol = ss.getSheetByName(HOJA.SOLICITUDES);
-  if (sol) {
-    if (sol.getLastRow() > 1) sol.setName(HOJA.SOLICITUDES + '_copia_' + Utilities.formatDate(new Date(), 'Europe/Madrid', 'yyyyMMdd-HHmm'));
+  [_nombreSolicitudes(MIG.ANIO), 'Solicitudes'].forEach(function (n) {
+    const sol = ss.getSheetByName(n);
+    if (!sol) return;
+    if (sol.getLastRow() > 1) sol.setName(n + '_copia_' + Utilities.formatDate(new Date(), 'Europe/Madrid', 'yyyyMMdd-HHmm'));
     else ss.deleteSheet(sol);
-  }
+  });
 }
 
 function migrar2026(forzar) {
@@ -105,23 +108,24 @@ function migrar2026(forzar) {
       Logger.log('Grupo ' + antes + ' -> México DC (MX)');
     }
   });
-  const shG = _hoja(ss, HOJA.GRUPOS, ['Grupo', 'País (ES/MX)']);
-  const existentes = _leerGrupos(ss).map(function (g) { return g.grupo; });
+  // Festivos_2026: grupos (A:B) y festivos (D:F) en la misma pestaña.
+  const shF = _hojaFestivos(ss, MIG.ANIO);
+  const existentes = _leerGrupos(ss, MIG.ANIO).map(function (g) { return g.grupo; });
   const nuevosG = grupos.lista.filter(function (g) { return existentes.indexOf(g.grupo) < 0; }).map(function (g) { return [g.grupo, g.pais]; });
-  if (nuevosG.length) shG.getRange(shG.getLastRow() + 1, 1, nuevosG.length, 2).setValues(nuevosG);
-  const shF = _hoja(ss, HOJA.FESTIVOS, ['Fecha', 'Grupo', 'Nombre'], [1]);
-  const festivosYa = _leerFestivos(ss);
+  if (nuevosG.length) shF.getRange(_ultimaFila(shF, F.GRUPO) + 1, F.GRUPO, nuevosG.length, 2).setValues(nuevosG);
+  const festivosYa = _leerFestivos(ss, MIG.ANIO);
   const nuevosF = [];
   grupos.lista.forEach(function (g) {
     g.fechas.forEach(function (iso) {
       if (!festivosYa.some(function (f) { return f.fecha === iso && f.grupo === g.grupo; })) nuevosF.push([iso, g.grupo, 'Festivo (migrado)']);
     });
   });
-  if (nuevosF.length) shF.getRange(shF.getLastRow() + 1, 1, nuevosF.length, 3).setNumberFormat('@').setValues(nuevosF);
+  if (nuevosF.length) shF.getRange(_ultimaFila(shF, F.FECHA) + 1, F.FECHA, nuevosF.length, 3).setNumberFormat('@').setValues(nuevosF);
+  _ordenarFestivos(shF);
   filas.forEach(function (f) { f.grupo = grupos.dePersona[f.nombre] || ''; });
 
   _crearRejilla(ss, MIG.ANIO, filas);
-  _hojaSolicitudes(ss);
+  _hojaSolicitudes(ss, MIG.ANIO);
 
   // Informe.
   const diffs = comp ? _migDiferencias(filas, comp) : [];

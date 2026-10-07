@@ -8,7 +8,8 @@
  *  (apps-script/vacaciones-antiguo/).
  *
  *  PESTAÑAS DEL EXCEL
- *   · Vacas_<año> (Vacas_2026, Vacas_2027…): rejilla editable a mano.
+ *   Una pestaña de cada por año (Vacas_2026, Festivos_2026, Solicitudes_2026…):
+ *   · Vacas_<año>: rejilla editable a mano.
  *       Fila 1 mes · fila 2 día del mes · fila 3 día de la semana.
  *       Desde la fila 4, una persona por fila:
  *         A Persona · B Email · C Grupo festivos · D Activo
@@ -19,14 +20,15 @@
  *         BA Baja · RE Revisión · FT Festivo trabajado · FE Festivo · VE Votación
  *       ⚠ No insertar ni borrar columnas de días: la columna de cada fecha se
  *         calcula (J = 1 de enero). Personas: añadir/quitar filas sin problema.
- *   · Solicitudes: una fila por petición. Clase NUEVA (pedir días), CANCELACION
+ *   · Solicitudes_<año>: una fila por petición. Clase NUEVA (pedir días), CANCELACION
  *       (liberar días ya aprobados) o MODIFICACION (cambiar unos días aprobados
  *       por otros). Todas pasan por la aprobación de coordinación.
  *       Estado: PENDIENTE · APROBADA · RECHAZADA · CANCELADA (la retira quien
  *       la pidió) · ANULADA (aprobada y luego cancelada entera) · MODIFICADA
  *       (aprobada y luego sustituida por un cambio).
- *   · Festivos: Fecha · Grupo · Nombre (un festivo por grupo y día).
- *   · Grupos_Festivos: Grupo · País (ES/MX), p. ej. Madrid/ES, México DC/MX.
+ *   · Festivos_<año>: grupos y festivos en la misma pestaña, lado a lado.
+ *       A:B  Grupo · País (ES/MX)            p. ej. Madrid/ES, México DC/MX
+ *       D:F  Fecha · Grupo · Nombre          un festivo por grupo y día
  *   Las pestañas antiguas ("Vacaciones 2026", "2026_Calendario") quedan solo
  *   como registro: migrar2026() (Migracion_2026.gs) copia una vez a Vacas_2026.
  *
@@ -82,12 +84,12 @@ const V_CONFIG = {
   TIPOS_SOLICITABLES: ['VA', 'FO', 'ES']
 };
 
-const HOJA = {
-  SOLICITUDES: 'Solicitudes',
-  FESTIVOS: 'Festivos',
-  GRUPOS: 'Grupos_Festivos'
-};
+// Una pestaña de cada por año: Vacas_2026, Festivos_2026, Solicitudes_2026.
 const PREFIJO_ANIO = 'Vacas_';
+const PREFIJO_FESTIVOS = 'Festivos_';
+const PREFIJO_SOLICITUDES = 'Solicitudes_';
+// Festivos_<año>: dos tablas lado a lado. A:B grupos · D:F festivos.
+const F = { GRUPO: 1, PAIS: 2, FECHA: 4, FGRUPO: 5, NOMBRE: 6 };
 
 // Rejilla Vacas_<año>
 const G = {
@@ -236,34 +238,77 @@ function _aliasEmail(email) {
 }
 
 // ── Grupos y festivos ───────────────────────────────────────────────────────
-function _hoja(ss, nombre, cabecera, textoCols) {
+function _nombreFestivos(anio) { return PREFIJO_FESTIVOS + anio; }
+function _nombreSolicitudes(anio) { return PREFIJO_SOLICITUDES + anio; }
+/** Años con pestaña de ese prefijo (p. ej. Festivos_2026 -> 2026). */
+function _aniosDe(ss, prefijo) {
+  const re = new RegExp('^' + prefijo + '(\\d{4})$');
+  return ss.getSheets().map(function (sh) { const m = re.exec(sh.getName()); return m ? Number(m[1]) : null; })
+    .filter(Boolean).sort();
+}
+/** Última fila con dato en una columna (las dos tablas de Festivos crecen por separado). */
+function _ultimaFila(sh, col) {
+  const n = sh.getLastRow();
+  if (n < 2) return 1;
+  const vals = sh.getRange(2, col, n - 1, 1).getValues();
+  for (let i = vals.length - 1; i >= 0; i--) if (String(vals[i][0]).trim() !== '') return i + 2;
+  return 1;
+}
+
+/** Festivos_<anio>: la crea con su formato si no existe. */
+function _hojaFestivos(ss, anio) {
+  const nombre = _nombreFestivos(anio);
   let sh = ss.getSheetByName(nombre);
-  if (!sh) {
-    sh = ss.insertSheet(nombre);
-    sh.getRange(1, 1, 1, cabecera.length).setValues([cabecera]).setFontWeight('bold').setBackground('#E2E6EA');
-    sh.setFrozenRows(1);
-    (textoCols || []).forEach(function (c) { sh.getRange(2, c, 1000, 1).setNumberFormat('@'); });
-  }
+  if (sh) return sh;
+  sh = ss.insertSheet(nombre);
+  sh.getRange(1, 1, 1, 6).setValues([['Grupo', 'País (ES/MX)', '', 'Fecha', 'Grupo', 'Nombre']]);
+  [sh.getRange(1, F.GRUPO, 1, 2), sh.getRange(1, F.FECHA, 1, 3)].forEach(function (r) {
+    r.setFontWeight('bold').setBackground('#001391').setFontColor('#F7F8F8');
+  });
+  sh.getRange(2, 1, 500, 6).setFontColor('#001391');
+  sh.getRange(2, F.FECHA, 500, 1).setNumberFormat('@');
+  sh.getRange(2, F.PAIS, 500, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['ES', 'MX'], true).build());
+  sh.getRange(2, F.FGRUPO, 500, 1).setDataValidation(
+    SpreadsheetApp.newDataValidation().requireValueInRange(sh.getRange('A2:A200'), true).setAllowInvalid(true).build());
+  sh.setFrozenRows(1);
+  sh.setHiddenGridlines(true);
+  sh.setColumnWidth(F.GRUPO, 160); sh.setColumnWidth(F.PAIS, 90); sh.setColumnWidth(3, 30);
+  sh.setColumnWidth(F.FECHA, 110); sh.setColumnWidth(F.FGRUPO, 160); sh.setColumnWidth(F.NOMBRE, 260);
+  sh.getRange(1, 1).setNote('Grupos de festivos (A:B) y festivos de cada grupo (D:F). Cada persona tiene su grupo en Vacas_' + anio + ' (columna C).');
   return sh;
 }
 
-function _leerGrupos(ss) {
-  const sh = _hoja(ss, HOJA.GRUPOS, ['Grupo', 'País (ES/MX)']);
-  const vals = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues() : [];
-  return vals.filter(function (r) { return String(r[0]).trim(); }).map(function (r, i) {
-    return { grupo: String(r[0]).trim(), pais: String(r[1] || 'ES').trim().toUpperCase() === 'MX' ? 'MX' : 'ES', fila: i + 2 };
-  });
+/** Deja la tabla de festivos (D:F) ordenada por fecha y grupo. */
+function _ordenarFestivos(sh) {
+  const n = _ultimaFila(sh, F.FECHA);
+  if (n > 2) sh.getRange(2, F.FECHA, n - 1, 3).sort([{ column: F.FECHA, ascending: true }, { column: F.FGRUPO, ascending: true }]);
 }
 
-function _leerFestivos(ss) {
-  const sh = _hoja(ss, HOJA.FESTIVOS, ['Fecha', 'Grupo', 'Nombre'], [1]);
-  const tz = ss.getSpreadsheetTimeZone();
-  const vals = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, 3).getValues() : [];
+/** Grupos de un año: [{grupo, pais, fila, sh}] ([] si no hay Festivos_<anio>). */
+function _leerGrupos(ss, anio) {
+  const sh = ss.getSheetByName(_nombreFestivos(anio));
+  if (!sh || sh.getLastRow() < 2) return [];
   const out = [];
-  vals.forEach(function (r, i) {
-    const fecha = _isoDeCelda(r[0], tz);
-    const grupo = String(r[1] || '').trim();
-    if (fecha && grupo) out.push({ fecha: fecha, grupo: grupo, nombre: String(r[2] || '').trim(), fila: i + 2 });
+  sh.getRange(2, F.GRUPO, sh.getLastRow() - 1, 2).getValues().forEach(function (r, i) {
+    const g = String(r[0] || '').trim();
+    if (g) out.push({ grupo: g, pais: String(r[1] || 'ES').trim().toUpperCase() === 'MX' ? 'MX' : 'ES', fila: i + 2, sh: sh });
+  });
+  return out;
+}
+
+/** Festivos de un año, o de todos los Festivos_<año> si no se indica. */
+function _leerFestivos(ss, anio) {
+  const tz = ss.getSpreadsheetTimeZone();
+  const anios = anio ? [Number(anio)] : _aniosDe(ss, PREFIJO_FESTIVOS);
+  const out = [];
+  anios.forEach(function (a) {
+    const sh = ss.getSheetByName(_nombreFestivos(a));
+    if (!sh || sh.getLastRow() < 2) return;
+    sh.getRange(2, F.FECHA, sh.getLastRow() - 1, 3).getValues().forEach(function (r, i) {
+      const fecha = _isoDeCelda(r[0], tz);
+      const grupo = String(r[1] || '').trim();
+      if (fecha && grupo) out.push({ fecha: fecha, grupo: grupo, nombre: String(r[2] || '').trim(), fila: i + 2, sh: sh });
+    });
   });
   return out;
 }
@@ -352,8 +397,8 @@ function datos(anioParam, email) {
   const grid = anio ? _leerAnio(ss, anio) : null;
   if (!grid) throw new Error('No existe la pestaña ' + _nombreHoja(anio || anioHoy) + ' en el Excel. ¿Se ha ejecutado migrar2026()?');
 
-  const grupos = _leerGrupos(ss);
-  const festivos = _leerFestivos(ss).filter(function (f) { return f.fecha.slice(0, 4) === String(anio); });
+  const grupos = _leerGrupos(ss, anio);
+  const festivos = _leerFestivos(ss, anio);
   const esCoord = _esCoord(email);
   const yo = email ? _personaPorEmail(grid, email) : null;
 
@@ -440,37 +485,56 @@ function datosPublicos(anio) {
 }
 
 // ── Solicitudes ─────────────────────────────────────────────────────────────
-function _hojaSolicitudes(ss) {
-  const sh = _hoja(ss, HOJA.SOLICITUDES, COLS_SOL, [S.Creada + 1, S.Desde + 1, S.Hasta + 1, S['Original desde'] + 1, S['Original hasta'] + 1, S.Resuelta + 1]);
+function _hojaSolicitudes(ss, anio) {
+  const nombre = _nombreSolicitudes(anio);
+  let sh = ss.getSheetByName(nombre);
+  if (!sh) {
+    sh = ss.insertSheet(nombre);
+    sh.getRange(1, 1, 1, COLS_SOL.length).setValues([COLS_SOL]).setFontWeight('bold').setBackground('#001391').setFontColor('#F7F8F8');
+    sh.getRange(2, 1, 1000, COLS_SOL.length).setFontColor('#001391');
+    [S.Creada, S.Desde, S.Hasta, S['Original desde'], S['Original hasta'], S.Resuelta].forEach(function (c) {
+      sh.getRange(2, c + 1, 1000, 1).setNumberFormat('@');
+    });
+    sh.setFrozenRows(1);
+    sh.setHiddenGridlines(true);
+    return sh;
+  }
   const cab = sh.getRange(1, 1, 1, COLS_SOL.length).getValues()[0];
   if (cab.join('|') !== COLS_SOL.join('|')) {
-    if (sh.getLastRow() > 1) throw new Error('La pestaña Solicitudes tiene columnas de otra versión: renómbrala (p. ej. Solicitudes_old) y se creará de nuevo.');
-    sh.getRange(1, 1, 1, COLS_SOL.length).setValues([COLS_SOL]).setFontWeight('bold').setBackground('#E2E6EA');
+    if (sh.getLastRow() > 1) throw new Error('La pestaña ' + nombre + ' tiene columnas de otra versión: renómbrala (p. ej. ' + nombre + '_old) y se creará de nuevo.');
+    sh.getRange(1, 1, 1, COLS_SOL.length).setValues([COLS_SOL]).setFontWeight('bold');
   }
   return sh;
 }
 
-function _leerSolicitudes(ss) {
-  const sh = _hojaSolicitudes(ss);
+/** Solicitudes de un año, o de todos los Solicitudes_<año>. Cada una lleva su pestaña (sh). */
+function _leerSolicitudes(ss, anio) {
   const tz = ss.getSpreadsheetTimeZone();
-  if (sh.getLastRow() < 2) return [];
   const t = function (v) { return v instanceof Date ? v.toISOString() : String(v || ''); };
-  return sh.getRange(2, 1, sh.getLastRow() - 1, COLS_SOL.length).getValues().map(function (r, i) {
-    const clase = String(r[S.Clase] || 'NUEVA').trim().toUpperCase();
-    return {
-      fila: i + 2, id: String(r[S.Id]), creada: t(r[S.Creada]),
-      email: _normEmail(r[S.Email]), persona: String(r[S.Persona]).trim(),
-      clase: CLASES.indexOf(clase) >= 0 ? clase : 'NUEVA',
-      tipo: String(r[S.Tipo]).trim().toUpperCase(),
-      desde: _isoDeCelda(r[S.Desde], tz), hasta: _isoDeCelda(r[S.Hasta], tz), dias: Number(r[S.Días]) || 0,
-      tipoOrig: String(r[S['Tipo original']] || '').trim().toUpperCase(),
-      origDesde: _isoDeCelda(r[S['Original desde']], tz), origHasta: _isoDeCelda(r[S['Original hasta']], tz),
-      diasOrig: Number(r[S['Días original']]) || 0, ref: String(r[S.Referencia] || '').trim(),
-      comentario: String(r[S.Comentario] || ''), estado: String(r[S.Estado] || '').trim().toUpperCase(),
-      resueltaPor: String(r[S['Resuelta por']] || ''), resuelta: t(r[S.Resuelta]),
-      motivo: String(r[S.Motivo] || ''), evento: String(r[S['Evento calendario']] || '')
-    };
-  }).filter(function (s) { return s.id; });
+  const anios = anio ? [Number(anio)] : _aniosDe(ss, PREFIJO_SOLICITUDES);
+  const out = [];
+  anios.forEach(function (a) {
+    const sh = ss.getSheetByName(_nombreSolicitudes(a));
+    if (!sh || sh.getLastRow() < 2) return;
+    sh.getRange(2, 1, sh.getLastRow() - 1, COLS_SOL.length).getValues().forEach(function (r, i) {
+      if (!String(r[S.Id] || '').trim()) return;
+      const clase = String(r[S.Clase] || 'NUEVA').trim().toUpperCase();
+      out.push({
+        sh: sh, fila: i + 2, id: String(r[S.Id]), creada: t(r[S.Creada]),
+        email: _normEmail(r[S.Email]), persona: String(r[S.Persona]).trim(),
+        clase: CLASES.indexOf(clase) >= 0 ? clase : 'NUEVA',
+        tipo: String(r[S.Tipo]).trim().toUpperCase(),
+        desde: _isoDeCelda(r[S.Desde], tz), hasta: _isoDeCelda(r[S.Hasta], tz), dias: Number(r[S.Días]) || 0,
+        tipoOrig: String(r[S['Tipo original']] || '').trim().toUpperCase(),
+        origDesde: _isoDeCelda(r[S['Original desde']], tz), origHasta: _isoDeCelda(r[S['Original hasta']], tz),
+        diasOrig: Number(r[S['Días original']]) || 0, ref: String(r[S.Referencia] || '').trim(),
+        comentario: String(r[S.Comentario] || ''), estado: String(r[S.Estado] || '').trim().toUpperCase(),
+        resueltaPor: String(r[S['Resuelta por']] || ''), resuelta: t(r[S.Resuelta]),
+        motivo: String(r[S.Motivo] || ''), evento: String(r[S['Evento calendario']] || '')
+      });
+    });
+  });
+  return out;
 }
 
 function _solPublica(s) {
@@ -586,7 +650,7 @@ function solicitar(p) {
     fila[S['Tipo original']] = tipoOrig; fila[S['Original desde']] = origDesde; fila[S['Original hasta']] = origHasta;
     fila[S['Días original']] = clase === 'MODIFICACION' ? diasOrig : ''; fila[S.Referencia] = ref;
     fila[S.Comentario] = String(p.comentario || '').slice(0, 1000); fila[S.Estado] = 'PENDIENTE';
-    _hojaSolicitudes(ss).appendRow(fila);
+    _hojaSolicitudes(ss, anio).appendRow(fila);
 
     const sol = { id: id, persona: persona.nombre, email: email, clase: clase, tipo: tipo, desde: desde, hasta: hasta, dias: dias,
       tipoOrig: tipoOrig, origDesde: origDesde, origHasta: origHasta, diasOrig: diasOrig, ref: ref, comentario: String(p.comentario || '') };
@@ -608,7 +672,7 @@ function cancelar(p) {
   if (!s) throw new Error('No se encuentra la solicitud.');
   if (alias.indexOf(s.email) < 0) throw new Error('Solo puedes retirar tus propias solicitudes.');
   if (s.estado !== 'PENDIENTE') throw new Error('Solo se pueden retirar solicitudes pendientes (esta está ' + s.estado.toLowerCase() + '). Para anular días ya aprobados, pide una cancelación.');
-  const sh = _hojaSolicitudes(ss);
+  const sh = s.sh;
   sh.getRange(s.fila, S.Estado + 1).setValue('CANCELADA');
   sh.getRange(s.fila, S.Resuelta + 1).setValue(new Date().toISOString());
   return { id: s.id, estado: 'CANCELADA' };
@@ -625,7 +689,7 @@ function resolver(p) {
     const s = sols.filter(function (x) { return x.id === String(p.id); })[0];
     if (!s) throw new Error('No se encuentra la solicitud.');
     if (s.estado !== 'PENDIENTE') throw new Error('La solicitud ya está ' + s.estado.toLowerCase() + '.');
-    const sh = _hojaSolicitudes(ss);
+    const sh = s.sh;
     const quien = _normEmail(p.email);
     const motivo = String(p.motivo || '').trim().slice(0, 500);
     let eventoId = '';
@@ -655,7 +719,7 @@ function resolver(p) {
         if (!libres.length) throw new Error('Esos días ya no tienen ' + s.tipo + ' en el Excel: no hay nada que cancelar.');
         libres.forEach(function (iso) { celda(iso).setValue(''); persona.codigos[_idxDia(iso)] = ''; liberados++; });
         sh.getRange(s.fila, S.Días + 1).setValue(libres.length);
-        if (ref) _ajustarOriginal(sh, ref, persona, 'ANULADA');
+        if (ref) _ajustarOriginal(ref, persona, 'ANULADA');
 
       } else {
         const libres = _diasConCodigo(persona, s.origDesde, s.origHasta, s.tipoOrig);
@@ -667,7 +731,7 @@ function resolver(p) {
         a.laborables.forEach(function (iso) { celda(iso).setValue(s.tipo); persona.codigos[_idxDia(iso)] = s.tipo; escritos++; });
         sh.getRange(s.fila, S.Días + 1).setValue(a.laborables.length);
         sh.getRange(s.fila, S['Días original'] + 1).setValue(libres.length);
-        if (ref) _ajustarOriginal(sh, ref, persona, 'MODIFICADA');
+        if (ref) _ajustarOriginal(ref, persona, 'MODIFICADA');
         eventoId = _crearEvento(s) || '';
       }
     }
@@ -686,7 +750,8 @@ function resolver(p) {
 /* Tras cancelar o cambiar días de una solicitud aprobada (ref): su evento del
    calendario se rehace con lo que le quede y, si no le queda nada (o ha sido
    sustituida por un cambio), pasa a `estadoFinal`. */
-function _ajustarOriginal(sh, ref, persona, estadoFinal) {
+function _ajustarOriginal(ref, persona, estadoFinal) {
+  const sh = ref.sh;
   _borrarEvento(ref.evento);
   const quedan = estadoFinal === 'MODIFICADA' ? [] : _diasConCodigo(persona, ref.desde, ref.hasta, ref.tipo);
   let nuevoEvento = '';
@@ -749,24 +814,30 @@ function _sincronizarFE(grid, persona, fxg) {
 function guardarFestivo(p) {
   const fecha = String(p.fecha || '');
   if (!_isoOk(fecha)) throw new Error('Fecha no válida.');
+  const anio = Number(fecha.slice(0, 4));
   const grupos = [].concat(p.grupos || []).map(function (g) { return String(g).trim(); }).filter(Boolean);
   if (!grupos.length) throw new Error('Elige al menos un grupo.');
   const ss = _ss();
-  const existentes = _leerGrupos(ss).map(function (g) { return g.grupo; });
-  grupos.forEach(function (g) { if (existentes.indexOf(g) < 0) throw new Error('No existe el grupo ' + g + '.'); });
+  const existentes = _leerGrupos(ss, anio).map(function (g) { return g.grupo; });
+  grupos.forEach(function (g) { if (existentes.indexOf(g) < 0) throw new Error('No existe el grupo ' + g + ' en ' + _nombreFestivos(anio) + '.'); });
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    const sh = _hoja(ss, HOJA.FESTIVOS, ['Fecha', 'Grupo', 'Nombre'], [1]);
-    const ya = _leerFestivos(ss);
+    const sh = _hojaFestivos(ss, anio);
+    const ya = _leerFestivos(ss, anio);
     const nombre = String(p.nombre || 'Festivo').trim();
+    const nuevos = [];
     grupos.forEach(function (g) {
       const f = ya.filter(function (x) { return x.fecha === fecha && x.grupo === g; })[0];
-      if (f) sh.getRange(f.fila, 3).setValue(nombre);
-      else sh.appendRow([fecha, g, nombre]);
+      if (f) sh.getRange(f.fila, F.NOMBRE).setValue(nombre);
+      else nuevos.push([fecha, g, nombre]);
     });
+    if (nuevos.length) {
+      sh.getRange(_ultimaFila(sh, F.FECHA) + 1, F.FECHA, nuevos.length, 3).setNumberFormat('@').setValues(nuevos);
+      _ordenarFestivos(sh);
+    }
     // FE en la rejilla del año para quienes son de esos grupos.
-    const grid = _leerAnio(ss, Number(fecha.slice(0, 4)));
+    const grid = _leerAnio(ss, anio);
     const ocupados = [];
     if (grid) {
       const col = G.DIA1 + _idxDia(fecha);
@@ -785,10 +856,13 @@ function guardarFestivo(p) {
 function borrarFestivo(p) {
   const ss = _ss();
   const fecha = String(p.fecha || ''), grupo = String(p.grupo || '').trim();
-  const f = _leerFestivos(ss).filter(function (x) { return x.fecha === fecha && x.grupo === grupo; })[0];
+  if (!_isoOk(fecha)) throw new Error('Fecha no válida.');
+  const anio = Number(fecha.slice(0, 4));
+  const f = _leerFestivos(ss, anio).filter(function (x) { return x.fecha === fecha && x.grupo === grupo; })[0];
   if (!f) throw new Error('No existe ese festivo.');
-  ss.getSheetByName(HOJA.FESTIVOS).deleteRow(f.fila);
-  const grid = _leerAnio(ss, Number(fecha.slice(0, 4)));
+  // Solo su tabla (D:F): la de grupos (A:B) comparte filas y no se toca.
+  f.sh.getRange(f.fila, F.FECHA, 1, 3).deleteCells(SpreadsheetApp.Dimension.ROWS);
+  const grid = _leerAnio(ss, anio);
   if (grid) {
     const col = G.DIA1 + _idxDia(fecha);
     grid.personas.filter(function (x) { return x.grupo === grupo && x.codigos[_idxDia(fecha)] === 'FE'; })
@@ -797,48 +871,47 @@ function borrarFestivo(p) {
   return { fecha: fecha, grupo: grupo };
 }
 
+/** Año de las operaciones de grupos: el que mande la web o el de hoy. */
+function _anioParam(p) { return Number(p.anio) || Number(_hoyISO().slice(0, 4)); }
+
 function guardarGrupo(p) {
   const ss = _ss();
+  const anio = _anioParam(p);
   const grupo = String(p.grupo || '').trim();
   const pais = String(p.pais || 'ES').toUpperCase() === 'MX' ? 'MX' : 'ES';
   if (!grupo) throw new Error('Falta el nombre del grupo.');
-  const grupos = _leerGrupos(ss);
-  const sh = ss.getSheetByName(HOJA.GRUPOS);
+  const sh = _hojaFestivos(ss, anio);
+  const grupos = _leerGrupos(ss, anio);
   const anterior = String(p.anterior || '').trim();
   if (anterior && anterior !== grupo) {
     const g = grupos.filter(function (x) { return x.grupo === anterior; })[0];
     if (!g) throw new Error('No existe el grupo ' + anterior + '.');
     if (grupos.some(function (x) { return x.grupo === grupo; })) throw new Error('Ya existe un grupo ' + grupo + '.');
-    sh.getRange(g.fila, 1, 1, 2).setValues([[grupo, pais]]);
-    // Renombrar en festivos y en todas las rejillas.
-    const shF = ss.getSheetByName(HOJA.FESTIVOS);
-    _leerFestivos(ss).filter(function (f) { return f.grupo === anterior; }).forEach(function (f) { shF.getRange(f.fila, 2).setValue(grupo); });
-    _anios(ss).forEach(function (a) {
-      const grid = _leerAnio(ss, a);
-      grid.personas.filter(function (x) { return x.grupo === anterior; }).forEach(function (x) { grid.sh.getRange(x.fila, G.GRUPO).setValue(grupo); });
-    });
+    sh.getRange(g.fila, F.GRUPO, 1, 2).setValues([[grupo, pais]]);
+    // Renombrar en sus festivos y en la rejilla de ese año.
+    _leerFestivos(ss, anio).filter(function (f) { return f.grupo === anterior; }).forEach(function (f) { sh.getRange(f.fila, F.FGRUPO).setValue(grupo); });
+    const grid = _leerAnio(ss, anio);
+    if (grid) grid.personas.filter(function (x) { return x.grupo === anterior; }).forEach(function (x) { grid.sh.getRange(x.fila, G.GRUPO).setValue(grupo); });
     return { grupo: grupo, pais: pais, renombrado: anterior };
   }
   const g = grupos.filter(function (x) { return x.grupo === grupo; })[0];
-  if (g) sh.getRange(g.fila, 2).setValue(pais);
-  else sh.appendRow([grupo, pais]);
+  if (g) sh.getRange(g.fila, F.PAIS).setValue(pais);
+  else sh.getRange(_ultimaFila(sh, F.GRUPO) + 1, F.GRUPO, 1, 2).setValues([[grupo, pais]]);
   return { grupo: grupo, pais: pais };
 }
 
 function borrarGrupo(p) {
   const ss = _ss();
+  const anio = _anioParam(p);
   const grupo = String(p.grupo || '').trim();
-  const g = _leerGrupos(ss).filter(function (x) { return x.grupo === grupo; })[0];
+  const g = _leerGrupos(ss, anio).filter(function (x) { return x.grupo === grupo; })[0];
   if (!g) throw new Error('No existe el grupo ' + grupo + '.');
-  const usan = [];
-  _anios(ss).forEach(function (a) {
-    _leerAnio(ss, a).personas.forEach(function (x) { if (x.grupo === grupo) usan.push(x.nombre + ' (' + a + ')'); });
-  });
+  const grid = _leerAnio(ss, anio);
+  const usan = grid ? grid.personas.filter(function (x) { return x.grupo === grupo; }).map(function (x) { return x.nombre; }) : [];
   if (usan.length) throw new Error('No se puede borrar: lo tienen asignado ' + usan.join(', ') + '.');
-  const shF = ss.getSheetByName(HOJA.FESTIVOS);
-  _leerFestivos(ss).filter(function (f) { return f.grupo === grupo; }).map(function (f) { return f.fila; })
-    .sort(function (a, b) { return b - a; }).forEach(function (fila) { shF.deleteRow(fila); });
-  ss.getSheetByName(HOJA.GRUPOS).deleteRow(g.fila);
+  _leerFestivos(ss, anio).filter(function (f) { return f.grupo === grupo; }).map(function (f) { return f.fila; })
+    .sort(function (a, b) { return b - a; }).forEach(function (fila) { g.sh.getRange(fila, F.FECHA, 1, 3).deleteCells(SpreadsheetApp.Dimension.ROWS); });
+  g.sh.getRange(g.fila, F.GRUPO, 1, 2).deleteCells(SpreadsheetApp.Dimension.ROWS);
   return { grupo: grupo };
 }
 
@@ -850,10 +923,10 @@ function asignarGrupo(p) {
   const persona = _personaPorNombre(grid, String(p.persona || ''));
   if (!persona) throw new Error('No existe ' + p.persona + ' en ' + _nombreHoja(anio) + '.');
   const grupo = String(p.grupo || '').trim();
-  if (grupo && !_leerGrupos(ss).some(function (g) { return g.grupo === grupo; })) throw new Error('No existe el grupo ' + grupo + '.');
+  if (grupo && !_leerGrupos(ss, anio).some(function (g) { return g.grupo === grupo; })) throw new Error('No existe el grupo ' + grupo + ' en ' + _nombreFestivos(anio) + '.');
   grid.sh.getRange(persona.fila, G.GRUPO).setValue(grupo);
   persona.grupo = grupo;
-  const cambios = _sincronizarFE(grid, persona, _festivosPorGrupo(_leerFestivos(ss)));
+  const cambios = _sincronizarFE(grid, persona, _festivosPorGrupo(_leerFestivos(ss, anio)));
   return { persona: persona.nombre, grupo: grupo, celdasFE: cambios };
 }
 
@@ -869,12 +942,19 @@ function crearAnio(p) {
   const filas = prev.personas.filter(function (x) { return x.activo; }).map(function (x) {
     return { nombre: x.nombre, email: x.email, grupo: x.grupo, activo: true, anteriores: Math.max(0, x.quedan), dias: x.dias, codigos: {} };
   });
-  const fxg = _festivosPorGrupo(_leerFestivos(ss));
+  // Festivos_<anio> con los mismos grupos (los festivos del año nuevo se
+  // añaden desde la web o en la pestaña; si ya hay alguno, se marcan FE).
+  const shF = _hojaFestivos(ss, anio);
+  const ya = _leerGrupos(ss, anio).map(function (g) { return g.grupo; });
+  const copiar = _leerGrupos(ss, anio - 1).filter(function (g) { return ya.indexOf(g.grupo) < 0; }).map(function (g) { return [g.grupo, g.pais]; });
+  if (copiar.length) shF.getRange(_ultimaFila(shF, F.GRUPO) + 1, F.GRUPO, copiar.length, 2).setValues(copiar);
+  const fxg = _festivosPorGrupo(_leerFestivos(ss, anio));
   filas.forEach(function (f) {
-    Object.keys(fxg[f.grupo] || {}).forEach(function (iso) { if (iso.slice(0, 4) === String(anio)) f.codigos[iso] = 'FE'; });
+    Object.keys(fxg[f.grupo] || {}).forEach(function (iso) { f.codigos[iso] = 'FE'; });
   });
   _crearRejilla(ss, anio, filas);
-  return { anio: anio, personas: filas.length };
+  _hojaSolicitudes(ss, anio);
+  return { anio: anio, personas: filas.length, grupos: copiar.length };
 }
 
 /** Escribe una rejilla nueva. filas: [{nombre, email, grupo, activo, anteriores, dias, codigos:{iso: código}}] */
@@ -1000,8 +1080,8 @@ function _formatearRejilla(ss, sh, anio) {
       .setBackground(CODIGOS[c].color).setFontColor(ELECTRIC).setBold(true).setRanges([zonaCodigos]).build();
   }));
 
-  // Grupo de festivos: desplegable con Grupos_Festivos.
-  const shG = _hoja(ss, HOJA.GRUPOS, ['Grupo', 'País (ES/MX)']);
+  // Grupo de festivos: desplegable con la tabla de grupos de Festivos_<año>.
+  const shG = _hojaFestivos(ss, anio);
   sh.getRange(G.FILA_1, G.GRUPO, filasFmt, 1).setDataValidation(
     SpreadsheetApp.newDataValidation().requireValueInRange(shG.getRange('A2:A200'), true).setAllowInvalid(true).build());
 
@@ -1107,8 +1187,8 @@ function alternarMes12() { _alternarMes(11); }
 function menuEmpezarDeCero() {
   const ui = SpreadsheetApp.getUi();
   const ok = ui.alert('Migrar 2026 desde cero',
-    'Se borran y se rehacen Vacas_2026, Festivos, Grupos_Festivos y el informe Migracion_2026 a partir de «Vacaciones 2026». ' +
-    'Si Solicitudes tiene filas se guarda como copia. ¿Seguir?', ui.ButtonSet.OK_CANCEL);
+    'Se borran y se rehacen Vacas_2026, Festivos_2026 y el informe Migracion_2026 a partir de «Vacaciones 2026». ' +
+    'Si Solicitudes_2026 tiene filas se guarda como copia. ¿Seguir?', ui.ButtonSet.OK_CANCEL);
   if (ok !== ui.Button.OK) return;
   const r = empezarDeCero();
   const sh = _ss().getSheetByName(_nombreHoja(MIG.ANIO));
@@ -1218,8 +1298,10 @@ function diagnosticar() {
     const sinGrupo = g.personas.filter(function (p) { return !p.grupo; }).map(function (p) { return p.nombre; });
     Logger.log(_nombreHoja(a) + ': ' + g.personas.length + ' personas · sin email: ' + (sinEmail.join(', ') || '—') + ' · sin grupo: ' + (sinGrupo.join(', ') || '—'));
   });
-  Logger.log('Grupos: ' + _leerGrupos(ss).map(function (g) { return g.grupo + ' (' + g.pais + ')'; }).join(', '));
-  Logger.log('Festivos: ' + _leerFestivos(ss).length + ' · solicitudes pendientes: ' + _leerSolicitudes(ss).filter(function (s) { return s.estado === 'PENDIENTE'; }).length);
+  _aniosDe(ss, PREFIJO_FESTIVOS).forEach(function (a) {
+    Logger.log(_nombreFestivos(a) + ': grupos ' + _leerGrupos(ss, a).map(function (g) { return g.grupo + ' (' + g.pais + ')'; }).join(', ') + ' · ' + _leerFestivos(ss, a).length + ' festivos');
+  });
+  Logger.log('Solicitudes pendientes: ' + _leerSolicitudes(ss).filter(function (s) { return s.estado === 'PENDIENTE'; }).length);
   Logger.log('Coordinadores (equipo.json): ' + _coordinadores().join(', '));
   Logger.log('Cuota de correo restante hoy: ' + MailApp.getRemainingDailyQuota());
 }
