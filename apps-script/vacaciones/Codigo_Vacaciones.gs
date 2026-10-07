@@ -15,13 +15,14 @@
  *         A Persona · B Email · C Grupo festivos · D Activo
  *         E Días año anterior · F Días del año · G Total (=E+F)
  *         H VA (nº de días VA) · I Quedan (=G-H)
- *         J… una columna por día del año (1 ene → 31 dic) con el código:
+ *         K… una columna por día del año (1 ene → 31 dic) con el código:
  *         VA Vacaciones · VP Vac. proyecto · FO Formación · ES Permiso especial
  *         BA Baja · RE Revisión · FT Festivo trabajado · FE Festivo · VE Votación
- *         Entre mes y mes hay una columna separadora estrecha (Electric): así
- *         cada mes es un grupo propio con su botón −/+ para plegarlo.
+ *         Antes de cada mes hay una columna separadora (ENE, FEB… en vertical):
+ *         así cada mes es un grupo propio con su botón −/+ para plegarlo.
  *       ⚠ No insertar ni borrar columnas de días: la columna de cada fecha se
- *         calcula (J = 1 de enero, +1 por mes pasado). Plegar/ocultar meses sí.
+ *         calcula (J = separadora de enero, K = 1 de enero, +1 por mes).
+ *         Plegar/ocultar meses sí.
  *         Personas: añadir/quitar filas sin problema.
  *   · Solicitudes_<año>: una fila por petición. Clase NUEVA (pedir días), CANCELACION
  *       (liberar días ya aprobados) o MODIFICACION (cambiar unos días aprobados
@@ -325,19 +326,21 @@ function _festivosPorGrupo(festivos) {
 
 // ── Rejilla Vacas_<año> ─────────────────────────────────────────────────────
 function _nombreHoja(anio) { return PREFIJO_ANIO + anio; }
-/* Columnas de días: entre un mes y el siguiente hay una columna separadora
-   estrecha y vacía. Sin ella, Sheets funde los grupos de meses contiguos en
-   uno solo y no hay un botón −/+ por mes. J = 1 de enero; luego +1 por cada
-   mes ya pasado. */
+/* Columnas de días: ANTES de cada mes hay una columna separadora (sin datos,
+   con el nombre corto del mes en vertical). Sin ella, Sheets funde los grupos
+   de meses contiguos en uno solo; y es donde se dibuja el botón −/+ de ese
+   mes, así que tiene ancho para que no se monten los botones al plegar.
+   J = separadora de enero, K = 1 de enero; luego +1 por cada mes. */
 function _mesDeIdx(anio, i) { return new Date(Date.UTC(anio, 0, 1) + i * 86400000).getUTCMonth(); }
-function _colDeIdx(anio, i) { return G.DIA1 + i + _mesDeIdx(anio, i); }
+function _colDeIdx(anio, i) { return G.DIA1 + 1 + i + _mesDeIdx(anio, i); }
 function _colDia(iso) { return _colDeIdx(Number(iso.slice(0, 4)), _idxDia(iso)); }
-function _nColsDias(anio) { return _diasAnio(anio) + 11; }
+function _nColsDias(anio) { return _diasAnio(anio) + 12; }
+const MES3 = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
 /** Por cada columna de la zona de días: el iso del día, o null si es separadora. */
 function _columnasDias(anio) {
   const out = [];
   for (let i = 0, n = _diasAnio(anio); i < n; i++) {
-    if (i > 0 && _mesDeIdx(anio, i) !== _mesDeIdx(anio, i - 1)) out.push(null);
+    if (i === 0 || _mesDeIdx(anio, i) !== _mesDeIdx(anio, i - 1)) out.push(null);
     out.push(_isoDeIdx(anio, i));
   }
   return out;
@@ -353,10 +356,10 @@ function _leerAnio(ss, anio) {
   const sh = ss.getSheetByName(_nombreHoja(anio));
   if (!sh) return null;
   const nDias = _diasAnio(anio);
-  // Formato antiguo (sin separadoras): el 1 de febrero estaría justo tras el 31 de enero.
-  const cab = sh.getRange(G.FILA_DIA, G.DIA1 + 31, 1, 2).getValues()[0];
-  if (String(cab[0]) !== '' || Number(cab[1]) !== 1) {
-    throw new Error(_nombreHoja(anio) + ' tiene el formato antiguo (sin columna separadora entre meses): rehazla con empezarDeCero() o con el menú 🌴 Vacaciones.');
+  // Formato de columnas: separadora (con ENE/FEB…) antes de cada mes.
+  const cab = sh.getRange(G.FILA_DIA, G.DIA1, 1, 34).getValues()[0];
+  if (String(cab[0]) !== 'ENE' || Number(cab[1]) !== 1 || String(cab[32]) !== 'FEB' || Number(cab[33]) !== 1) {
+    throw new Error(_nombreHoja(anio) + ' tiene un formato de columnas antiguo: rehazla con empezarDeCero() o con el menú 🌴 Vacaciones.');
   }
   const cols = [];
   for (let i = 0; i < nDias; i++) cols.push(_colDeIdx(anio, i) - 1);
@@ -997,8 +1000,8 @@ function _crearRejilla(ss, anio, filas) {
 
   // Cabeceras: mes (fila 1), día (fila 2), letra de la semana (fila 3).
   const fMes = [], fDia = [], fSem = [];
-  columnas.forEach(function (iso) {
-    if (!iso) { fMes.push(''); fDia.push(''); fSem.push(''); return; }
+  columnas.forEach(function (iso, k) {
+    if (!iso) { fMes.push(''); fDia.push(MES3[_mesDeIdx(anio, _idxDia(columnas[k + 1]))]); fSem.push(''); return; }
     const d = Number(iso.slice(8, 10));
     fMes.push(d === 1 ? MESES_ES[Number(iso.slice(5, 7)) - 1] : '');
     fDia.push(d);
@@ -1078,7 +1081,7 @@ function _formatearRejilla(ss, sh, anio) {
   // Fines de semana en gris; separadoras en Electric (línea entre meses).
   const fondos = [], fondoCab = [];
   columnas.forEach(function (iso) { fondoCab.push(!iso ? ELECTRIC : _finde(iso) ? '#CAD1D8' : null); });
-  for (let r = 0; r < filasFmt; r++) fondos.push(fondoCab.map(function (c) { return c === ELECTRIC ? ELECTRIC : c ? '#E2E6EA' : null; }));
+  for (let r = 0; r < filasFmt; r++) fondos.push(fondoCab.map(function (c) { return c === ELECTRIC ? '#E6F3FF' : c ? '#E2E6EA' : null; }));
   zona.setBackgrounds(fondos);
   const cabDias = sh.getRange(G.FILA_DIA, G.DIA1, 2, nDias);
   const fondosCab = cabDias.getBackgrounds().map(function (fila) { return fila.map(function (c, i) { return fondoCab[i] || c; }); });
@@ -1113,17 +1116,26 @@ function _formatearRejilla(ss, sh, anio) {
   sh.setColumnWidth(G.GRUPO, 110);
   sh.setColumnWidths(G.ACTIVO, G.DIA1 - G.ACTIVO, 68);
   sh.setColumnWidths(G.DIA1, nDias, 26);
+  // Separadoras: 24 px (caben los −/+ aunque se plieguen varios meses
+  // seguidos), cabecera Electric con el mes en vertical, cuerpo azul claro.
   columnas.forEach(function (iso, k) {
     if (iso) return;
-    sh.setColumnWidth(G.DIA1 + k, 6);
-    sh.getRange(1, G.DIA1 + k, G.FILA_1 + filasFmt - 1, 1).setBackground(ELECTRIC);
+    const col = G.DIA1 + k;
+    sh.setColumnWidth(col, 24);
+    sh.getRange(G.FILA_MES, col).setBackground(ELECTRIC);
+    const cab = sh.getRange(G.FILA_DIA, col, 2, 1);
+    try { cab.breakApart(); cab.mergeVertically(); } catch (_) {}
+    cab.setBackground(ELECTRIC).setFontColor('#F7F8F8').setFontSize(8).setTextRotation(90)
+      .setHorizontalAlignment('center').setVerticalAlignment('middle');
+    sh.getRange(G.FILA_1, col, filasFmt, 1)
+      .setBorder(null, null, null, true, null, null, ELECTRIC, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
   });
   sh.setRowHeight(G.FILA_MES, 26);
   sh.setFrozenRows(3);
   sh.setFrozenColumns(1);
   sh.getRange(G.FILA_MES, 1).setNote(
     'Códigos: ' + Object.keys(CODIGOS).map(function (c) { return c + ' ' + CODIGOS[c].texto; }).join(' · ') +
-    '\nSolo VA descuenta del saldo. Puedes ocultar o plegar meses (−/+ de arriba), pero no insertes ni borres columnas de días (J = 1 de enero).');
+    '\nSolo VA descuenta del saldo. Puedes ocultar o plegar meses (−/+ de arriba), pero no insertes ni borres columnas de días (K = 1 de enero).');
 }
 
 // ── Menú del Excel: botones para ver/ocultar meses ─────────────────────────
