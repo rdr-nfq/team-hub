@@ -66,6 +66,10 @@
     "url": "https://script.google.com/macros/s/AKfycbzF8pA46uBh-O7xcAYUJsY9LqW0VPcLSjYFo13Q24vx3iaGZAAb_yQ18hLlEBfVe6iE/exec",
     "note": "Backend Apps Script del generador de ofertas (/ofertas). Desplegar outbox/apps-script/Codigo_Ofertas.gs como aplicación web (Ejecutar como Yo, acceso Cualquier persona) y pegar aquí la URL /exec."
   },
+  "seguimientoBackend": {
+    "url": "PEGAR_AQUI_URL_EXEC_SEGUIMIENTO",
+    "note": "Backend Apps Script de /seguimiento: guarda la presentación en Drive (Presentación seguimiento BBVA/AAAA/M. Mes/), actualizándola si ya existe. Desplegar outbox/apps-script/Codigo_Seguimiento.gs como aplicación web (Ejecutar como Yo, Cualquier persona), ejecutar autorizar() una vez y pegar aquí la URL /exec."
+  },
   "timereportBackend": {
     "url": "https://script.google.com/macros/s/AKfycbwb8bJedskF2tmsusz4PdXNhtNu1V9dUxhq0QOM9n3Hc3abjolN1UO7F3pydzzp-8sy/exec",
     "note": "Backend Apps Script del Time Report web (/timereport y /timereport-gestion): proyectos, reparto, imputación, evidencias en Drive y recordatorio por email. Desplegar outbox/apps-script/Codigo_TimeReport.gs como aplicación web (Ejecutar como Yo, Cualquier persona), con EVIDENCIAS_FOLDER_ID en Propiedades del script, ejecutar autorizar() y crearTriggerRecordatorioTR() una vez, y pegar aquí la URL /exec."

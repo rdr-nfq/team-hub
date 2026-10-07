@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PALETTE } from "@/lib/palette";
+import { useLinks } from "@/lib/links";
+import { useAuth } from "../chrome/AuthGate";
 import { GLASS, FIELD, TEXT, Kpi, Chip, EmptyCard } from "./ui";
 import { IconPlus, IconX, IconAlert, IconReload, IconList } from "./icons";
 import { IconFolder, IconCheck } from "../icons";
@@ -15,9 +17,12 @@ import { generarPresentacion } from "../seguimiento/plantillaPptx";
 /* Seguimiento RDR · panel de COORDINACIÓN.
    Editor de los datos de la reunión (proyectos con sus tareas, incidencias y
    traspasos) y botón que descarga la presentación .pptx generada con la
-   plantilla de components/seguimiento/. Los datos viven en este navegador
-   (localStorage, autoguardado); para compartirlos o guardarlos entre
-   reuniones: Exportar / Importar JSON. */
+   plantilla de components/seguimiento/. «Guardar en Drive» la sube al Apps
+   Script "seguimientoBackend" (outbox/apps-script/Codigo_Seguimiento.gs),
+   que la deja en <raíz>/2026/9. Septiembre/: si ya existe la de esa
+   reunión la sobrescribe (mismo enlace) y si no, la crea. Los datos viven
+   en este navegador (localStorage, autoguardado); para compartirlos o
+   guardarlos entre reuniones: Exportar / Importar JSON. */
 
 const CLAVE = "rdr_seguimiento_borrador";
 const ASSETS = "/team-hub/seguimiento/";
@@ -61,17 +66,19 @@ const limpiar = (d) => ({
 });
 
 /** PNG de public/seguimiento -> "image/png;base64,..." (formato de pptxgenjs). */
-async function cargarPng(nombre) {
-  const r = await fetch(`${ASSETS}${nombre}`);
-  if (!r.ok) throw new Error(`No se pudo cargar ${nombre} (${r.status})`);
-  const blob = await r.blob();
-  const dataUrl = await new Promise((ok, ko) => {
+const blobADataUrl = (blob) =>
+  new Promise((ok, ko) => {
     const fr = new FileReader();
-    fr.onload = () => ok(fr.result);
+    fr.onload = () => ok(String(fr.result));
     fr.onerror = () => ko(fr.error);
     fr.readAsDataURL(blob);
   });
-  return String(dataUrl).replace(/^data:/, "");
+const blobABase64 = async (blob) => (await blobADataUrl(blob)).replace(/^data:[^,]*,/, "");
+
+async function cargarPng(nombre) {
+  const r = await fetch(`${ASSETS}${nombre}`);
+  if (!r.ok) throw new Error(`No se pudo cargar ${nombre} (${r.status})`);
+  return (await blobADataUrl(await r.blob())).replace(/^data:/, "");
 }
 
 async function cargarAssets() {
@@ -82,6 +89,21 @@ async function cargarAssets() {
   ]);
   return { bbvaRgb, bbvaWhite, nfqBlack, nfqWhite, icons: Object.fromEntries(ICONOS.map((i, k) => [i, iconos[k]])) };
 }
+
+/** Respuesta del Apps Script -> data, o error legible (HTML = no desplegado/permisos). */
+async function leerRespuesta(res) {
+  const txt = await res.text();
+  if (txt.trim().startsWith("<"))
+    throw new Error("El backend respondió HTML en vez de JSON: revisa el despliegue (acceso «Cualquier persona», nueva versión) y ejecuta autorizar().");
+  const j = JSON.parse(txt);
+  if (!j.ok) throw new Error(j.error || "Error del backend");
+  return j.data;
+}
+
+const fechaHora = (iso) => {
+  const d = new Date(iso);
+  return isNaN(d) ? "" : d.toLocaleString("es-ES", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+};
 
 // ── Piezas de formulario ────────────────────────────────────────────────────
 function Campo({ etiqueta, className = "", children }) {
@@ -278,8 +300,13 @@ export default function SeguimientoRoute() {
   const [datos, setDatos] = useState(null);
   const [tab, setTab] = useState("proyectos");
   const [abiertos, setAbiertos] = useState({});
-  const [gen, setGen] = useState({ fase: "idle" }); // idle | generando | ok | error
+  const [gen, setGen] = useState({ fase: "idle" }); // idle | generando | subiendo | ok | drive | error
+  const [drive, setDrive] = useState(null); // estado del fichero en Drive para la fecha actual
   const fileRef = useRef(null);
+  const { getUrl } = useLinks();
+  const { email } = useAuth();
+  const backendUrl = getUrl("seguimientoBackend");
+  const fecha = datos?.fechaReunion || "";
 
   // Borrador de este navegador o, la primera vez, el ejemplo del 28/09/2026.
   useEffect(() => { setDatos(leerBorrador() || clonar(EJEMPLO)); }, []);
@@ -288,16 +315,61 @@ export default function SeguimientoRoute() {
     try { localStorage.setItem(CLAVE, JSON.stringify(datos)); } catch { /* sin almacenamiento: solo en memoria */ }
   }, [datos]);
 
+  // ¿Existe ya la presentación de esta reunión en Drive? (se actualizará o se creará)
+  useEffect(() => {
+    if (!backendUrl || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) { setDrive(null); return; }
+    let vivo = true;
+    setDrive({ cargando: true });
+    const t = setTimeout(async () => {
+      try {
+        const sep = backendUrl.includes("?") ? "&" : "?";
+        const d = await leerRespuesta(await fetch(`${backendUrl}${sep}action=estado&fecha=${fecha}`));
+        if (vivo) setDrive(d);
+      } catch (e) {
+        if (vivo) setDrive({ error: String(e?.message || e) });
+      }
+    }, 400);
+    return () => { vivo = false; clearTimeout(t); };
+  }, [backendUrl, fecha]);
+
   const upd = (fn) => setDatos((d) => { const n = clonar(d); fn(n); return n; });
   const c = useMemo(() => (datos ? cifras(datos) : null), [datos]);
 
   if (!datos) return <main className="min-h-dvh" />;
 
+  const crearPres = async () => {
+    const [{ default: PptxGenJS }, assets] = await Promise.all([import("pptxgenjs"), cargarAssets()]);
+    return generarPresentacion(PptxGenJS, limpiar(datos), assets);
+  };
+
+  const guardarDrive = async () => {
+    setGen({ fase: "subiendo" });
+    try {
+      const pres = await crearPres();
+      // write() de pptxgenjs 4 ignora compression cuando lleva outputType (y
+      // sin outputType falla); exportPresentation es lo que usa writeFile en
+      // el navegador: blob comprimido (~600 KB en vez de ~1,4 MB) -> base64.
+      const blob = pres.exportPresentation
+        ? await pres.exportPresentation({ compression: true })
+        : await pres.write({ outputType: "blob" });
+      const base64 = await blobABase64(blob);
+      const d = await leerRespuesta(await fetch(backendUrl, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: "subir", fecha: datos.fechaReunion, email, base64 }),
+      }));
+      setGen({ fase: "drive", ...d });
+      setDrive({ existe: true, nombre: d.nombre, ruta: d.ruta, url: d.url, carpetaUrl: d.carpetaUrl, modificado: d.modificado });
+    } catch (e) {
+      console.error(e);
+      setGen({ fase: "error", error: String(e?.message || e) });
+    }
+  };
+
   const generar = async () => {
     setGen({ fase: "generando" });
     try {
-      const [{ default: PptxGenJS }, assets] = await Promise.all([import("pptxgenjs"), cargarAssets()]);
-      const pres = generarPresentacion(PptxGenJS, limpiar(datos), assets);
+      const pres = await crearPres();
       // "/" no vale en un nombre de fichero: el navegador lo cambiaría por "_".
       const fichero = nombreFichero(datos.fechaReunion).replaceAll("/", "-");
       await pres.writeFile({ fileName: fichero, compression: true });
@@ -329,6 +401,7 @@ export default function SeguimientoRoute() {
   };
 
   const ruta = rutaDrive(datos.fechaReunion);
+  const ocupado = gen.fase === "generando" || gen.fase === "subiendo";
   const nProy = datos.proyectos.length;
 
   return (
@@ -345,8 +418,8 @@ export default function SeguimientoRoute() {
             <IconList size={34} className="text-purple" /> Seguimiento
           </h1>
           <p className="mt-3 max-w-3xl text-pretty text-sm text-sand/65">
-            Actualiza proyectos, tareas, incidencias y traspasos de la reunión y descarga la presentación .pptx con la plantilla BBVA × NFQ.
-            Se guarda solo en este navegador: usa <b>Exportar JSON</b> para conservarla o pasársela a otra persona.
+            Actualiza proyectos, tareas, incidencias y traspasos de la reunión y guarda la presentación .pptx (plantilla BBVA × NFQ) directamente en su carpeta de Drive.
+            Los datos de la reunión se guardan solo en este navegador: usa <b>Exportar JSON</b> para conservarla o pasársela a otra persona.
           </p>
         </header>
 
@@ -363,13 +436,21 @@ export default function SeguimientoRoute() {
             <p className="pb-2 text-sm text-sand/60">{fechaLarga(datos.fechaReunion)}</p>
             <div className="ml-auto flex flex-wrap items-center gap-2">
               <button
-                type="button" onClick={generar} disabled={gen.fase === "generando" || !datos.fechaReunion}
+                type="button" onClick={guardarDrive}
+                disabled={ocupado || !datos.fechaReunion || !backendUrl}
+                title={backendUrl ? "Genera la presentación y la guarda en la carpeta de Drive de la reunión" : "Falta configurar seguimientoBackend en links.json"}
                 className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-bold text-[#001391] transition hover:brightness-95 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene"
                 style={{ background: PALETTE.serene }}
               >
-                {gen.fase === "generando"
-                  ? <><span aria-hidden className="h-4 w-4 animate-spin rounded-full border-2 border-[#001391]/30 border-t-[#001391]" /> Generando…</>
-                  : <><IconFolder size={15} /> Generar presentación (.pptx)</>}
+                {gen.fase === "subiendo"
+                  ? <><span aria-hidden className="h-4 w-4 animate-spin rounded-full border-2 border-[#001391]/30 border-t-[#001391]" /> Guardando en Drive…</>
+                  : <><IconFolder size={15} /> {drive?.existe ? "Actualizar en Drive" : "Guardar en Drive"}</>}
+              </button>
+              <button
+                type="button" onClick={generar} disabled={ocupado || !datos.fechaReunion}
+                className={`${FIELD} px-3 py-2.5 text-xs font-bold hover:border-white/30 disabled:opacity-40`}
+              >
+                {gen.fase === "generando" ? "Generando…" : "Descargar .pptx"}
               </button>
               <button type="button" onClick={exportar} className={`${FIELD} px-3 py-2.5 text-xs font-bold hover:border-white/30`}>Exportar JSON</button>
               <button type="button" onClick={() => fileRef.current?.click()} className={`${FIELD} px-3 py-2.5 text-xs font-bold hover:border-white/30`}>Importar JSON</button>
@@ -384,15 +465,44 @@ export default function SeguimientoRoute() {
               </button>
             </div>
           </div>
+          {/* Dónde va a parar en Drive (antes de guardar) */}
+          {!backendUrl ? (
+            <p className="mt-3 text-[11.5px] text-sand/45">
+              Guardar en Drive: falta configurar «seguimientoBackend» en links.json (desplegar outbox/apps-script/Codigo_Seguimiento.gs).
+            </p>
+          ) : drive?.cargando ? (
+            <p className="mt-3 text-[11.5px] text-sand/45">Comprobando Drive…</p>
+          ) : drive?.error ? (
+            <p className="mt-3 inline-flex items-center gap-1.5 text-[11.5px] font-bold text-canary"><IconAlert size={12} /> Drive: {drive.error}</p>
+          ) : drive?.existe ? (
+            <p className="mt-3 text-[11.5px] text-sand/55">
+              Ya existe en Drive <b className="text-sand/80">{drive.ruta.replace("/", " / ")} / {drive.nombre}</b>
+              {drive.modificado && <> (modificada {fechaHora(drive.modificado)})</>}: al guardar se <b className="text-sand/80">actualiza</b> (mismo enlace; la versión anterior queda en el historial de Drive).{" "}
+              <a href={drive.url} target="_blank" rel="noopener noreferrer" className="font-bold text-serene hover:underline">Abrir</a>
+            </p>
+          ) : drive ? (
+            <p className="mt-3 text-[11.5px] text-sand/55">
+              Se creará en Drive: <b className="text-sand/80">{ruta.join(" / ")} / {drive.nombre}</b>
+              {!drive.carpetaUrl && " (la carpeta del mes también se crea)"}.
+            </p>
+          ) : null}
+
+          {gen.fase === "drive" && (
+            <p className={`mt-2 flex flex-wrap items-center gap-1.5 text-xs font-bold ${TEXT.lime}`}>
+              <IconCheck size={14} /> Presentación {gen.accion} en Drive: {gen.ruta.replace("/", " / ")} / {gen.nombre}.
+              <a href={gen.url} target="_blank" rel="noopener noreferrer" className="text-serene hover:underline">Abrir presentación</a>
+              <span className="text-sand/30">·</span>
+              <a href={gen.carpetaUrl} target="_blank" rel="noopener noreferrer" className="text-serene hover:underline">Abrir carpeta</a>
+            </p>
+          )}
           {gen.fase === "ok" && (
-            <p className={`mt-3 flex flex-wrap items-center gap-1.5 text-xs font-bold ${TEXT.lime}`}>
+            <p className={`mt-2 flex flex-wrap items-center gap-1.5 text-xs font-bold ${TEXT.lime}`}>
               <IconCheck size={14} /> Descargada «{gen.fichero}».
-              <span className="font-normal text-sand/60">Súbela a Drive, carpeta <b className="text-sand/80">{ruta.join(" / ")}</b>.</span>
             </p>
           )}
           {gen.fase === "error" && (
             <p className="mt-3 inline-flex items-center gap-2 rounded-lg border border-mandarin/50 bg-mandarin/10 px-3 py-2 text-xs font-bold text-mandarin">
-              <IconAlert size={13} /> No se pudo generar: {gen.error}
+              <IconAlert size={13} /> No se pudo completar: {gen.error}
             </p>
           )}
         </section>
