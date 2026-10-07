@@ -7,7 +7,7 @@
    - doPost hace UPSERT: si el compañero ya votó esa semana, actualiza su fila
      en vez de añadir una nueva (evita votos duplicados / permite cambiar).
    Despliegue: Implementar > Aplicación web > Ejecutar como "Yo" · Acceso
-   "Cualquier persona". Copia la URL /exec en comidas.html (APP_SCRIPT_URL).
+   "Cualquier persona". Copia la URL /exec en links.json -> "comidasBackend".
    =========================================================================== */
 
 function getSpreadsheet() {

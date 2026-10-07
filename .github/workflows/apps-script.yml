@@ -1,0 +1,29 @@
+name: Apps Script (comprobación)
+
+# Revisa los backends de apps-script/: sintaxis de cada .gs y nombres globales
+# repetidos dentro de un mismo proyecto. No despliega nada: el despliegue se
+# hace a mano en script.google.com (ver apps-script/README.md).
+
+on:
+  push:
+    paths:
+      - "apps-script/**"
+      - ".github/workflows/apps-script.yml"
+  pull_request:
+    paths:
+      - "apps-script/**"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  comprobar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Sintaxis y globales duplicados
+        run: node apps-script/comprobar.mjs

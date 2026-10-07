@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- *  RDR Hub · Code.gs (versión optimizada)
+ *  RDR Hub · Codigo_Pases.gs (versión optimizada)
  * ============================================================================
  *
  *  Cambios respecto a la versión anterior:
@@ -1036,7 +1036,7 @@ function cancelarSubida(ctx, fila, fechaStr, motivo, faseAnterior) {
 
 /* ─────────────────────────────────────────────────────────
    Helpers de email — HTML maquetado con paleta BBVA
-   Mismo sistema visual que Avisos.gs (consistencia entre todos
+   Mismo sistema visual que Avisos_Pases.gs (consistencia entre todos
    los correos del RDR Hub).
    ───────────────────────────────────────────────────────── */
 

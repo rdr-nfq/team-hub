@@ -1,5 +1,5 @@
 /* ╔══════════════════════════════════════════════════════════════════╗
-   ║  Avisos.gs · Alertas programadas de Pases Calendados · RDR Hub    ║
+   ║  Avisos_Pases.gs · Alertas programadas de Pases Calendados · RDR Hub    ║
    ║  · Envío desde noreply@<dominio> (noReply, sin alias).            ║
    ║  · Calendario actualizado (sistema nuevo).                        ║
    ║  · Correos profesionales, con estado general + tablas resumen.    ║
@@ -91,6 +91,8 @@ function construirCalendarioAvisos(fechaPase, subida, faseActual) {
   const enPreparacion = (esFase1 || faseActual === "FASE_2_3_PREPARACION");
   const enPreImplantacion = (enPreparacion || faseActual === "FASE_4_CERRADO");
   const enPostImplantacion = (faseActual === "FASE_7_POST");
+  // Lunes después del pase SIN haber pasado a post-implantación todavía.
+  const implantacionSinCerrar = (faseActual === "FASE_4_CERRADO" || faseActual === "FASE_6_IMPLANTACION");
 
   function avisoEn(diasAntes, hora, codigo, tono, generador) {
     const base = new Date(fechaPase.getTime());
@@ -130,6 +132,12 @@ function construirCalendarioAvisos(fechaPase, subida, faseActual) {
       avisoEn(1, 9,  "PRE_VIE_09", "warning",      contenidoPreViernes);
       avisoEn(1, 14, "PRE_VIE_14", "alerta",       contenidoPreViernesAlerta);
       avisoEn(1, 15, "PRE_VIE_15", "alerta_max",   contenidoPreViernesFinal);
+    }
+    if (implantacionSinCerrar) {
+      // Lunes tras el pase: aún no se ha finalizado la implantación en la web
+      // ni comenzado la post-implantación → alerta para cerrarla.
+      avisoPost(2, 9,  "CIERRE_IMPL_09", "alerta",     contenidoCerrarImplantacion);
+      avisoPost(2, 16, "CIERRE_IMPL_16", "alerta_max", contenidoCerrarImplantacion);
     }
     if (enPostImplantacion) {
       avisoPost(2, 9,  "POST_09", "informativo",  contenidoPostMergeos);
@@ -201,7 +209,8 @@ function ejecutarAviso(av, filaPase, fechaPaseStr, fechaPase) {
    y el direccionamiento queda limpio (To = dest, sin Cc raros). El título concreto
    de cada aviso va en el cuerpo (lo pone wrap()). */
 function enviarAvisoMail_(html, fechaPaseStr) {
-  const dest = CONSTANTES.MODO_DEBUG ? CONSTANTES.BUZON_PRUEBAS_DEBUG : CONSTANTES.BUZON_DESARROLLOS;
+  // getModoDebug() (Codigo_Pases.gs): conmutable desde la web por los admins.
+  const dest = getModoDebug() ? CONSTANTES.BUZON_PRUEBAS_DEBUG : CONSTANTES.BUZON_DESARROLLOS;
   GmailApp.sendEmail(dest, asuntoHiloPase_(fechaPaseStr), quitarTagsHtml(html), {
     htmlBody: html, name: AVISOS_CONFIG.REMITE, noReply: true
   });
@@ -210,7 +219,7 @@ function enviarAvisoMail_(html, fechaPaseStr) {
 // Asunto FIJO por pase (idéntico en todos los avisos → Gmail los pone en el mismo hilo).
 function asuntoHiloPase_(fechaPaseStr) {
   let s = "[RDR Hub] Pase Calendado - " + (fechaPaseStr || "");
-  if (CONSTANTES.MODO_DEBUG) s = "[TEST] " + s;
+  if (getModoDebug()) s = "[TEST] " + s;
   return s;
 }
 
@@ -297,6 +306,8 @@ function tablaTitulo_(t, color) { return '<p style="margin:14px 0 4px;font-weigh
 
 /* Detección de "check marcado" tolerante (true / "OK" / "VERDADERO" / "TRUE"). */
 function isT_(v) { const x = String(v).toUpperCase(); return v === true || x === "TRUE" || x === "OK" || x === "VERDADERO" || x === "SÍ" || x === "SI"; }
+/* Check de pre-implantación marcado como "No aplica" → no cuenta como pendiente. */
+function esNA_(v) { const x = String(v).toUpperCase().trim(); return x === "NA" || x === "NO APLICA"; }
 function sinCodigo_(c) { return !c.codigo || !String(c.codigo).trim() || String(c.codigo).trim() === "-"; }
 
 /* Listas de pendientes reutilizables */
@@ -306,16 +317,27 @@ function pendientes_(s) {
     sinCodigo: s.componentes.filter(sinCodigo_),
     sinHistoria: s.componentes.filter(c => !c.us || !String(c.us).trim()),
     sinTechKytl: s.componentes.filter(c => !c.techKytl),
-    sinMergear: s.componentes.filter(c => String(c.codigo || "").toUpperCase().indexOf("DP-KYTL") !== -1 && !c.mergeado),
+    // Solo cuentan los componentes DP que forman parte de una unidad de mergeo
+    // (Workstation, ObjetosGS, javas, estáticos, dependientes). DataX, API,
+    // aperiódicos, directorios y cadenas NO se mergean (regla de la web).
+    sinMergear: s.componentes.filter(c => {
+      if (String(c.codigo || "").toUpperCase().indexOf("DP-KYTL") === -1 || c.mergeado) return false;
+      const sub = String(c.subida || "").toLowerCase();
+      const tipo = String(c.tipo || "").toLowerCase();
+      if (tipo === "cadena" || tipo.indexOf("director") === 0) return false;
+      if (sub === "nova" || sub === "datax" || sub.indexOf("aperiodic") === 0 || sub.indexOf("aperiódic") === 0) return false;
+      return true;
+    }),
     wsSinPaquete: s.componentes.filter(c => String(c.subida || "").toLowerCase().indexOf("workstation") !== -1 && sinCodigo_(c)),
     crqLleno: s.crq && String(s.crq).trim() !== "" && String(s.crq).trim() !== "CRQ…",
     checksFalta: (function () {
+      // Los checks marcados como "No aplica" (NA) quedan FUERA del aviso.
       const f = [];
-      if (!isT_(s.checks.dpPro)) f.push("DPs pendientes de PRO");
-      if (!isT_(s.checks.jiraOk)) f.push("JIRAs resueltos");
-      if (!isT_(s.checks.remOk)) f.push("REMEDYs listos");
-      if (!isT_(s.checks.docPruebas)) f.push("Documento de pruebas post-implantación");
-      if (!isT_(s.checks.traspaso)) f.push("Correo de traspaso al ANS");
+      if (!esNA_(s.checks.dpPro) && !isT_(s.checks.dpPro)) f.push("DPs pendientes de PRO");
+      if (!esNA_(s.checks.jiraOk) && !isT_(s.checks.jiraOk)) f.push("JIRAs resueltos");
+      if (!esNA_(s.checks.remOk) && !isT_(s.checks.remOk)) f.push("REMEDYs listos");
+      if (!esNA_(s.checks.docPruebas) && !isT_(s.checks.docPruebas)) f.push("Documento de pruebas post-implantación");
+      if (!esNA_(s.checks.traspaso) && !isT_(s.checks.traspaso)) f.push("Correo de traspaso al ANS");
       return f;
     })()
   };
@@ -481,6 +503,16 @@ function contenidoPostMergeosFinal(s) {
   let html = p('<strong>Último aviso.</strong> Faltan mergeos por consolidar hoy en el código fuente.');
   html += tabla(['Proyecto', 'Componente', 'Código'], pe.sinMergear.map(c => [c.proyecto, c.nombre, c.codigo]));
   return { asunto: "Último aviso · mergeos pendientes", html: html + resumenGeneral(s), tonoNuevo: "alerta_max" };
+}
+
+/* Lunes tras el pase con la implantación aún sin cerrar en la web. */
+function contenidoCerrarImplantacion(s) {
+  let html = p('La implantación del fin de semana sigue <strong>sin cerrarse</strong> en la web.') +
+    p('Hay que <strong>finalizar el pase</strong> (marcar los pasos implantados y completar la implantación) y <strong>comenzar la post-implantación</strong> para gestionar los mergeos.');
+  const sinImplantar = s.fase === "FASE_4_CERRADO"
+    ? box('El pase ni siquiera ha entrado en implantación: revisad si el sábado se ejecutó y actualizad la web.', BBVA_COLORS.red)
+    : "";
+  return { asunto: "Finalizar el pase y comenzar la post-implantación", html: html + sinImplantar + resumenGeneral(s) };
 }
 
 function contenidoDescanso(s, fechaPase) {

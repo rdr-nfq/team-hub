@@ -18,7 +18,7 @@ import { generarPresentacion } from "../seguimiento/plantillaPptx";
    Editor de los datos de la reunión (proyectos con sus tareas, incidencias y
    traspasos) y botón que descarga la presentación .pptx generada con la
    plantilla de components/seguimiento/. «Guardar en Drive» la sube al Apps
-   Script "seguimientoBackend" (outbox/apps-script/Codigo_Seguimiento.gs),
+   Script "seguimientoBackend" (apps-script/seguimiento/Codigo_Seguimiento.gs),
    que la deja en <raíz>/2026/9. Septiembre/: si ya existe la de esa
    reunión la sobrescribe (mismo enlace) y si no, la crea. Los datos viven
    en este navegador (localStorage, autoguardado); para compartirlos o
@@ -468,7 +468,7 @@ export default function SeguimientoRoute() {
           {/* Dónde va a parar en Drive (antes de guardar) */}
           {!backendUrl ? (
             <p className="mt-3 text-[11.5px] text-sand/45">
-              Guardar en Drive: falta configurar «seguimientoBackend» en links.json (desplegar outbox/apps-script/Codigo_Seguimiento.gs).
+              Guardar en Drive: falta configurar «seguimientoBackend» en links.json (desplegar apps-script/seguimiento/Codigo_Seguimiento.gs).
             </p>
           ) : drive?.cargando ? (
             <p className="mt-3 text-[11.5px] text-sand/45">Comprobando Drive…</p>

@@ -1,5 +1,5 @@
 // ============================================================
-// Codigo.gs — Backend Vacaciones RDR
+// Codigo_Vacaciones.gs — Backend Vacaciones RDR
 // ============================================================
 // Modo de funcionamiento:
 //   - doGet() sin parámetros → sirve el HTML de responsables

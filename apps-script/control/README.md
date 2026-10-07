@@ -31,11 +31,11 @@ Apps Script trabaja sobre Google Sheets, no sobre `.xlsx`.
 
 **Opción A — ligado a la hoja (más simple):**
 - En el Google Sheet: *Extensiones → Apps Script*.
-- Pega `Codigo.gs`. Deja `CONFIG.SPREADSHEET_ID = ''` (usa la hoja activa).
+- Pega `Codigo_Control.gs`. Deja `CONFIG.SPREADSHEET_ID = ''` (usa la hoja activa).
 
 **Opción B — standalone (backend independiente):**
 - [script.google.com](https://script.google.com) → *Nuevo proyecto*.
-- Pega `Codigo.gs` y pon `CONFIG.SPREADSHEET_ID = '<ID>'`.
+- Pega `Codigo_Control.gs` y pon `CONFIG.SPREADSHEET_ID = '<ID>'`.
 
 En ambos casos: **cambia `CONFIG.API_TOKEN`** por un token largo y secreto.
 
