@@ -18,8 +18,8 @@
     "note": "Drive con documentación compartida del proyecto RDR"
   },
   "evidenciasDrive": {
-    "url": "https://drive.google.com/drive/folders/1FUz6m6Ek0BveGYeUp4nIVD0kO4oiNWDF",
-    "note": "Carpeta RAÍZ de las evidencias del Time Report. apps-script/timereport/Codigo_TimeReport.gs la lee de aquí y crea dentro <Año>/<n>_Quincena_<Mes><Año>. Debe estar compartida (editor) con todo el equipo."
+    "url": "https://drive.google.com/drive/folders/1OSXGGscVkXiXUhTUwmoFq5vUOVlC_LoE",
+    "note": "Carpeta RAÍZ de las evidencias del Time Report (Drive «Time Report BBVA»). apps-script/timereport/Codigo_TimeReport.gs la lee de aquí y crea dentro <Año>/<n>_Quincena_<Mes><Año>. Debe estar compartida (editor) con todo el equipo."
   },
   "driveCertificados": {
     "url": "https://drive.google.com/drive/folders/1e5zysoDRyBIj30VrKtC6jLPhDzpRQDgl",
