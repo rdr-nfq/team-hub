@@ -12,7 +12,20 @@ import DaySheet from "./DaySheet";
 import AhoraPanel from "./AhoraPanel";
 import { VacacionesSkeleton, ErrorCard } from "./VacacionesRoute";
 import { EstadoSolBadge } from "./SolicitudPanel";
-import { useVacaciones, useV2Configurado, fechaCortaEs, festivosDeGrupo, laborables, CLAVE_V2 } from "./datos";
+import { useVacaciones, useV2Configurado, fechaCortaEs, festivosDeGrupo, laborables, CLAVE_V2, CLASE_SOL } from "./datos";
+
+const rangoTxt = (a, b) => `${fechaCortaEs(a)}${b !== a ? ` → ${fechaCortaEs(b)}` : ""}`;
+
+/** Días que una solicitud marca en el calendario: los nuevos (solicitud/cambio)
+ *  o los que se liberarían (cancelación). */
+function diasSolicitud(s, d) {
+  if (s.clase === "CANCELACION") {
+    return Object.keys(d.ausenciasPorDia).filter((iso) => iso >= s.desde && iso <= s.hasta &&
+      (d.ausenciasPorDia[iso] || []).some((a) => a.nombre === s.persona && a.motivo === s.tipo)).sort();
+  }
+  const grupo = (d.saldos || []).find((x) => x.nombre === s.persona)?.grupo || d.empleadosMap[s.persona]?.grupo;
+  return laborables(s.desde, s.hasta, festivosDeGrupo(d.festivosTodos, grupo));
+}
 
 /* /vacaciones-gestion (COORDINACIÓN, backend v2):
    1 Resumen   · quién está fuera hoy y los próximos días + solicitudes pendientes
@@ -47,7 +60,12 @@ function SolicitudItem({ s, activa, onClick }) {
         <span className="font-bold text-sand">{s.persona}</span>
         <span className="ml-auto text-sand/50">{s.dias} d</span>
       </div>
-      <p className="mt-0.5 text-sand/65">{formatRango(s.desde, s.hasta)}</p>
+      {CLASE_SOL[s.clase]?.corto && <p className="mt-0.5 text-[11px] font-bold text-canary">{CLASE_SOL[s.clase].corto}</p>}
+      <p className="mt-0.5 text-sand/65">
+        {s.clase === "MODIFICACION" && <span className="text-sand/45 line-through">{formatRango(s.origDesde, s.origHasta)}</span>}
+        {s.clase === "MODIFICACION" && " → "}
+        {s.clase === "CANCELACION" ? "liberar " : ""}{formatRango(s.desde, s.hasta)}
+      </p>
       {s.comentario && <p className="mt-0.5 truncate text-sand/45">💬 {s.comentario}</p>}
     </button>
   );
@@ -62,14 +80,19 @@ function DetalleSolicitud({ s, d, post, onResuelta }) {
 
   const saldo = (d.saldos || []).find((x) => x.nombre === s.persona);
   const grupo = saldo?.grupo || d.empleadosMap[s.persona]?.grupo;
-  const dias = laborables(s.desde, s.hasta, festivosDeGrupo(d.festivosTodos, grupo));
+  const cancela = s.clase === "CANCELACION";
+  const dias = diasSolicitud(s, d);
+  // En un cambio, sus días originales no cuentan como "ya registrados".
+  const originales = s.clase === "MODIFICACION"
+    ? Object.keys(d.ausenciasPorDia).filter((iso) => iso >= s.origDesde && iso <= s.origHasta && (d.ausenciasPorDia[iso] || []).some((a) => a.nombre === s.persona && a.motivo === s.tipoOrig))
+    : [];
   // Quién más falta esos días (aprobado).
   const coinciden = {};
   dias.forEach((iso) => (d.ausenciasPorDia[iso] || []).forEach((a) => {
     if (a.nombre !== s.persona) (coinciden[a.nombre] = coinciden[a.nombre] || []).push(iso);
   }));
-  const propios = dias.filter((iso) => (d.ausenciasPorDia[iso] || []).some((a) => a.nombre === s.persona));
-  const otrosPend = (d.pendientes || []).filter((x) => x.id !== s.id && !(x.hasta < s.desde || x.desde > s.hasta));
+  const propios = cancela ? [] : dias.filter((iso) => !originales.includes(iso) && (d.ausenciasPorDia[iso] || []).some((a) => a.nombre === s.persona));
+  const otrosPend = (d.pendientes || []).filter((x) => x.id !== s.id && x.persona !== s.persona && !(x.hasta < s.desde || x.desde > s.hasta));
 
   const decidir = async (decision) => {
     if (decision === "rechazar" && !motivo.trim() && !confirm("¿Rechazar sin indicar motivo?")) return;
@@ -90,17 +113,29 @@ function DetalleSolicitud({ s, d, post, onResuelta }) {
         <h3 className="font-display text-lg font-bold text-sand">{s.persona}</h3>
         <EstadoSolBadge estado={s.estado} />
       </div>
-      <p className="text-[13px] text-sand/75">
-        {fechaCortaEs(s.desde)}{s.hasta !== s.desde ? ` → ${fechaCortaEs(s.hasta)}` : ""} · <b className="text-sand">{dias.length}</b> días laborables{grupo ? ` (festivos de ${grupo})` : ""}
-      </p>
+      {s.clase !== "NUEVA" && <p className="text-[12px] font-bold uppercase tracking-wide text-canary">{CLASE_SOL[s.clase].corto}</p>}
+      {cancela ? (
+        <p className="text-[13px] text-sand/75">
+          Quiere <b className="text-sand">cancelar</b> {rangoTxt(s.desde, s.hasta)}: se liberan <b className="text-sand">{dias.length}</b> días de {motivoDe(s.tipo).texto.toLowerCase()}.
+        </p>
+      ) : s.clase === "MODIFICACION" ? (
+        <div className="text-[13px] text-sand/75">
+          <p>Antes: <TipoChip tipo={s.tipoOrig} /> {rangoTxt(s.origDesde, s.origHasta)} · {originales.length || s.diasOrig} días</p>
+          <p className="mt-0.5">Ahora: <TipoChip tipo={s.tipo} /> {rangoTxt(s.desde, s.hasta)} · <b className="text-sand">{dias.length}</b> días laborables{grupo ? ` (festivos de ${grupo})` : ""}</p>
+        </div>
+      ) : (
+        <p className="text-[13px] text-sand/75">
+          {rangoTxt(s.desde, s.hasta)} · <b className="text-sand">{dias.length}</b> días laborables{grupo ? ` (festivos de ${grupo})` : ""}
+        </p>
+      )}
       {s.comentario && <p className="text-[13px] text-sand/70">💬 {s.comentario}</p>}
-      {saldo && s.tipo === "VA" && (() => {
-        const otras = Math.max(0, (saldo.pendientesVA || 0) - (s.dias || 0)); // pendientes sin contar esta
-        const tras = saldo.quedan - dias.length;
+      {saldo && s.deltaVA !== 0 && (() => {
+        const otras = (saldo.pendientesVA || 0) - (s.deltaVA || 0); // efecto del resto de pendientes
+        const tras = saldo.quedan - (s.deltaVA || 0);
         return (
           <p className="text-[13px] text-sand/75">
             Le quedan <b className="text-sand">{saldo.quedan}</b> días → tras esta: <b className={tras < 0 ? "text-mandarin" : TEXT.lime}>{tras}</b>
-            {otras > 0 && <> · con sus otras pendientes ({otras}): <b className={tras - otras < 0 ? "text-mandarin" : "text-sand"}>{tras - otras}</b></>}
+            {otras !== 0 && <> · con sus otras pendientes: <b className={tras - otras < 0 ? "text-mandarin" : "text-sand"}>{tras - otras}</b></>}
           </p>
         );
       })()}
@@ -110,7 +145,7 @@ function DetalleSolicitud({ s, d, post, onResuelta }) {
         </p>
       )}
       <div className="text-[12.5px] text-sand/70">
-        <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-sand/50">Esos días también faltan</p>
+        <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-sand/50">{cancela ? "Esos días faltan además" : "Esos días también faltan"}</p>
         {Object.keys(coinciden).length ? (
           <ul className="space-y-0.5">
             {Object.entries(coinciden).map(([n, ds]) => <li key={n}><b className="text-sand">{n}</b> · {ds.length} {ds.length === 1 ? "día" : "días"}</li>)}
@@ -342,11 +377,7 @@ export default function GestionVacacionesRoute() {
   }, []);
 
   const sel = useMemo(() => (d?.pendientes || []).find((s) => s.id === selId) || null, [d, selId]);
-  const marca = useMemo(() => {
-    if (!sel || !d) return null;
-    const grupo = (d.saldos || []).find((x) => x.nombre === sel.persona)?.grupo;
-    return new Set(laborables(sel.desde, sel.hasta, festivosDeGrupo(d.festivosTodos, grupo)));
-  }, [sel, d]);
+  const marca = useMemo(() => (sel && d ? new Set(diasSolicitud(sel, d)) : null), [sel, d]);
 
   const datosVis = useMemo(() => (d ? normalizarColores(d, theme) : null), [d, theme]);
   const toggleFiltro = useCallback((nombre) => setFiltros((prev) => { const n = new Set(prev); if (n.has(nombre)) n.delete(nombre); else n.add(nombre); return n; }), []);
@@ -427,7 +458,7 @@ export default function GestionVacacionesRoute() {
                         <summary className="cursor-pointer text-[11px] font-bold uppercase tracking-wide text-sand/50">Últimas resueltas</summary>
                         <ul className="mt-2 space-y-1 text-[12px] text-sand/65">
                           {d.recientes.slice(0, 12).map((s) => (
-                            <li key={s.id} className="flex items-center gap-1.5"><TipoChip tipo={s.tipo} /> {s.persona} · {formatRango(s.desde, s.hasta)} <span className="ml-auto"><EstadoSolBadge estado={s.estado} /></span></li>
+                            <li key={s.id} className="flex items-center gap-1.5"><TipoChip tipo={s.tipo} /> {CLASE_SOL[s.clase]?.corto ? `${CLASE_SOL[s.clase].corto} · ` : ""}{s.persona} · {formatRango(s.desde, s.hasta)} <span className="ml-auto"><EstadoSolBadge estado={s.estado} /></span></li>
                           ))}
                         </ul>
                       </details>
@@ -449,9 +480,11 @@ export default function GestionVacacionesRoute() {
                   </section>
                   {sel && (
                     <DetalleSolicitud s={sel} d={d} post={post} onResuelta={(r) => {
+                      const hecho = [r.dias ? `${r.dias} días escritos` : "", r.liberados ? `${r.liberados} días liberados` : "", r.evento ? "evento creado" : ""].filter(Boolean).join(", ");
+                      const c = CLASE_SOL[r.clase] || CLASE_SOL.NUEVA;
                       setAviso(r.estado === "APROBADA"
-                        ? `✓ Aprobada (${r.dias} días escritos en el Excel${r.evento ? ", evento creado" : ""})${r.aviso ? ` · el correo falló: ${r.aviso}` : ""}`
-                        : `Rechazada${r.aviso ? ` · el correo falló: ${r.aviso}` : ""}`);
+                        ? `✓ ${c.label} aprobad${c.a}${hecho ? ` (${hecho})` : ""}${r.aviso ? ` · el correo falló: ${r.aviso}` : ""}`
+                        : `${c.label} rechazad${c.a}${r.aviso ? ` · el correo falló: ${r.aviso}` : ""}`);
                       setSelId(null); recargar();
                     }} />
                   )}

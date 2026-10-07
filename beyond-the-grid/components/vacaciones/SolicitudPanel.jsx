@@ -7,7 +7,7 @@ import { useAccentMap } from "@/lib/theme";
 import { FIELD, TEXT } from "../coordinacion/ui";
 import { IconSun, IconAlert } from "./icons";
 import { motivoDe } from "./constants";
-import { ESTADO_SOL, fechaCortaEs, festivosDeGrupo, laborables, isoDe } from "./datos";
+import { ESTADO_SOL, CLASE_SOL, fechaCortaEs, festivosDeGrupo, laborables, isoDe, bloquesDe } from "./datos";
 
 const ACCENT = PALETTE.mandarin;
 
@@ -41,7 +41,7 @@ export function SolicitudForm({ datos, post, onHecho }) {
     if (!listo || estado.fase === "enviando") return;
     setEstado({ fase: "enviando" });
     try {
-      const r = await post("solicitar", { tipo: f.tipo, desde: f.desde, hasta, comentario: f.comentario.trim() });
+      const r = await post("solicitar", { clase: "NUEVA", tipo: f.tipo, desde: f.desde, hasta, comentario: f.comentario.trim() });
       setEstado({ fase: "ok", dias: r.solicitud.dias, aviso: r.aviso });
       setF({ tipo: f.tipo, desde: "", hasta: "", comentario: "" });
       onHecho?.();
@@ -154,7 +154,7 @@ export function MisSolicitudes({ solicitudes, post, onHecho }) {
   const [error, setError] = useState("");
   if (!solicitudes?.length) return null;
   const cancelar = async (id) => {
-    if (!confirm("¿Cancelar esta solicitud?")) return;
+    if (!confirm("¿Retirar esta solicitud? Todavía no estaba aprobada.")) return;
     setCancelando(id); setError("");
     try { await post("cancelar", { id }); onHecho?.(); } catch (e) { setError(String(e.message || e)); }
     setCancelando("");
@@ -166,15 +166,19 @@ export function MisSolicitudes({ solicitudes, post, onHecho }) {
         {solicitudes.slice(0, 8).map((s) => (
           <li key={s.id} className="rounded-xl border border-white/10 bg-midnight/30 p-2.5 text-[12.5px]">
             <div className="flex flex-wrap items-center gap-1.5">
+              {CLASE_SOL[s.clase]?.corto && <span className="text-[11px] font-bold text-sand/70">{CLASE_SOL[s.clase].corto}</span>}
               <span className="rounded-full px-1.5 py-px text-[10px] font-bold" style={{ background: motivoDe(s.tipo).bg, color: motivoDe(s.tipo).text }}>{s.tipo}</span>
               <span className="font-bold text-sand">{fechaCortaEs(s.desde)}{s.hasta !== s.desde ? ` – ${fechaCortaEs(s.hasta)}` : ""}</span>
               <span className="text-sand/45">· {s.dias} d</span>
               <span className="ml-auto"><EstadoSolBadge estado={s.estado} /></span>
             </div>
+            {s.clase === "MODIFICACION" && (
+              <p className="mt-0.5 text-[11.5px] text-sand/50">antes: {s.tipoOrig} {fechaCortaEs(s.origDesde)}{s.origHasta !== s.origDesde ? ` – ${fechaCortaEs(s.origHasta)}` : ""}</p>
+            )}
             {s.motivo && <p className="mt-1 text-sand/60">💬 {s.motivo}</p>}
             {s.estado === "PENDIENTE" && (
               <button type="button" disabled={cancelando === s.id} onClick={() => cancelar(s.id)} className="mt-1 text-[11px] font-bold text-sand/50 hover:text-mandarin disabled:opacity-40">
-                {cancelando === s.id ? "Cancelando…" : "Cancelar"}
+                {cancelando === s.id ? "Retirando…" : "Retirar solicitud"}
               </button>
             )}
           </li>
@@ -185,3 +189,142 @@ export function MisSolicitudes({ solicitudes, post, onHecho }) {
   );
 }
 
+
+/* ── Mis días aprobados: cancelar o cambiar (con aprobación de coordinación) ── */
+function bloquePendiente(b, solicitudes) {
+  return (solicitudes || []).find((s) => s.estado === "PENDIENTE" && s.clase !== "NUEVA" &&
+    [[s.desde, s.hasta], [s.origDesde, s.origHasta]].some(([a, z]) => a && !(z < b.inicio || a > b.fin)));
+}
+
+function CambioForm({ b, modo, datos, post, onHecho, onCerrar }) {
+  const yo = datos.yo;
+  const hoy = isoDe(new Date());
+  const fxg = useMemo(() => festivosDeGrupo(datos.festivosDetalle, yo?.grupo), [datos.festivosDetalle, yo]);
+  const [f, setF] = useState(() => ({
+    desde: modo === "cancelar" ? (b.inicio < hoy && b.fin >= hoy ? hoy : b.inicio) : b.inicio,
+    hasta: b.fin, tipo: b.motivo, comentario: "",
+  }));
+  const [estado, setEstado] = useState({ fase: "form" });
+
+  // Cancelar: días del bloque dentro del rango. Cambiar: días nuevos laborables.
+  const aCancelar = modo === "cancelar" ? b.fechas.filter((iso) => iso >= f.desde && iso <= f.hasta) : [];
+  const nuevos = modo === "cambiar" && f.desde && f.hasta >= f.desde ? laborables(f.desde, f.hasta, fxg) : [];
+  const choques = nuevos.filter((iso) => !b.fechas.includes(iso) && (datos.ausenciasPorDia[iso] || []).some((a) => a.nombre === yo.nombre));
+  const igual = modo === "cambiar" && f.tipo === b.motivo && nuevos.join(",") === b.fechas.join(",");
+  const listo = modo === "cancelar"
+    ? aCancelar.length > 0
+    : nuevos.length > 0 && !choques.length && !igual && f.desde.slice(0, 4) === b.inicio.slice(0, 4) && f.hasta.slice(0, 4) === b.inicio.slice(0, 4);
+
+  // Solicitud aprobada de la que vienen esos días (si la hay): para rehacer su evento.
+  const ref = (datos.misSolicitudes || []).find((s) => s.estado === "APROBADA" && s.clase !== "CANCELACION" && s.tipo === b.motivo && !(s.hasta < b.inicio || s.desde > b.fin))?.id || "";
+
+  const enviar = async () => {
+    if (!listo || estado.fase === "enviando") return;
+    setEstado({ fase: "enviando" });
+    try {
+      const body = modo === "cancelar"
+        ? { clase: "CANCELACION", tipo: b.motivo, desde: aCancelar[0], hasta: aCancelar[aCancelar.length - 1], ref, comentario: f.comentario.trim() }
+        : { clase: "MODIFICACION", tipoOrig: b.motivo, origDesde: b.inicio, origHasta: b.fin, tipo: f.tipo, desde: f.desde, hasta: f.hasta, ref, comentario: f.comentario.trim() };
+      const r = await post("solicitar", body);
+      setEstado({ fase: "ok", aviso: r.aviso });
+      onHecho?.();
+    } catch (e) {
+      setEstado({ fase: "error", error: String(e.message || e) });
+    }
+  };
+
+  if (estado.fase === "ok") {
+    return (
+      <div className="mt-2 rounded-lg border border-lime/40 bg-lime/10 p-2.5 text-[12px] font-bold text-lime">
+        {estado.aviso ? `Guardada, pero el aviso por correo falló (${estado.aviso}).` : "✓ Enviada: queda pendiente de que coordinación la apruebe."}
+        <button type="button" onClick={onCerrar} className="ml-2 text-sand/60 hover:text-sand">Cerrar</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2 space-y-2 rounded-lg border border-white/12 bg-midnight/40 p-2.5">
+      {modo === "cambiar" && (
+        <label className="block">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-sand/50">Tipo</span>
+          <select value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value })} className={`${FIELD} w-full`}>
+            {(datos.tipos || []).map((t) => <option key={t.id} value={t.id}>{t.texto}</option>)}
+          </select>
+        </label>
+      )}
+      <div className="grid grid-cols-2 gap-2">
+        <label className="block">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-sand/50">{modo === "cancelar" ? "Cancelar desde" : "Nuevo desde"}</span>
+          <input type="date" value={f.desde} min={modo === "cancelar" ? b.inicio : undefined} max={modo === "cancelar" ? b.fin : undefined}
+            onChange={(e) => setF({ ...f, desde: e.target.value })} className={`${FIELD} w-full`} />
+        </label>
+        <label className="block">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-sand/50">Hasta</span>
+          <input type="date" value={f.hasta} min={f.desde || undefined} max={modo === "cancelar" ? b.fin : undefined}
+            onChange={(e) => setF({ ...f, hasta: e.target.value })} className={`${FIELD} w-full`} />
+        </label>
+      </div>
+      <textarea value={f.comentario} onChange={(e) => setF({ ...f, comentario: e.target.value })} rows={2} placeholder="Comentario (opcional)" className={`${FIELD} block w-full resize-y text-[13px]`} />
+      <p className="text-[11.5px] text-sand/60">
+        {modo === "cancelar"
+          ? (aCancelar.length ? `Se liberan ${aCancelar.length} ${aCancelar.length === 1 ? "día" : "días"}.` : "Ese rango no tiene días de este bloque.")
+          : igual ? "Son los mismos días: no hay nada que cambiar."
+          : choques.length ? <span className="text-mandarin">Chocan con otros días tuyos: {choques.map(fechaCortaEs).join(", ")}.</span>
+          : nuevos.length ? `Pasas de ${b.dias} a ${nuevos.length} ${nuevos.length === 1 ? "día" : "días"} laborables.` : "Elige los días nuevos."}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" disabled={!listo || estado.fase === "enviando"} onClick={enviar}
+          className="rounded-lg px-3 py-1.5 text-xs font-bold text-[#001391] disabled:cursor-not-allowed disabled:opacity-40" style={{ background: PALETTE.mandarin }}>
+          {estado.fase === "enviando" ? "Enviando…" : modo === "cancelar" ? "Pedir cancelación" : "Pedir cambio"}
+        </button>
+        <button type="button" onClick={onCerrar} className="px-2 text-xs font-bold text-sand/55 hover:text-sand">Volver</button>
+      </div>
+      {estado.fase === "error" && <p className="text-[11.5px] font-bold text-mandarin">{estado.error}</p>}
+    </div>
+  );
+}
+
+export function MisDias({ datos, post, onHecho }) {
+  const yo = datos.yo;
+  const hoy = isoDe(new Date());
+  const [abierto, setAbierto] = useState(null); // { key, modo }
+  const fxg = useMemo(() => festivosDeGrupo(datos.festivosDetalle, yo?.grupo), [datos.festivosDetalle, yo]);
+  const tipos = (datos.tipos || []).map((t) => t.id);
+  const bloques = useMemo(
+    () => (yo ? bloquesDe(datos.ausenciasPorDia, yo.nombre, fxg, tipos).filter((b) => b.fin >= hoy) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [datos.ausenciasPorDia, yo, fxg, hoy]
+  );
+  if (!yo || !bloques.length) return null;
+  return (
+    <section className="rounded-2xl border border-white/12 bg-white/[0.055] p-4 backdrop-blur-md" aria-label="Mis días aprobados">
+      <h2 className="font-display text-base font-bold text-sand">Mis días aprobados</h2>
+      <p className="mb-2.5 text-[11.5px] text-sand/55">Para cancelarlos o cambiarlos se pide a coordinación, igual que una solicitud.</p>
+      <ul className="space-y-2">
+        {bloques.map((b) => {
+          const key = `${b.motivo}-${b.inicio}`;
+          const pend = bloquePendiente(b, datos.misSolicitudes);
+          return (
+            <li key={key} className="rounded-xl border border-white/10 bg-midnight/30 p-2.5 text-[12.5px]">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="rounded-full px-1.5 py-px text-[10px] font-bold" style={{ background: motivoDe(b.motivo).bg, color: motivoDe(b.motivo).text }}>{b.motivo}</span>
+                <span className="font-bold text-sand">{fechaCortaEs(b.inicio)}{b.fin !== b.inicio ? ` – ${fechaCortaEs(b.fin)}` : ""}</span>
+                <span className="text-sand/45">· {b.dias} d</span>
+              </div>
+              {pend ? (
+                <p className="mt-1 text-[11.5px] font-bold text-canary">{CLASE_SOL[pend.clase].label} pendiente de aprobar</p>
+              ) : abierto?.key === key ? (
+                <CambioForm b={b} modo={abierto.modo} datos={datos} post={post} onHecho={onHecho} onCerrar={() => setAbierto(null)} />
+              ) : (
+                <div className="mt-1 flex gap-3">
+                  <button type="button" onClick={() => setAbierto({ key, modo: "cambiar" })} className="text-[11.5px] font-bold text-serene hover:underline">🔁 Cambiar</button>
+                  <button type="button" onClick={() => setAbierto({ key, modo: "cancelar" })} className="text-[11.5px] font-bold text-sand/60 hover:text-mandarin">🗑️ Cancelar</button>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}

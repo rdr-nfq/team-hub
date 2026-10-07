@@ -3,7 +3,7 @@
  *  VACACIONES RDR  ·  Apps Script (backend de /vacaciones y /vacaciones-gestion)
  * ============================================================================
  *
- *  UN solo proyecto, ligado al Excel de siempre ("Vacaciones RDR"). Sustituye
+ *  UN solo proyecto, ligado al Excel principal ("Vacaciones RDR Pablo", V_CONFIG.EXCEL_ID). Sustituye
  *  al Excel auxiliar, al Google Form y al panel de responsables antiguos
  *  (apps-script/vacaciones-antiguo/).
  *
@@ -19,7 +19,12 @@
  *         BA Baja · RE Revisión · FT Festivo trabajado · FE Festivo · VE Votación
  *       ⚠ No insertar ni borrar columnas de días: la columna de cada fecha se
  *         calcula (J = 1 de enero). Personas: añadir/quitar filas sin problema.
- *   · Solicitudes: una fila por petición (PENDIENTE/APROBADA/RECHAZADA/CANCELADA).
+ *   · Solicitudes: una fila por petición. Clase NUEVA (pedir días), CANCELACION
+ *       (liberar días ya aprobados) o MODIFICACION (cambiar unos días aprobados
+ *       por otros). Todas pasan por la aprobación de coordinación.
+ *       Estado: PENDIENTE · APROBADA · RECHAZADA · CANCELADA (la retira quien
+ *       la pidió) · ANULADA (aprobada y luego cancelada entera) · MODIFICADA
+ *       (aprobada y luego sustituida por un cambio).
  *   · Festivos: Fecha · Grupo · Nombre (un festivo por grupo y día).
  *   · Grupos_Festivos: Grupo · País (ES/MX), p. ej. Madrid/ES, México DC/MX.
  *   Las pestañas antiguas ("Vacaciones 2026", "2026_Calendario") quedan solo
@@ -35,7 +40,7 @@
  *     del hub). Desde la web se piden VA, FO y ES.
  *
  *  DESPLIEGUE (proyecto LIGADO al Excel "Vacaciones RDR"):
- *   1. Abrir el Excel -> Extensiones -> Apps Script -> pegar este fichero y
+ *   1. Abrir el Excel principal -> Extensiones -> Apps Script -> pegar este fichero y
  *      Migracion_2026.gs (dos ficheros del mismo proyecto).
  *   2. Ejecutar `autorizar` y aceptar permisos (Hojas, Calendar, correo, UrlFetch).
  *   3. Ejecutar `migrar2026` y revisar la pestaña "Migracion_2026" (informe).
@@ -48,7 +53,12 @@
  *        (+ saldos, solicitudes pendientes y grupos si el email es de coordinación)
  *   GET  ?modo=publico                      formato antiguo (lo usa el Time Report)
  *   POST text/plain JSON { action, email, … }:
- *        solicitar     { tipo, desde, hasta, comentario }
+ *        solicitar     { clase:'NUEVA', tipo, desde, hasta, comentario }
+ *                      { clase:'CANCELACION', tipo, desde, hasta, ref?, comentario }
+ *                      { clase:'MODIFICACION', tipoOrig, origDesde, origHasta,
+ *                        tipo, desde, hasta, ref?, comentario }
+ *                      (ref = Id de la solicitud aprobada original, si la hay:
+ *                       los días migrados o puestos a mano en el Excel no tienen)
  *        cancelar      { id }                                   (la propia, pendiente)
  *        resolver      { id, decision:'aprobar'|'rechazar', motivo?, forzar? }   (coord.)
  *        guardarFestivo{ fecha, nombre, grupos:[…] }                              (coord.)
@@ -61,7 +71,7 @@
  */
 
 const V_CONFIG = {
-  EXCEL_ID: '1yCexnLp49FBu9f-g1Gf5glfz2UEFc4u_d0hzBgTnTmA',
+  EXCEL_ID: '1XflnB-FMdEAK1RXrO3qxMLOLC-oxd9jL6pUkIkKfRwU', // «Vacaciones RDR Pablo»
   EQUIPO_JSON_URL: 'https://raw.githubusercontent.com/rdr-nfq/team-hub/main/beyond-the-grid/public/equipo/equipo.json',
   WEB_URL: 'https://rdr-nfq.github.io/team-hub/vacaciones/',
   GESTION_URL: 'https://rdr-nfq.github.io/team-hub/vacaciones-gestion/',
@@ -98,7 +108,10 @@ const CODIGOS = {
   VE: { texto: 'Votación elecciones', color: '#E2E6EA' }
 };
 
-const COLS_SOL = ['Id', 'Creada', 'Email', 'Persona', 'Tipo', 'Desde', 'Hasta', 'Días', 'Comentario', 'Estado', 'Resuelta por', 'Resuelta', 'Motivo', 'Evento calendario'];
+const COLS_SOL = ['Id', 'Creada', 'Email', 'Persona', 'Clase', 'Tipo', 'Desde', 'Hasta', 'Días',
+  'Tipo original', 'Original desde', 'Original hasta', 'Días original', 'Referencia',
+  'Comentario', 'Estado', 'Resuelta por', 'Resuelta', 'Motivo', 'Evento calendario'];
+const CLASES = ['NUEVA', 'CANCELACION', 'MODIFICACION'];
 const S = {}; COLS_SOL.forEach(function (c, i) { S[c] = i; });
 
 const MESES_ES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -389,8 +402,9 @@ function datos(anioParam, email) {
     out.recientes = sols.filter(function (s) { return s.estado !== 'PENDIENTE'; })
       .sort(function (a, b) { return String(b.resuelta).localeCompare(String(a.resuelta)); }).slice(0, 25).map(_solPublica);
     out.saldos = grid.personas.map(function (p) {
-      const pend = pendientes.filter(function (s) { return s.persona === p.nombre && s.tipo === 'VA' && s.desde.slice(0, 4) === String(anio); })
-        .reduce(function (n, s) { return n + (Number(s.dias) || 0); }, 0);
+      // Efecto neto en VA de lo pendiente (las cancelaciones suman, los cambios compensan).
+      const pend = pendientes.filter(function (s) { return s.persona === p.nombre && s.desde.slice(0, 4) === String(anio); })
+        .reduce(function (n, s) { return n + _deltaVA(s); }, 0);
       return {
         nombre: p.nombre, email: p.email, grupo: p.grupo, activo: p.activo,
         anteriores: p.anteriores, dias: p.dias, total: p.total, va: p.va, quedan: p.quedan,
@@ -425,19 +439,34 @@ function datosPublicos(anio) {
 }
 
 // ── Solicitudes ─────────────────────────────────────────────────────────────
-function _hojaSolicitudes(ss) { return _hoja(ss, HOJA.SOLICITUDES, COLS_SOL, [S.Creada + 1, S.Desde + 1, S.Hasta + 1, S.Resuelta + 1]); }
+function _hojaSolicitudes(ss) {
+  const sh = _hoja(ss, HOJA.SOLICITUDES, COLS_SOL, [S.Creada + 1, S.Desde + 1, S.Hasta + 1, S['Original desde'] + 1, S['Original hasta'] + 1, S.Resuelta + 1]);
+  const cab = sh.getRange(1, 1, 1, COLS_SOL.length).getValues()[0];
+  if (cab.join('|') !== COLS_SOL.join('|')) {
+    if (sh.getLastRow() > 1) throw new Error('La pestaña Solicitudes tiene columnas de otra versión: renómbrala (p. ej. Solicitudes_old) y se creará de nuevo.');
+    sh.getRange(1, 1, 1, COLS_SOL.length).setValues([COLS_SOL]).setFontWeight('bold').setBackground('#E2E6EA');
+  }
+  return sh;
+}
 
 function _leerSolicitudes(ss) {
   const sh = _hojaSolicitudes(ss);
   const tz = ss.getSpreadsheetTimeZone();
   if (sh.getLastRow() < 2) return [];
+  const t = function (v) { return v instanceof Date ? v.toISOString() : String(v || ''); };
   return sh.getRange(2, 1, sh.getLastRow() - 1, COLS_SOL.length).getValues().map(function (r, i) {
+    const clase = String(r[S.Clase] || 'NUEVA').trim().toUpperCase();
     return {
-      fila: i + 2, id: String(r[S.Id]), creada: String(r[S.Creada] instanceof Date ? r[S.Creada].toISOString() : r[S.Creada]),
-      email: _normEmail(r[S.Email]), persona: String(r[S.Persona]).trim(), tipo: String(r[S.Tipo]).trim().toUpperCase(),
+      fila: i + 2, id: String(r[S.Id]), creada: t(r[S.Creada]),
+      email: _normEmail(r[S.Email]), persona: String(r[S.Persona]).trim(),
+      clase: CLASES.indexOf(clase) >= 0 ? clase : 'NUEVA',
+      tipo: String(r[S.Tipo]).trim().toUpperCase(),
       desde: _isoDeCelda(r[S.Desde], tz), hasta: _isoDeCelda(r[S.Hasta], tz), dias: Number(r[S.Días]) || 0,
+      tipoOrig: String(r[S['Tipo original']] || '').trim().toUpperCase(),
+      origDesde: _isoDeCelda(r[S['Original desde']], tz), origHasta: _isoDeCelda(r[S['Original hasta']], tz),
+      diasOrig: Number(r[S['Días original']]) || 0, ref: String(r[S.Referencia] || '').trim(),
       comentario: String(r[S.Comentario] || ''), estado: String(r[S.Estado] || '').trim().toUpperCase(),
-      resueltaPor: String(r[S['Resuelta por']] || ''), resuelta: String(r[S.Resuelta] instanceof Date ? r[S.Resuelta].toISOString() : r[S.Resuelta] || ''),
+      resueltaPor: String(r[S['Resuelta por']] || ''), resuelta: t(r[S.Resuelta]),
       motivo: String(r[S.Motivo] || ''), evento: String(r[S['Evento calendario']] || '')
     };
   }).filter(function (s) { return s.id; });
@@ -445,32 +474,61 @@ function _leerSolicitudes(ss) {
 
 function _solPublica(s) {
   return {
-    id: s.id, creada: s.creada, persona: s.persona, tipo: s.tipo, desde: s.desde, hasta: s.hasta, dias: s.dias,
-    comentario: s.comentario, estado: s.estado, resueltaPor: s.resueltaPor, resuelta: s.resuelta, motivo: s.motivo
+    id: s.id, creada: s.creada, persona: s.persona, clase: s.clase, tipo: s.tipo, desde: s.desde, hasta: s.hasta, dias: s.dias,
+    tipoOrig: s.tipoOrig, origDesde: s.origDesde, origHasta: s.origHasta, diasOrig: s.diasOrig, ref: s.ref,
+    comentario: s.comentario, estado: s.estado, resueltaPor: s.resueltaPor, resuelta: s.resuelta, motivo: s.motivo,
+    deltaVA: _deltaVA(s)
   };
 }
 
-/** Días laborables del rango para la persona y días en conflicto (celdas ocupadas). */
-function _analizarRango(persona, desde, hasta, fxg) {
+/** Efecto de la solicitud en los días de VA consumidos (+ consume, − libera). */
+function _deltaVA(s) {
+  if (s.clase === 'CANCELACION') return s.tipo === 'VA' ? -s.dias : 0;
+  if (s.clase === 'MODIFICACION') return (s.tipo === 'VA' ? s.dias : 0) - (s.tipoOrig === 'VA' ? s.diasOrig : 0);
+  return s.tipo === 'VA' ? s.dias : 0;
+}
+
+/** Días laborables del rango para la persona y días en conflicto (celdas ocupadas,
+ *  salvo las que se van a liberar en el mismo cambio: `libres`). */
+function _analizarRango(persona, desde, hasta, fxg, libres) {
   const laborables = [], ocupados = [];
   _rango(desde, hasta).forEach(function (iso) {
     if (!_laborable(persona, iso, fxg)) return;
     laborables.push(iso);
     const c = persona.codigos[_idxDia(iso)];
-    if (c) ocupados.push(iso + ' (' + c + ')');
+    if (c && !(libres && libres.indexOf(iso) >= 0)) ocupados.push(iso + ' (' + c + ')');
   });
   return { laborables: laborables, ocupados: ocupados };
+}
+
+/** Días del rango cuya celda tiene exactamente ese código (los que se liberarían). */
+function _diasConCodigo(persona, desde, hasta, tipo) {
+  return _rango(desde, hasta).filter(function (iso) { return persona.codigos[_idxDia(iso)] === tipo; });
+}
+
+function _validarRango(desde, hasta, que) {
+  if (!_isoOk(desde) || !_isoOk(hasta)) throw new Error('Fechas no válidas' + (que ? ' (' + que + ')' : '') + '.');
+  if (hasta < desde) throw new Error('La fecha de fin es anterior a la de inicio' + (que ? ' (' + que + ')' : '') + '.');
+  if (desde.slice(0, 4) !== hasta.slice(0, 4)) throw new Error('No puede cruzar de año: divídela en dos (hasta el 31/12 y desde el 1/1).');
 }
 
 function solicitar(p) {
   const email = _normEmail(p.email);
   if (!email) throw new Error('Falta tu email.');
+  const clase = String(p.clase || 'NUEVA').toUpperCase();
+  if (CLASES.indexOf(clase) < 0) throw new Error('Clase de solicitud no válida: ' + p.clase);
   const tipo = String(p.tipo || '').toUpperCase();
   if (V_CONFIG.TIPOS_SOLICITABLES.indexOf(tipo) < 0) throw new Error('Tipo no válido: ' + p.tipo);
   const desde = String(p.desde || ''), hasta = String(p.hasta || '');
-  if (!_isoOk(desde) || !_isoOk(hasta)) throw new Error('Fechas no válidas.');
-  if (hasta < desde) throw new Error('La fecha de fin es anterior a la de inicio.');
-  if (desde.slice(0, 4) !== hasta.slice(0, 4)) throw new Error('La solicitud no puede cruzar de año: divídela en dos (hasta el 31/12 y desde el 1/1).');
+  _validarRango(desde, hasta, clase === 'MODIFICACION' ? 'días nuevos' : '');
+  const tipoOrig = clase === 'MODIFICACION' ? String(p.tipoOrig || '').toUpperCase() : '';
+  const origDesde = clase === 'MODIFICACION' ? String(p.origDesde || '') : '';
+  const origHasta = clase === 'MODIFICACION' ? String(p.origHasta || '') : '';
+  if (clase === 'MODIFICACION') {
+    if (!CODIGOS[tipoOrig]) throw new Error('Tipo original no válido.');
+    _validarRango(origDesde, origHasta, 'días originales');
+    if (origDesde.slice(0, 4) !== desde.slice(0, 4)) throw new Error('El cambio tiene que quedarse en el mismo año.');
+  }
 
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
@@ -482,33 +540,61 @@ function solicitar(p) {
     const persona = _personaPorEmail(grid, email);
     if (!persona) throw new Error('No apareces en ' + _nombreHoja(anio) + ' (' + email + '): pide a coordinación que te añada.');
     const fxg = _festivosPorGrupo(_leerFestivos(ss));
-    const a = _analizarRango(persona, desde, hasta, fxg);
-    if (!a.laborables.length) throw new Error('El rango no tiene días laborables (fines de semana o festivos).');
-    if (a.ocupados.length) throw new Error('Ya tienes días registrados en ese rango: ' + a.ocupados.join(', ') + '.');
-
     const sols = _leerSolicitudes(ss);
-    const solapa = sols.filter(function (s) {
-      return s.estado === 'PENDIENTE' && s.persona === persona.nombre && !(s.hasta < desde || s.desde > hasta);
-    });
-    if (solapa.length) throw new Error('Ya tienes una solicitud pendiente que se solapa (' + _fechaEs(solapa[0].desde) + ' – ' + _fechaEs(solapa[0].hasta) + ').');
 
-    const id = 'VAC-' + Utilities.formatDate(new Date(), 'Europe/Madrid', 'yyyyMMdd-HHmmss') + '-' + Math.floor(Math.random() * 1000);
-    const fila = [];
+    let dias = 0, diasOrig = 0;
+    if (clase === 'NUEVA') {
+      const a = _analizarRango(persona, desde, hasta, fxg);
+      if (!a.laborables.length) throw new Error('El rango no tiene días laborables (fines de semana o festivos).');
+      if (a.ocupados.length) throw new Error('Ya tienes días registrados en ese rango: ' + a.ocupados.join(', ') + '.');
+      dias = a.laborables.length;
+    } else if (clase === 'CANCELACION') {
+      const libres = _diasConCodigo(persona, desde, hasta, tipo);
+      if (!libres.length) throw new Error('No tienes días de ' + CODIGOS[tipo].texto.toLowerCase() + ' entre el ' + _fechaEs(desde) + ' y el ' + _fechaEs(hasta) + '.');
+      dias = libres.length;
+    } else {
+      const libres = _diasConCodigo(persona, origDesde, origHasta, tipoOrig);
+      if (!libres.length) throw new Error('No tienes días de ' + CODIGOS[tipoOrig].texto.toLowerCase() + ' entre el ' + _fechaEs(origDesde) + ' y el ' + _fechaEs(origHasta) + '.');
+      const a = _analizarRango(persona, desde, hasta, fxg, libres);
+      if (!a.laborables.length) throw new Error('Los días nuevos no tienen ningún laborable.');
+      if (a.ocupados.length) throw new Error('Los días nuevos chocan con otros que ya tienes: ' + a.ocupados.join(', ') + '.');
+      if (tipo === tipoOrig && a.laborables.join(',') === libres.join(',')) throw new Error('El cambio deja los mismos días: no hay nada que modificar.');
+      dias = a.laborables.length; diasOrig = libres.length;
+    }
+
+    // Nada pendiente de esa persona que toque los mismos días.
+    const rangos = [[desde, hasta]].concat(clase === 'MODIFICACION' ? [[origDesde, origHasta]] : []);
+    const solapa = sols.filter(function (s) {
+      if (s.estado !== 'PENDIENTE' || s.persona !== persona.nombre) return false;
+      const suyos = [[s.desde, s.hasta]].concat(s.clase === 'MODIFICACION' ? [[s.origDesde, s.origHasta]] : []);
+      return rangos.some(function (r) { return suyos.some(function (x) { return !(x[1] < r[0] || x[0] > r[1]); }); });
+    });
+    if (solapa.length) throw new Error('Ya tienes una solicitud pendiente sobre esos días (' + _fechaEs(solapa[0].desde) + ' – ' + _fechaEs(solapa[0].hasta) + '): espera a que se resuelva o cancélala.');
+
+    let ref = String(p.ref || '').trim();
+    if (ref && !sols.some(function (s) { return s.id === ref && s.persona === persona.nombre && s.estado === 'APROBADA'; })) ref = '';
+
+    // Id único (dos solicitudes en el mismo segundo no pueden compartirlo).
+    const usados = {};
+    sols.forEach(function (x) { usados[x.id] = true; });
+    let id;
+    do { id = 'VAC-' + Utilities.formatDate(new Date(), 'Europe/Madrid', 'yyyyMMdd-HHmmss') + '-' + Utilities.getUuid().slice(0, 6); } while (usados[id]);
+    const fila = COLS_SOL.map(function () { return ''; });
     fila[S.Id] = id; fila[S.Creada] = new Date().toISOString(); fila[S.Email] = email; fila[S.Persona] = persona.nombre;
-    fila[S.Tipo] = tipo; fila[S.Desde] = desde; fila[S.Hasta] = hasta; fila[S.Días] = a.laborables.length;
+    fila[S.Clase] = clase; fila[S.Tipo] = tipo; fila[S.Desde] = desde; fila[S.Hasta] = hasta; fila[S.Días] = dias;
+    fila[S['Tipo original']] = tipoOrig; fila[S['Original desde']] = origDesde; fila[S['Original hasta']] = origHasta;
+    fila[S['Días original']] = clase === 'MODIFICACION' ? diasOrig : ''; fila[S.Referencia] = ref;
     fila[S.Comentario] = String(p.comentario || '').slice(0, 1000); fila[S.Estado] = 'PENDIENTE';
-    fila[S['Resuelta por']] = ''; fila[S.Resuelta] = ''; fila[S.Motivo] = ''; fila[S['Evento calendario']] = '';
     _hojaSolicitudes(ss).appendRow(fila);
 
-    let saldoTras = null;
-    if (tipo === 'VA') {
-      const pendVA = sols.filter(function (s) { return s.estado === 'PENDIENTE' && s.persona === persona.nombre && s.tipo === 'VA'; })
-        .reduce(function (n, s) { return n + s.dias; }, 0);
-      saldoTras = persona.quedan - pendVA - a.laborables.length;
-    }
-    const sol = { id: id, persona: persona.nombre, email: email, tipo: tipo, desde: desde, hasta: hasta, dias: a.laborables.length, comentario: String(p.comentario || '') };
+    const sol = { id: id, persona: persona.nombre, email: email, clase: clase, tipo: tipo, desde: desde, hasta: hasta, dias: dias,
+      tipoOrig: tipoOrig, origDesde: origDesde, origHasta: origHasta, diasOrig: diasOrig, ref: ref, comentario: String(p.comentario || '') };
+    const pendDelta = sols.filter(function (s) { return s.estado === 'PENDIENTE' && s.persona === persona.nombre; })
+      .reduce(function (n, s) { return n + _deltaVA(s); }, 0);
+    const delta = _deltaVA(sol);
+    const saldoTras = delta ? persona.quedan - pendDelta - delta : null;
     const aviso = _avisar(function () { _correoNuevaSolicitud(sol, saldoTras); });
-    return { solicitud: sol, aviso: aviso };
+    return { solicitud: _solPublica(sol), aviso: aviso };
   } finally {
     lock.releaseLock();
   }
@@ -519,8 +605,8 @@ function cancelar(p) {
   const alias = _aliasEmail(p.email);
   const s = _leerSolicitudes(ss).filter(function (x) { return x.id === String(p.id); })[0];
   if (!s) throw new Error('No se encuentra la solicitud.');
-  if (alias.indexOf(s.email) < 0) throw new Error('Solo puedes cancelar tus propias solicitudes.');
-  if (s.estado !== 'PENDIENTE') throw new Error('Solo se pueden cancelar solicitudes pendientes (esta está ' + s.estado.toLowerCase() + ').');
+  if (alias.indexOf(s.email) < 0) throw new Error('Solo puedes retirar tus propias solicitudes.');
+  if (s.estado !== 'PENDIENTE') throw new Error('Solo se pueden retirar solicitudes pendientes (esta está ' + s.estado.toLowerCase() + '). Para anular días ya aprobados, pide una cancelación.');
   const sh = _hojaSolicitudes(ss);
   sh.getRange(s.fila, S.Estado + 1).setValue('CANCELADA');
   sh.getRange(s.fila, S.Resuelta + 1).setValue(new Date().toISOString());
@@ -534,14 +620,15 @@ function resolver(p) {
   lock.waitLock(20000);
   try {
     const ss = _ss();
-    const s = _leerSolicitudes(ss).filter(function (x) { return x.id === String(p.id); })[0];
+    const sols = _leerSolicitudes(ss);
+    const s = sols.filter(function (x) { return x.id === String(p.id); })[0];
     if (!s) throw new Error('No se encuentra la solicitud.');
     if (s.estado !== 'PENDIENTE') throw new Error('La solicitud ya está ' + s.estado.toLowerCase() + '.');
     const sh = _hojaSolicitudes(ss);
     const quien = _normEmail(p.email);
     const motivo = String(p.motivo || '').trim().slice(0, 500);
     let eventoId = '';
-    let escritos = 0;
+    let escritos = 0, liberados = 0;
 
     if (decision === 'aprobar') {
       const anio = Number(s.desde.slice(0, 4));
@@ -550,16 +637,38 @@ function resolver(p) {
       const persona = _personaPorNombre(grid, s.persona);
       if (!persona) throw new Error(s.persona + ' ya no está en ' + _nombreHoja(anio) + '.');
       const fxg = _festivosPorGrupo(_leerFestivos(ss));
-      const a = _analizarRango(persona, s.desde, s.hasta, fxg);
-      if (a.ocupados.length && !p.forzar) {
-        throw new Error('SOLAPAMIENTO: ' + s.persona + ' ya tiene días registrados: ' + a.ocupados.join(', ') + '. Revísalo en el Excel o aprueba forzando.');
+      const celda = function (iso) { return grid.sh.getRange(persona.fila, G.DIA1 + _idxDia(iso)); };
+      const ref = s.ref ? sols.filter(function (x) { return x.id === s.ref; })[0] : null;
+
+      if (s.clase === 'NUEVA') {
+        const a = _analizarRango(persona, s.desde, s.hasta, fxg);
+        if (a.ocupados.length && !p.forzar) {
+          throw new Error('SOLAPAMIENTO: ' + s.persona + ' ya tiene días registrados: ' + a.ocupados.join(', ') + '. Revísalo en el Excel o aprueba forzando.');
+        }
+        a.laborables.forEach(function (iso) { celda(iso).setValue(s.tipo); escritos++; });
+        eventoId = _crearEvento(s) || '';
+        sh.getRange(s.fila, S.Días + 1).setValue(a.laborables.length);
+
+      } else if (s.clase === 'CANCELACION') {
+        const libres = _diasConCodigo(persona, s.desde, s.hasta, s.tipo);
+        if (!libres.length) throw new Error('Esos días ya no tienen ' + s.tipo + ' en el Excel: no hay nada que cancelar.');
+        libres.forEach(function (iso) { celda(iso).setValue(''); persona.codigos[_idxDia(iso)] = ''; liberados++; });
+        sh.getRange(s.fila, S.Días + 1).setValue(libres.length);
+        if (ref) _ajustarOriginal(sh, ref, persona, 'ANULADA');
+
+      } else {
+        const libres = _diasConCodigo(persona, s.origDesde, s.origHasta, s.tipoOrig);
+        const a = _analizarRango(persona, s.desde, s.hasta, fxg, libres);
+        if (a.ocupados.length && !p.forzar) {
+          throw new Error('SOLAPAMIENTO: los días nuevos chocan con ' + a.ocupados.join(', ') + '. Revísalo en el Excel o aprueba forzando.');
+        }
+        libres.forEach(function (iso) { celda(iso).setValue(''); persona.codigos[_idxDia(iso)] = ''; liberados++; });
+        a.laborables.forEach(function (iso) { celda(iso).setValue(s.tipo); persona.codigos[_idxDia(iso)] = s.tipo; escritos++; });
+        sh.getRange(s.fila, S.Días + 1).setValue(a.laborables.length);
+        sh.getRange(s.fila, S['Días original'] + 1).setValue(libres.length);
+        if (ref) _ajustarOriginal(sh, ref, persona, 'MODIFICADA');
+        eventoId = _crearEvento(s) || '';
       }
-      a.laborables.forEach(function (iso) {
-        grid.sh.getRange(persona.fila, G.DIA1 + _idxDia(iso)).setValue(s.tipo);
-        escritos++;
-      });
-      eventoId = _crearEvento(s) || '';
-      sh.getRange(s.fila, S.Días + 1).setValue(a.laborables.length);
     }
     sh.getRange(s.fila, S.Estado + 1).setValue(decision === 'aprobar' ? 'APROBADA' : 'RECHAZADA');
     sh.getRange(s.fila, S['Resuelta por'] + 1).setValue(quien);
@@ -567,10 +676,28 @@ function resolver(p) {
     sh.getRange(s.fila, S.Motivo + 1).setValue(motivo);
     sh.getRange(s.fila, S['Evento calendario'] + 1).setValue(eventoId);
     const aviso = _avisar(function () { _correoResolucion(s, decision, motivo, quien); });
-    return { id: s.id, estado: decision === 'aprobar' ? 'APROBADA' : 'RECHAZADA', dias: escritos, evento: !!eventoId, aviso: aviso };
+    return { id: s.id, clase: s.clase, estado: decision === 'aprobar' ? 'APROBADA' : 'RECHAZADA', dias: escritos, liberados: liberados, evento: !!eventoId, aviso: aviso };
   } finally {
     lock.releaseLock();
   }
+}
+
+/* Tras cancelar o cambiar días de una solicitud aprobada (ref): su evento del
+   calendario se rehace con lo que le quede y, si no le queda nada (o ha sido
+   sustituida por un cambio), pasa a `estadoFinal`. */
+function _ajustarOriginal(sh, ref, persona, estadoFinal) {
+  _borrarEvento(ref.evento);
+  const quedan = estadoFinal === 'MODIFICADA' ? [] : _diasConCodigo(persona, ref.desde, ref.hasta, ref.tipo);
+  let nuevoEvento = '';
+  if (quedan.length) {
+    nuevoEvento = _crearEvento({ id: ref.id, persona: ref.persona, tipo: ref.tipo, desde: quedan[0], hasta: quedan[quedan.length - 1] }) || '';
+    sh.getRange(ref.fila, S.Días + 1).setValue(quedan.length);
+    sh.getRange(ref.fila, S.Desde + 1).setValue(quedan[0]);
+    sh.getRange(ref.fila, S.Hasta + 1).setValue(quedan[quedan.length - 1]);
+  } else {
+    sh.getRange(ref.fila, S.Estado + 1).setValue(estadoFinal);
+  }
+  sh.getRange(ref.fila, S['Evento calendario'] + 1).setValue(nuevoEvento);
 }
 
 function _crearEvento(s) {
@@ -588,6 +715,16 @@ function _crearEvento(s) {
   } catch (e) {
     console.error('Calendario: ' + e);
     return null;
+  }
+}
+
+function _borrarEvento(id) {
+  if (!id || !V_CONFIG.CALENDARIO_ID) return;
+  try {
+    const ev = CalendarApp.getCalendarById(V_CONFIG.CALENDARIO_ID).getEventById(id);
+    if (ev) ev.deleteEvent();
+  } catch (e) {
+    console.error('Calendario (borrar): ' + e);
   }
 }
 
@@ -843,37 +980,64 @@ function _marco(titulo, cuerpo, botonUrl, botonTexto, color) {
 
 function _filaDato(k, v) { return '<tr><td style="padding:4px 12px 4px 0;color:#46536D;">' + k + '</td><td style="padding:4px 0;font-weight:bold;">' + v + '</td></tr>'; }
 
+function _rangoEs(desde, hasta) { return _fechaEs(desde) + (hasta !== desde ? ' – ' + _fechaEs(hasta) : ''); }
+function _textoTipo(t) { return ((CODIGOS[t] || {}).texto || t).toLowerCase(); }
+
+/** Encabezado y frase de cada clase de solicitud (para los correos). */
+function _resumenClase(s) {
+  if (s.clase === 'CANCELACION') return {
+    emoji: '🗑️', nombre: 'cancelación', a: 'a', titulo: 'Cancelación de ' + _textoTipo(s.tipo),
+    frase: 'cancelar ' + s.dias + ' días de ' + _textoTipo(s.tipo) + ' (' + _rangoEs(s.desde, s.hasta) + ')'
+  };
+  if (s.clase === 'MODIFICACION') return {
+    emoji: '🔁', nombre: 'cambio', a: 'o', titulo: 'Cambio de ' + _textoTipo(s.tipoOrig),
+    frase: 'cambiar ' + _textoTipo(s.tipoOrig) + ' del ' + _rangoEs(s.origDesde, s.origHasta) + ' por ' + _textoTipo(s.tipo) + ' del ' + _rangoEs(s.desde, s.hasta)
+  };
+  return {
+    emoji: '🌴', nombre: 'solicitud', a: 'a', titulo: 'Nueva solicitud de ' + _textoTipo(s.tipo),
+    frase: _textoTipo(s.tipo) + ' del ' + _rangoEs(s.desde, s.hasta)
+  };
+}
+
 function _correoNuevaSolicitud(s, saldoTras) {
   const coords = _coordinadores();
   if (!coords.length) throw new Error('No hay coordinadores en equipo.json.');
-  const tipo = (CODIGOS[s.tipo] || {}).texto || s.tipo;
+  const c = _resumenClase(s);
   const url = V_CONFIG.GESTION_URL + '?id=' + encodeURIComponent(s.id);
-  const asunto = '🌴 Nueva solicitud · ' + s.persona + ' · ' + tipo + ' (' + _fechaEs(s.desde) + (s.hasta !== s.desde ? ' – ' + _fechaEs(s.hasta) : '') + ')';
-  const cuerpo = '<p style="margin:0 0 14px;font-size:15px;">👋 <strong>' + _esc(s.persona) + '</strong> ha pedido:</p>'
-    + '<table style="font-size:14px;margin:0 0 16px;">'
-    + _filaDato('Tipo', tipo)
-    + _filaDato('Desde', _fechaEs(s.desde))
-    + _filaDato('Hasta', _fechaEs(s.hasta))
-    + _filaDato('Días laborables', s.dias)
+  const asunto = c.emoji + ' ' + c.titulo + ' · ' + s.persona + ' (' + _rangoEs(s.desde, s.hasta) + ')';
+  let filas;
+  if (s.clase === 'CANCELACION') {
+    filas = _filaDato('Cancelar', CODIGOS[s.tipo].texto) + _filaDato('Días', _rangoEs(s.desde, s.hasta)) + _filaDato('Días laborables que se liberan', s.dias);
+  } else if (s.clase === 'MODIFICACION') {
+    filas = _filaDato('Antes', CODIGOS[s.tipoOrig].texto + ' · ' + _rangoEs(s.origDesde, s.origHasta) + ' (' + s.diasOrig + ' días)')
+      + _filaDato('Ahora', CODIGOS[s.tipo].texto + ' · ' + _rangoEs(s.desde, s.hasta) + ' (' + s.dias + ' días)');
+  } else {
+    filas = _filaDato('Tipo', CODIGOS[s.tipo].texto) + _filaDato('Desde', _fechaEs(s.desde)) + _filaDato('Hasta', _fechaEs(s.hasta)) + _filaDato('Días laborables', s.dias);
+  }
+  const cuerpo = '<p style="margin:0 0 14px;font-size:15px;">👋 <strong>' + _esc(s.persona) + '</strong> pide ' + (s.clase === 'NUEVA' ? 'días:' : 'un ' + c.nombre + ':') + '</p>'
+    + '<table style="font-size:14px;margin:0 0 16px;">' + filas
     + (saldoTras !== null ? _filaDato('Le quedarían', saldoTras + (saldoTras < 0 ? ' ⚠️ supera su saldo' : '')) : '')
     + (s.comentario ? _filaDato('Comentario', _esc(s.comentario)) : '')
     + '</table>';
-  const html = _marco('🌴 Nueva solicitud de ' + tipo.toLowerCase(), cuerpo, url, '✅ Revisar y aprobar →', '#88E783');
-  const texto = s.persona + ' ha pedido ' + tipo + ' del ' + _fechaEs(s.desde) + ' al ' + _fechaEs(s.hasta) + ' (' + s.dias + ' días laborables).\nRevisar: ' + url;
+  const html = _marco(c.emoji + ' ' + c.titulo, cuerpo, url, '✅ Revisar y aprobar →', '#88E783');
+  const texto = s.persona + ' pide ' + c.frase + '.\nRevisar: ' + url;
   MailApp.sendEmail(coords.join(','), asunto, texto, { htmlBody: html, name: V_CONFIG.REMITE, replyTo: s.email });
 }
 
 function _correoResolucion(s, decision, motivo, quien) {
   if (!s.email) return;
-  const tipo = (CODIGOS[s.tipo] || {}).texto || s.tipo;
+  const c = _resumenClase(s);
   const ok = decision === 'aprobar';
-  const asunto = (ok ? '✅ Aprobada' : '❌ Rechazada') + ' · tu solicitud de ' + tipo.toLowerCase() + ' (' + _fechaEs(s.desde) + (s.hasta !== s.desde ? ' – ' + _fechaEs(s.hasta) : '') + ')';
+  const asunto = (ok ? '✅ ' : '❌ ') + 'Tu ' + c.nombre + ' está ' + (ok ? 'aprobad' : 'rechazad') + c.a + ' (' + _rangoEs(s.desde, s.hasta) + ')';
+  const final = ok
+    ? (s.clase === 'CANCELACION' ? 'Esos días vuelven a estar libres en el calendario. 👍' : s.clase === 'MODIFICACION' ? 'El calendario ya tiene los días nuevos. 🌴' : '¡A disfrutar! 🌴')
+    : '';
   const cuerpo = '<p style="margin:0 0 14px;font-size:15px;">👋 Hola <strong>' + _esc(s.persona.split(' ')[0]) + '</strong>,</p>'
-    + '<p style="margin:0 0 14px;font-size:15px;line-height:1.55;">Tu solicitud de <strong>' + tipo.toLowerCase() + '</strong> del <strong>' + _fechaEs(s.desde) + '</strong> al <strong>' + _fechaEs(s.hasta) + '</strong> '
-    + (ok ? 'está <strong style="color:#1B7A3E;">aprobada</strong>. ¡A disfrutar! 🌴' : 'se ha <strong style="color:#C53030;">rechazado</strong>.') + '</p>'
+    + '<p style="margin:0 0 14px;font-size:15px;line-height:1.55;">Tu petición de <strong>' + _esc(c.frase) + '</strong> '
+    + (ok ? 'está <strong style="color:#1B7A3E;">aprobada</strong>. ' + final : 'está <strong style="color:#C53030;">rechazada</strong>.') + '</p>'
     + (motivo ? '<p style="margin:0 0 16px;font-size:14px;">💬 ' + _esc(motivo) + '</p>' : '');
-  const html = _marco(ok ? '✅ Solicitud aprobada' : '❌ Solicitud rechazada', cuerpo, V_CONFIG.WEB_URL, '📅 Ver el calendario →', ok ? '#88E783' : '#85C8FF');
-  const texto = 'Tu solicitud de ' + tipo + ' del ' + _fechaEs(s.desde) + ' al ' + _fechaEs(s.hasta) + ' está ' + (ok ? 'APROBADA' : 'RECHAZADA') + '.' + (motivo ? '\n' + motivo : '') + '\n' + V_CONFIG.WEB_URL;
+  const html = _marco((ok ? '✅ ' : '❌ ') + c.titulo + (ok ? ' aprobad' : ' rechazad') + c.a, cuerpo, V_CONFIG.WEB_URL, '📅 Ver el calendario →', ok ? '#88E783' : '#85C8FF');
+  const texto = 'Tu petición de ' + c.frase + ' está ' + (ok ? 'APROBADA' : 'RECHAZADA') + '.' + (motivo ? '\n' + motivo : '') + '\n' + V_CONFIG.WEB_URL;
   const opts = { htmlBody: html, name: V_CONFIG.REMITE };
   const coords = _coordinadores();
   if (coords.length) opts.replyTo = coords.join(',');

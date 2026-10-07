@@ -90,8 +90,37 @@ export const ESTADO_SOL = {
   PENDIENTE: { label: "Pendiente", accent: "canary" },
   APROBADA: { label: "Aprobada", accent: "lime" },
   RECHAZADA: { label: "Rechazada", accent: "mandarin" },
-  CANCELADA: { label: "Cancelada", accent: "sand" },
+  CANCELADA: { label: "Retirada", accent: "sand" },
+  ANULADA: { label: "Anulada", accent: "sand" },
+  MODIFICADA: { label: "Modificada", accent: "aqua" },
 };
+
+export const CLASE_SOL = {
+  NUEVA: { label: "Solicitud", corto: "", a: "a" },
+  CANCELACION: { label: "Cancelación", corto: "🗑️ Cancelación", a: "a" },
+  MODIFICACION: { label: "Cambio", corto: "🔁 Cambio", a: "o" },
+};
+
+/** Bloques de días aprobados de una persona ({inicio, fin, motivo, dias, fechas[]}),
+ *  agrupando por código y saltando fines de semana/festivos. Solo `tipos`. */
+export function bloquesDe(ausenciasPorDia, nombre, festivosGrupo, tipos) {
+  const fechas = Object.keys(ausenciasPorDia || {}).sort().flatMap((iso) =>
+    (ausenciasPorDia[iso] || []).filter((a) => a.nombre === nombre && (!tipos || tipos.includes(a.motivo))).map((a) => ({ dateStr: iso, motivo: a.motivo })));
+  const bloques = [];
+  let cur = null;
+  for (const f of fechas) {
+    const hueco = cur ? laborables(sumarDia(cur.fin), restarDia(f.dateStr), festivosGrupo).length : -1;
+    if (cur && cur.motivo === f.motivo && hueco === 0) {
+      cur.fin = f.dateStr; cur.fechas.push(f.dateStr); cur.dias++;
+    } else {
+      cur = { inicio: f.dateStr, fin: f.dateStr, motivo: f.motivo, dias: 1, fechas: [f.dateStr] };
+      bloques.push(cur);
+    }
+  }
+  return bloques;
+}
+const sumarDia = (iso) => { const d = deIso(iso); d.setDate(d.getDate() + 1); return isoDe(d); };
+const restarDia = (iso) => { const d = deIso(iso); d.setDate(d.getDate() - 1); return isoDe(d); };
 
 const p2 = (n) => String(n).padStart(2, "0");
 export const isoDe = (d) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
