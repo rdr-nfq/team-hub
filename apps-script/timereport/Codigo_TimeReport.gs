@@ -18,7 +18,11 @@
  *   · RECORDATORIO por email (9:00, Europe/Madrid) los días 1 y 15 de cada mes
  *     —o el siguiente laborable si caen en finde/festivo— a todo el equipo:
  *     "mañana es el día de enviar las evidencias", con enlace a la web y a la
- *     carpeta de la quincena. Desde noreply@<dominio> (noReply:true).
+ *     carpeta de la quincena. UN solo correo desde la cuenta del script, con
+ *     el equipo en copia oculta (como el de comidas): con noReply:true
+ *     Workspace lo retenía y no llegaba a nadie. Se envía con MailApp para
+ *     que los emojis del asunto lleguen bien (GmailApp los rompe).
+ *     enviarRecordatorioTRAhora() lo manda en el momento, sin esperar al 1/15.
  *
  *  DESPLIEGUE (proyecto Apps Script INDEPENDIENTE):
  *   1. script.google.com -> Nuevo proyecto -> pegar este fichero.
@@ -78,6 +82,7 @@ var HOJAS = {
 function autorizar() {
   DriveApp.getRootFolder().getName();
   GmailApp.getAliases();
+  Logger.log('Cuota de correo restante hoy: ' + MailApp.getRemainingDailyQuota());
   UrlFetchApp.fetch(TR_CONFIG.EQUIPO_JSON_URL, { muteHttpExceptions: true });
   Logger.log('Permisos concedidos. Raíz de evidencias (links.json → evidenciasDrive): ' + (_evidenciasRootId() || '(sin configurar)'));
 }
@@ -500,51 +505,97 @@ function enviarRecordatorioTR() {
   var hoy = _hoyISO();
   var r = _quincenaARecordar(hoy, _festivosES());
   if (!r) { Logger.log(hoy + ': hoy no toca recordatorio.'); return; }
-  var carpetaUrl = '';
-  try { carpetaUrl = _carpetaQuincena(r.info).getUrl(); } catch (e) { Logger.log('carpeta: ' + e); }
-  var team = _equipo();
-  var n = 0;
-  team.forEach(function (p) {
-    if (!p.email) return;
-    _enviarRecordatorio(p.email, p.nombre, r.info, carpetaUrl, '');
-    n++;
-  });
-  Logger.log(hoy + ': recordatorio de ' + r.info.carpeta + ' enviado a ' + n + ' personas.');
+  _recordarATodos(r.info, false);
 }
 
-/* Prueba: manda el recordatorio de la quincena en curso a PRUEBA_TO (o a quien ejecuta). */
+/* Manda YA el recordatorio a todo el equipo (quincena en curso), sin esperar
+   al día 1/15. Ejecutar a mano desde el editor. */
+function enviarRecordatorioTRAhora() {
+  _recordarATodos(_quincenaEnCurso(), true);
+}
+
+/* Prueba: el mismo correo, solo a PRUEBA_TO (o a quien ejecuta). */
 function enviarRecordatorioTRPrueba() {
-  var hoy = _hoyISO();
-  var p = hoy.split('-').map(Number);
-  var q = p[0] + 'Q' + (Math.floor((p[1] - 1) / 3) + 1);
-  var quincena = ((p[1] - 1) % 3) * 2 + (p[2] <= 15 ? 1 : 2);
-  var info = _infoQuincena(q, quincena);
-  var carpetaUrl = '';
-  try { carpetaUrl = _carpetaQuincena(info).getUrl(); } catch (e) { Logger.log('carpeta: ' + e); }
+  var info = _quincenaEnCurso();
   var to = TR_CONFIG.PRUEBA_TO || Session.getActiveUser().getEmail();
-  _enviarRecordatorio(to, 'compañero/a', info, carpetaUrl, '[PRUEBA] ');
+  var c = _correoRecordatorio(info, _urlCarpeta(info), true);
+  MailApp.sendEmail(to, '[PRUEBA] ' + c.asunto, c.texto, { htmlBody: c.html, name: TR_CONFIG.REMITE });
   Logger.log('Prueba enviada a ' + to + ' (' + info.carpeta + ').');
 }
 
-function _enviarRecordatorio(to, nombre, info, carpetaUrl, prefijo) {
-  var asunto = (prefijo || '') + '⏰ Time Report · mañana toca enviar las evidencias (' + info.etiqueta + ')';
-  var texto = 'Hola ' + nombre + ', mañana es el día de enviar las evidencias del Time Report de la quincena ' + info.etiqueta + '.\n'
-    + 'Tu imputación: ' + TR_CONFIG.WEB_URL + (carpetaUrl ? '\nCarpeta de evidencias: ' + carpetaUrl : '');
+function _quincenaEnCurso() {
+  var p = _hoyISO().split('-').map(Number);
+  var q = p[0] + 'Q' + (Math.floor((p[1] - 1) / 3) + 1);
+  return _infoQuincena(q, ((p[1] - 1) % 3) * 2 + (p[2] <= 15 ? 1 : 2));
+}
+
+function _urlCarpeta(info) {
+  try { return _carpetaQuincena(info).getUrl(); } catch (e) { Logger.log('carpeta: ' + e); return ''; }
+}
+
+/* UN correo para todo el equipo (equipo.json), desde la cuenta del script:
+   en el PARA un coordinador, el resto en copia oculta, y las respuestas a
+   coordinación. Si el envío conjunto falla (una dirección que ya no existe
+   puede tumbarlo), se reintenta persona a persona y se anota quién falla. */
+function _recordarATodos(info, manual) {
+  var team = _equipo().filter(function (p) { return p.email && p.activo !== false && p.baja !== true; });
+  var emails = team.map(function (p) { return String(p.email).trim(); });
+  if (!emails.length) { Logger.log('equipo.json sin emails: no se envía nada.'); return; }
+  var coord = team.filter(function (p) { return p.coordinador === true; }).map(function (p) { return String(p.email).trim(); });
+  var c = _correoRecordatorio(info, _urlCarpeta(info), manual);
+  var opts = function () {
+    var o = { htmlBody: c.html, name: TR_CONFIG.REMITE };
+    if (coord.length) o.replyTo = coord.join(',');
+    return o;
+  };
+  var enviar = function (destinos) {
+    var para = coord.filter(function (e) { return destinos.indexOf(e) >= 0; })[0] || destinos[0];
+    var o = opts();
+    var resto = destinos.filter(function (e) { return e !== para; });
+    if (resto.length) o.bcc = resto.join(',');
+    MailApp.sendEmail(para, c.asunto, c.texto, o);
+  };
+  try {
+    enviar(emails);
+    Logger.log(info.carpeta + ': 1 correo a ' + emails.length + ' personas → ' + emails.join(', '));
+  } catch (e) {
+    Logger.log('Envío conjunto fallido (' + e + '). Se reintenta persona a persona.');
+    var ok = 0, fallidos = [];
+    emails.forEach(function (em) {
+      try { enviar([em]); ok++; } catch (e2) { fallidos.push(em + ' (' + e2 + ')'); }
+    });
+    Logger.log(info.carpeta + ': enviado a ' + ok + ' personas' + (fallidos.length ? ' · FALLAN: ' + fallidos.join(' | ') : ''));
+  }
+  Logger.log('Cuota de correo restante hoy: ' + MailApp.getRemainingDailyQuota());
+}
+
+/* Asunto, texto y HTML del recordatorio. manual=true: "toca enviar" (envío a
+   mano en cualquier momento); false: "mañana toca enviar" (disparador 1/15). */
+function _correoRecordatorio(info, carpetaUrl, manual) {
+  var cuando = manual ? 'Toca enviar las evidencias' : 'Mañana toca enviar las evidencias';
+  var asunto = '⏰📎 Time Report · ' + cuando.toLowerCase() + ' (' + info.etiqueta + ')';
+  var texto = 'Hola equipo,\n\n' + cuando + ' del Time Report de la quincena ' + info.etiqueta + '.\n\n'
+    + '📊 Tu imputación: ' + TR_CONFIG.WEB_URL + '\n'
+    + (carpetaUrl ? '📁 Carpeta de evidencias: ' + carpetaUrl + '\n' : '')
+    + (carpetaUrl ? '\nEl fichero se renombra solo a ' + info.carpeta + '_TuNombre.pdf.' : '');
   var btn = function (href, label, bg) {
     return '<a href="' + href + '" style="display:inline-block;background:' + bg + ';color:#001391;font-weight:bold;text-decoration:none;padding:12px 26px;border-radius:999px;font-size:15px;margin:0 8px 8px 0;">' + label + '</a>';
   };
   var html = '<div style="font-family:Lato,Arial,sans-serif;max-width:520px;margin:0 auto;color:#070E46;">'
     + '<div style="background:#001391;color:#F7F8F8;border-radius:14px 14px 0 0;padding:20px 24px;">'
     +   '<div style="font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#85C8FF;">Time Report RDR · BBVA × NFQ</div>'
-    +   '<div style="font-family:Georgia,\'Source Serif 4\',serif;font-size:22px;font-weight:bold;margin-top:4px;">⏰ Mañana toca enviar las evidencias</div></div>'
+    +   '<div style="font-family:Georgia,\'Source Serif 4\',serif;font-size:22px;font-weight:bold;margin-top:4px;">⏰ ' + cuando + '</div></div>'
     + '<div style="border:1px solid #E2E6EA;border-top:0;border-radius:0 0 14px 14px;padding:22px 24px;background:#FFFFFF;">'
-    +   '<p style="margin:0 0 14px;font-size:15px;">Hola <strong>' + nombre + '</strong>,</p>'
-    +   '<p style="margin:0 0 18px;font-size:15px;line-height:1.55;"><strong>Mañana es el día de enviar las evidencias</strong> del Time Report de la quincena <strong>' + info.etiqueta + '</strong>. '
-    +   'Comprueba tu imputación en la web, copia las filas al TR de BBVA y sube tu evidencia a la carpeta de la quincena'
-    +   (carpetaUrl ? ' (el fichero se renombra solo a <code>' + info.carpeta + '_TuNombre.pdf</code>)' : '') + '.</p>'
-    +   btn(TR_CONFIG.WEB_URL, 'Ver mi Time Report →', '#FFB56B')
-    +   (carpetaUrl ? btn(carpetaUrl, 'Subir evidencias', '#85C8FF') : '')
+    +   '<p style="margin:0 0 14px;font-size:15px;">👋 Hola <strong>equipo</strong>,</p>'
+    +   '<p style="margin:0 0 14px;font-size:15px;line-height:1.55;">📅 <strong>' + cuando + '</strong> del Time Report de la quincena <strong>' + info.etiqueta + '</strong>.</p>'
+    +   '<p style="margin:0 0 18px;font-size:15px;line-height:1.55;">'
+    +     '✅ Comprueba tu imputación en la web<br>'
+    +     '📋 Copia las filas al TR de BBVA<br>'
+    +     '📎 Sube tu evidencia a la carpeta de la quincena'
+    +     (carpetaUrl ? ' (se renombra sola a <code>' + info.carpeta + '_TuNombre.pdf</code>)' : '') + '</p>'
+    +   btn(TR_CONFIG.WEB_URL, '📊 Ver mi Time Report →', '#FFB56B')
+    +   (carpetaUrl ? btn(carpetaUrl, '📁 Subir evidencias', '#85C8FF') : '')
     +   '<p style="margin:14px 0 0;font-size:12px;color:#46536D;">Si los botones no van: <a href="' + TR_CONFIG.WEB_URL + '" style="color:#001391;">' + TR_CONFIG.WEB_URL + '</a>'
     +   (carpetaUrl ? ' · <a href="' + carpetaUrl + '" style="color:#001391;">carpeta de evidencias</a>' : '') + '</p></div></div>';
-  GmailApp.sendEmail(to, asunto, texto, { htmlBody: html, name: TR_CONFIG.REMITE, noReply: true });
+  return { asunto: asunto, texto: texto, html: html };
 }

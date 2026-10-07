@@ -16,6 +16,11 @@
      probarEntrega('x@nfq.es')   manda las variantes de envío para ver cuál llega
      diagnosticarRemitente()     remitentes que puede usar el script
      revisarRebotes()            avisos de no entrega recientes
+
+   EMOJIS: se envía con MailApp, no con GmailApp. GmailApp.sendEmail rompe los
+   emojis de 4 bytes (🍽️, 🗳️, 🏆…) en el ASUNTO: llegaban como "������".
+   MailApp codifica bien el asunto (UTF-8). Solo el modo 'alias' sigue usando
+   GmailApp, porque MailApp no admite `from`.
    =========================================================================== */
 
 const WEB_URL   = 'https://rdr-nfq.github.io/team-hub/comidas/'; // enlace del botón del correo
@@ -82,12 +87,17 @@ function enviarRecordatorio() {
   const emails = pendientes.map(p => p.email).filter(Boolean);
   if (!emails.length) { Logger.log(fecha + ': no queda nadie por votar.'); return; }
 
-  const asunto = esFinal
-    ? '⏰ Última hora · la reserva del jueves se hace en 30 min'
-    : '🍽️ ¿Dónde comemos el jueves ' + fecha + '? Vota ahora';
+  const asunto = asunto_(fecha, esFinal);
   // Un único envío para todos los pendientes.
   enviarMail_(emails, asunto, cuerpo_(pendientes, fecha, esFinal, lider_(ss, fecha)));
   Logger.log(fecha + ': 1 correo a ' + emails.length + ' pendientes → ' + emails.join(', '));
+}
+
+/** Asunto del recordatorio (con emojis: van bien porque se envía con MailApp). */
+function asunto_(fecha, esFinal) {
+  return esFinal
+    ? '⏰🍽️ Última llamada · la reserva del jueves ' + fecha + ' se hace en 30 min'
+    : '🍽️ ¿Dónde comemos el jueves ' + fecha + '? 🗳️ Vota ahora';
 }
 
 /** Fecha (dd/MM/yyyy) del jueves de esta semana. */
@@ -129,7 +139,7 @@ function enviarGrupo_(emails, subject, htmlBody) {
     if (MODO_ENVIO === 'alias') { o.from = ALIAS_REMITENTE; o.replyTo = RESPONDER_A; }
     else if (MODO_ENVIO === 'cuenta-bcc') o.replyTo = RESPONDER_A;
     else o.noReply = true;
-    if (enPara) return GmailApp.sendEmail(destinos.join(','), subject, texto, o);
+    if (enPara) return mandar_(destinos.join(','), subject, texto, o);
     // Copia oculta con UN único destinatario visible. Ese PARA recibe el
     // correo siempre, así que tiene que ser alguien que de verdad falte por
     // votar: la propia cuenta solo si está entre los pendientes; si ya ha
@@ -139,7 +149,7 @@ function enviarGrupo_(emails, subject, htmlBody) {
     const para = yoPendiente ? yo : destinos[0];
     const resto = destinos.filter(d => !mismoEmail_(d, para));
     if (resto.length) o.bcc = resto.join(',');
-    return GmailApp.sendEmail(para, subject, texto, o);
+    return mandar_(para, subject, texto, o);
   };
   try {
     enviar(emails);
@@ -154,6 +164,13 @@ function enviarGrupo_(emails, subject, htmlBody) {
     });
     return { enviados: ok, fallidos: fallidos };
   }
+}
+
+/** MailApp (asunto con emojis bien codificados); GmailApp solo si hace falta
+ *  `from` (modo 'alias'), que MailApp no admite. */
+function mandar_(to, subject, texto, o) {
+  if (o.from) return GmailApp.sendEmail(to, subject, texto, o);
+  return MailApp.sendEmail(to, subject, texto, o);
 }
 
 /** Envía el recordatorio a todos los pendientes. */
@@ -243,13 +260,13 @@ function listaNombres_(pendientes) {
 // ── Plantilla de email ────────────────────────────────────────────────────
 function cuerpo_(pendientes, fecha, esFinal, lider) {
   const faltan = pendientes.length && pendientes[0].nombre !== 'equipo'
-    ? '<p style="margin:0 0 18px;font-size:13px;color:#5C5C5C;">Faltáis por votar: ' + listaNombres_(pendientes) + '.</p>'
+    ? '<p style="margin:0 0 18px;font-size:13px;color:#5C5C5C;">⏳ Faltáis por votar: ' + listaNombres_(pendientes) + '.</p>'
     : '';
   const intro = esFinal
-    ? 'En la <strong>próxima media hora</strong> se hace la reserva para el jueves <strong>' + fecha + '</strong>. Quien no vote ahora, se da por hecho que <strong>no está</strong> o que come de <strong>Taper / Glovo</strong>.'
-    : 'Todavía falta vuestro voto para el <strong>jueves ' + fecha + '</strong>. Entrad y elegid: un restaurante, «el que más se vote», Taper / Glovo o No estoy.';
+    ? '⏰ En la <strong>próxima media hora</strong> se hace la reserva para el jueves <strong>' + fecha + '</strong>. Quien no vote ahora, se da por hecho que <strong>no está</strong> o que come de <strong>Taper / Glovo</strong>.'
+    : '📅 Todavía falta vuestro voto para el <strong>jueves ' + fecha + '</strong>. Entrad y elegid: 🍝 un restaurante, 🙌 «el que más se vote», 🥡 Taper / Glovo o 🏠 No estoy.';
   const lin = lider
-    ? '<p style="margin:0 0 18px;font-size:13px;color:#5C5C5C;">Ahora va ganando <strong style="color:#001391;">' + lider.nombre + '</strong> (' + lider.votos + (lider.votos === 1 ? ' voto' : ' votos') + ').</p>'
+    ? '<p style="margin:0 0 18px;font-size:13px;color:#5C5C5C;">🏆 Ahora va ganando <strong style="color:#001391;">' + lider.nombre + '</strong> (' + lider.votos + (lider.votos === 1 ? ' voto' : ' votos') + ').</p>'
     : '';
   const btn = esFinal ? '#FFB56B' : '#88E783';
   return '<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;color:#1a1a1a;">'
@@ -257,9 +274,9 @@ function cuerpo_(pendientes, fecha, esFinal, lider) {
     +   '<div style="font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#85C8FF;">Comidas RDR · BBVA × NFQ</div>'
     +   '<div style="font-size:22px;font-weight:bold;margin-top:4px;">' + (esFinal ? '⏰ Última llamada' : '🍽️ ¿Dónde comemos el jueves?') + '</div></div>'
     + '<div style="border:1px solid #E2E6EA;border-top:0;border-radius:0 0 14px 14px;padding:22px 24px;">'
-    +   '<p style="margin:0 0 14px;font-size:15px;">Hola <strong>equipo</strong>,</p>'
+    +   '<p style="margin:0 0 14px;font-size:15px;">👋 Hola <strong>equipo</strong>,</p>'
     +   '<p style="margin:0 0 18px;font-size:15px;line-height:1.55;">' + intro + '</p>' + faltan + lin
-    +   '<a href="' + WEB_URL + '" style="display:inline-block;background:' + btn + ';color:#001391;font-weight:bold;text-decoration:none;padding:12px 26px;border-radius:999px;font-size:15px;">Votar ahora →</a>'
+    +   '<a href="' + WEB_URL + '" style="display:inline-block;background:' + btn + ';color:#001391;font-weight:bold;text-decoration:none;padding:12px 26px;border-radius:999px;font-size:15px;">🗳️ Votar ahora →</a>'
     +   '<p style="margin:18px 0 0;font-size:12px;color:#8a8a8a;">Si el botón no va: <a href="' + WEB_URL + '" style="color:#001391;">' + WEB_URL + '</a></p></div></div>';
 }
 
@@ -272,7 +289,7 @@ function enviarRecordatorioPrueba() {
   j.setDate(j.getDate() + ((4 - isoDow + 7) % 7 || 7)); // próximo jueves
   const fecha = Utilities.formatDate(j, tz, 'dd/MM/yyyy');
   const pendientes = noVotantes_(ss, fecha);
-  enviarMail_(PRUEBA_TO, '[PRUEBA] 🍽️ ¿Dónde comemos el jueves ' + fecha + '?',
+  enviarMail_(PRUEBA_TO, '[PRUEBA] ' + asunto_(fecha, false),
     cuerpo_(pendientes.length ? pendientes : [{ nombre: 'equipo' }], fecha, false, lider_(ss, fecha)));
   Logger.log('Prueba enviada a ' + PRUEBA_TO + ' (modo ' + MODO_ENVIO + ').');
 }
