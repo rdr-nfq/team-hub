@@ -18,8 +18,11 @@
  *         J… una columna por día del año (1 ene → 31 dic) con el código:
  *         VA Vacaciones · VP Vac. proyecto · FO Formación · ES Permiso especial
  *         BA Baja · RE Revisión · FT Festivo trabajado · FE Festivo · VE Votación
+ *         Entre mes y mes hay una columna separadora estrecha (Electric): así
+ *         cada mes es un grupo propio con su botón −/+ para plegarlo.
  *       ⚠ No insertar ni borrar columnas de días: la columna de cada fecha se
- *         calcula (J = 1 de enero). Personas: añadir/quitar filas sin problema.
+ *         calcula (J = 1 de enero, +1 por mes pasado). Plegar/ocultar meses sí.
+ *         Personas: añadir/quitar filas sin problema.
  *   · Solicitudes_<año>: una fila por petición. Clase NUEVA (pedir días), CANCELACION
  *       (liberar días ya aprobados) o MODIFICACION (cambiar unos días aprobados
  *       por otros). Todas pasan por la aprobación de coordinación.
@@ -322,6 +325,24 @@ function _festivosPorGrupo(festivos) {
 
 // ── Rejilla Vacas_<año> ─────────────────────────────────────────────────────
 function _nombreHoja(anio) { return PREFIJO_ANIO + anio; }
+/* Columnas de días: entre un mes y el siguiente hay una columna separadora
+   estrecha y vacía. Sin ella, Sheets funde los grupos de meses contiguos en
+   uno solo y no hay un botón −/+ por mes. J = 1 de enero; luego +1 por cada
+   mes ya pasado. */
+function _mesDeIdx(anio, i) { return new Date(Date.UTC(anio, 0, 1) + i * 86400000).getUTCMonth(); }
+function _colDeIdx(anio, i) { return G.DIA1 + i + _mesDeIdx(anio, i); }
+function _colDia(iso) { return _colDeIdx(Number(iso.slice(0, 4)), _idxDia(iso)); }
+function _nColsDias(anio) { return _diasAnio(anio) + 11; }
+/** Por cada columna de la zona de días: el iso del día, o null si es separadora. */
+function _columnasDias(anio) {
+  const out = [];
+  for (let i = 0, n = _diasAnio(anio); i < n; i++) {
+    if (i > 0 && _mesDeIdx(anio, i) !== _mesDeIdx(anio, i - 1)) out.push(null);
+    out.push(_isoDeIdx(anio, i));
+  }
+  return out;
+}
+
 function _anios(ss) {
   return ss.getSheets().map(function (s) { const m = /^Vacas_(\d{4})$/.exec(s.getName()); return m ? Number(m[1]) : null; })
     .filter(Boolean).sort();
@@ -332,14 +353,21 @@ function _leerAnio(ss, anio) {
   const sh = ss.getSheetByName(_nombreHoja(anio));
   if (!sh) return null;
   const nDias = _diasAnio(anio);
+  // Formato antiguo (sin separadoras): el 1 de febrero estaría justo tras el 31 de enero.
+  const cab = sh.getRange(G.FILA_DIA, G.DIA1 + 31, 1, 2).getValues()[0];
+  if (String(cab[0]) !== '' || Number(cab[1]) !== 1) {
+    throw new Error(_nombreHoja(anio) + ' tiene el formato antiguo (sin columna separadora entre meses): rehazla con empezarDeCero() o con el menú 🌴 Vacaciones.');
+  }
+  const cols = [];
+  for (let i = 0; i < nDias; i++) cols.push(_colDeIdx(anio, i) - 1);
   const ultima = sh.getLastRow();
   const personas = [];
   if (ultima >= G.FILA_1) {
-    const vals = sh.getRange(G.FILA_1, 1, ultima - G.FILA_1 + 1, G.DIA1 - 1 + nDias).getValues();
+    const vals = sh.getRange(G.FILA_1, 1, ultima - G.FILA_1 + 1, G.DIA1 - 1 + _nColsDias(anio)).getValues();
     vals.forEach(function (r, i) {
       const nombre = String(r[G.PERSONA - 1] || '').trim();
       if (!nombre) return;
-      const codigos = r.slice(G.DIA1 - 1).map(function (c) { return String(c || '').trim().toUpperCase(); });
+      const codigos = cols.map(function (c) { return String(r[c] || '').trim().toUpperCase(); });
       const anteriores = Number(r[G.ANTERIORES - 1]) || 0;
       const dias = Number(r[G.DIAS - 1]) || 0;
       const va = codigos.filter(function (c) { return c === 'VA'; }).length;
@@ -702,7 +730,7 @@ function resolver(p) {
       const persona = _personaPorNombre(grid, s.persona);
       if (!persona) throw new Error(s.persona + ' ya no está en ' + _nombreHoja(anio) + '.');
       const fxg = _festivosPorGrupo(_leerFestivos(ss));
-      const celda = function (iso) { return grid.sh.getRange(persona.fila, G.DIA1 + _idxDia(iso)); };
+      const celda = function (iso) { return grid.sh.getRange(persona.fila, _colDia(iso)); };
       const ref = s.ref ? sols.filter(function (x) { return x.id === s.ref; })[0] : null;
 
       if (s.clase === 'NUEVA') {
@@ -798,14 +826,15 @@ function _borrarEvento(id) {
 /** Recalcula los FE de una persona según su grupo (solo toca celdas vacías o FE). */
 function _sincronizarFE(grid, persona, fxg) {
   const set = (persona.grupo && fxg[persona.grupo]) || {};
-  const r = grid.sh.getRange(persona.fila, G.DIA1, 1, grid.nDias);
+  const r = grid.sh.getRange(persona.fila, G.DIA1, 1, _nColsDias(grid.anio));
   const vals = r.getValues()[0];
   let cambios = 0;
   for (let i = 0; i < grid.nDias; i++) {
     const iso = _isoDeIdx(grid.anio, i);
-    const c = String(vals[i] || '').trim().toUpperCase();
-    if (set[iso] && !c) { vals[i] = 'FE'; cambios++; }
-    else if (!set[iso] && c === 'FE') { vals[i] = ''; cambios++; }
+    const k = _colDeIdx(grid.anio, i) - G.DIA1;
+    const c = String(vals[k] || '').trim().toUpperCase();
+    if (set[iso] && !c) { vals[k] = 'FE'; cambios++; }
+    else if (!set[iso] && c === 'FE') { vals[k] = ''; cambios++; }
   }
   if (cambios) r.setValues([vals]);
   return cambios;
@@ -840,7 +869,7 @@ function guardarFestivo(p) {
     const grid = _leerAnio(ss, anio);
     const ocupados = [];
     if (grid) {
-      const col = G.DIA1 + _idxDia(fecha);
+      const col = _colDia(fecha);
       grid.personas.filter(function (x) { return grupos.indexOf(x.grupo) >= 0; }).forEach(function (x) {
         const c = x.codigos[_idxDia(fecha)];
         if (!c) grid.sh.getRange(x.fila, col).setValue('FE');
@@ -864,7 +893,7 @@ function borrarFestivo(p) {
   f.sh.getRange(f.fila, F.FECHA, 1, 3).deleteCells(SpreadsheetApp.Dimension.ROWS);
   const grid = _leerAnio(ss, anio);
   if (grid) {
-    const col = G.DIA1 + _idxDia(fecha);
+    const col = _colDia(fecha);
     grid.personas.filter(function (x) { return x.grupo === grupo && x.codigos[_idxDia(fecha)] === 'FE'; })
       .forEach(function (x) { grid.sh.getRange(x.fila, col).setValue(''); });
   }
@@ -959,22 +988,22 @@ function crearAnio(p) {
 
 /** Escribe una rejilla nueva. filas: [{nombre, email, grupo, activo, anteriores, dias, codigos:{iso: código}}] */
 function _crearRejilla(ss, anio, filas) {
-  const nDias = _diasAnio(anio);
+  const columnas = _columnasDias(anio);
   const sh = ss.insertSheet(_nombreHoja(anio));
-  const nCols = G.DIA1 - 1 + nDias;
+  const nCols = G.DIA1 - 1 + columnas.length;
   if (sh.getMaxColumns() < nCols) sh.insertColumnsAfter(sh.getMaxColumns(), nCols - sh.getMaxColumns());
   const nFilas = Math.max(filas.length, 1);
   if (sh.getMaxRows() < G.FILA_1 + nFilas + 20) sh.insertRowsAfter(sh.getMaxRows(), G.FILA_1 + nFilas + 20 - sh.getMaxRows());
 
   // Cabeceras: mes (fila 1), día (fila 2), letra de la semana (fila 3).
   const fMes = [], fDia = [], fSem = [];
-  for (let i = 0; i < nDias; i++) {
-    const iso = _isoDeIdx(anio, i);
+  columnas.forEach(function (iso) {
+    if (!iso) { fMes.push(''); fDia.push(''); fSem.push(''); return; }
     const d = Number(iso.slice(8, 10));
     fMes.push(d === 1 ? MESES_ES[Number(iso.slice(5, 7)) - 1] : '');
     fDia.push(d);
     fSem.push(LETRA_DIA[_dow(iso)]);
-  }
+  });
   sh.getRange(G.FILA_MES, 1, 1, nCols).setValues([['VACACIONES ' + anio, '', '', '', '', '', '', '', ''].concat(fMes)]);
   sh.getRange(G.FILA_DIA, 1, 1, nCols).setValues([CABECERA_GRID.concat(fDia)]);
   sh.getRange(G.FILA_SEM, 1, 1, nCols).setValues([['', '', '', '', '', '', '', '', ''].concat(fSem)]);
@@ -983,9 +1012,7 @@ function _crearRejilla(ss, anio, filas) {
   if (filas.length) {
     const valores = filas.map(function (f) {
       const izq = [f.nombre, f.email || '', f.grupo || '', f.activo !== false, Number(f.anteriores) || 0, Number(f.dias) || 0, '', '', ''];
-      const dias = [];
-      for (let i = 0; i < nDias; i++) dias.push(f.codigos[_isoDeIdx(anio, i)] || '');
-      return izq.concat(dias);
+      return izq.concat(columnas.map(function (iso) { return iso ? (f.codigos[iso] || '') : ''; }));
     });
     sh.getRange(G.FILA_1, 1, filas.length, nCols).setValues(valores);
   }
@@ -996,7 +1023,8 @@ function _crearRejilla(ss, anio, filas) {
 /* Fórmulas y formato de Vacas_<año>. No toca los datos: se puede volver a
    ejecutar sobre una pestaña existente (aplicarFormatoVacas). */
 function _formatearRejilla(ss, sh, anio) {
-  const nDias = _diasAnio(anio);
+  const columnas = _columnasDias(anio);
+  const nDias = columnas.length;               // columnas de la zona de días (con separadoras)
   const nCols = G.DIA1 - 1 + nDias;
   const ELECTRIC = '#001391', LINEA = '#CAD1D8';
   const ultimaPersona = Math.max(sh.getLastRow(), G.FILA_1);
@@ -1033,29 +1061,24 @@ function _formatearRejilla(ss, sh, anio) {
   // Meses: celdas combinadas sobre sus días, alternando tono, y agrupados
   // (botón −/+ encima) para poder plegar meses sin romper nada.
   sh.getRange(G.FILA_MES, G.DIA1, 1, nDias).breakApart();
-  let ini = 0;
   for (let m = 0; m < 12; m++) {
-    const n = new Date(Date.UTC(anio, m + 1, 0)).getUTCDate();
-    const rMes = sh.getRange(G.FILA_MES, G.DIA1 + ini, 1, n);
-    rMes.merge().setValue(MESES_ES[m]).setBackground(m % 2 ? '#D6EDFF' : '#85C8FF').setFontColor(ELECTRIC);
-    sh.getRange(G.FILA_DIA, G.DIA1 + ini, 2, n).setBackground(m % 2 ? '#F2F9FF' : '#E6F3FF');
-    sh.getRange(G.FILA_MES, G.DIA1 + ini, G.FILA_1 + filasFmt - 1, 1)
-      .setBorder(null, true, null, null, null, null, ELECTRIC, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
-    try {
-      if (!sh.getColumnGroup(G.DIA1 + ini, 1)) sh.getRange(1, G.DIA1 + ini, 1, n).shiftColumnGroupDepth(1);
-    } catch (e) {
-      try { sh.getRange(1, G.DIA1 + ini, 1, n).shiftColumnGroupDepth(1); } catch (_) {}
+    const r = _colsMes(anio, m);
+    sh.getRange(G.FILA_MES, r.col, 1, r.n).merge().setValue(MESES_ES[m]).setBackground(m % 2 ? '#D6EDFF' : '#85C8FF').setFontColor(ELECTRIC);
+    sh.getRange(G.FILA_DIA, r.col, 2, r.n).setBackground(m % 2 ? '#F2F9FF' : '#E6F3FF');
+    // Un grupo por mes (botón −/+ encima, en la separadora anterior).
+    if (!_grupoMes(sh, r.col)) {
+      try { sh.getRange(1, r.col, 1, r.n).shiftColumnGroupDepth(1); } catch (e) { console.error('Grupo ' + MESES_ES[m] + ': ' + e); }
     }
-    ini += n;
   }
   try { sh.setColumnGroupControlPosition(SpreadsheetApp.GroupControlTogglePosition.BEFORE); } catch (_) {}
 
   // Zona de días: centrado, fines de semana en gris.
   const zona = sh.getRange(G.FILA_1, G.DIA1, filasFmt, nDias);
   zona.setHorizontalAlignment('center').setFontSize(9);
+  // Fines de semana en gris; separadoras en Electric (línea entre meses).
   const fondos = [], fondoCab = [];
-  for (let i = 0; i < nDias; i++) fondoCab.push(_finde(_isoDeIdx(anio, i)) ? '#CAD1D8' : null);
-  for (let r = 0; r < filasFmt; r++) fondos.push(fondoCab.map(function (c) { return c ? '#E2E6EA' : null; }));
+  columnas.forEach(function (iso) { fondoCab.push(!iso ? ELECTRIC : _finde(iso) ? '#CAD1D8' : null); });
+  for (let r = 0; r < filasFmt; r++) fondos.push(fondoCab.map(function (c) { return c === ELECTRIC ? ELECTRIC : c ? '#E2E6EA' : null; }));
   zona.setBackgrounds(fondos);
   const cabDias = sh.getRange(G.FILA_DIA, G.DIA1, 2, nDias);
   const fondosCab = cabDias.getBackgrounds().map(function (fila) { return fila.map(function (c, i) { return fondoCab[i] || c; }); });
@@ -1090,6 +1113,11 @@ function _formatearRejilla(ss, sh, anio) {
   sh.setColumnWidth(G.GRUPO, 110);
   sh.setColumnWidths(G.ACTIVO, G.DIA1 - G.ACTIVO, 68);
   sh.setColumnWidths(G.DIA1, nDias, 26);
+  columnas.forEach(function (iso, k) {
+    if (iso) return;
+    sh.setColumnWidth(G.DIA1 + k, 6);
+    sh.getRange(1, G.DIA1 + k, G.FILA_1 + filasFmt - 1, 1).setBackground(ELECTRIC);
+  });
   sh.setRowHeight(G.FILA_MES, 26);
   sh.setFrozenRows(3);
   sh.setFrozenColumns(1);
@@ -1135,7 +1163,7 @@ function _hojaVacasMenu() {
 
 function _colsMes(anio, m) {
   const ini = Math.round((Date.UTC(anio, m, 1) - Date.UTC(anio, 0, 1)) / 86400000);
-  return { col: G.DIA1 + ini, n: new Date(Date.UTC(anio, m + 1, 0)).getUTCDate() };
+  return { col: _colDeIdx(anio, ini), n: new Date(Date.UTC(anio, m + 1, 0)).getUTCDate() };
 }
 function _grupoMes(sh, col) { try { return sh.getColumnGroup(col, 1); } catch (_) { return null; } }
 
@@ -1168,7 +1196,7 @@ function ocultarMesesPasados() {
 function mostrarTodosLosMeses() {
   const h = _hojaVacasMenu();
   try { h.sh.expandAllColumnGroups(); } catch (_) {}
-  h.sh.showColumns(G.DIA1, _diasAnio(h.anio));
+  h.sh.showColumns(G.DIA1, _nColsDias(h.anio));
 }
 function _alternarMes(m) { const h = _hojaVacasMenu(); _ponerMes(h.sh, h.anio, m, !_mesVisible(h.sh, h.anio, m)); }
 function alternarMes1() { _alternarMes(0); }
@@ -1201,6 +1229,7 @@ function menuEmpezarDeCero() {
 function aplicarFormatoVacas() {
   const ss = _ss();
   _anios(ss).forEach(function (a) {
+    _leerAnio(ss, a); // valida el formato de columnas (con separadoras entre meses)
     _formatearRejilla(ss, ss.getSheetByName(_nombreHoja(a)), a);
     Logger.log('Formato y fórmulas aplicados a ' + _nombreHoja(a));
   });
