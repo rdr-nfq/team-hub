@@ -55,11 +55,11 @@
     "note": "Backend Apps Script de /retro (retrospectivas). Código: AÚN NO está en apps-script/ (pendiente de incorporar). Cambia en cada despliegue."
   },
   "vacacionesBackend": {
-    "url": "https://script.google.com/a/macros/nfq.es/s/AKfycbw0Fl7SwR-jtV5iUdoVYj4CXhCVFlXUaSjw9g8b0Aem3WfUXLxLLAS_fKd6WDjj2Mo/exec",
-    "note": "Backend Apps Script de /vacaciones (dominio nfq.es). Código: apps-script/vacaciones/. Cambia en cada despliegue."
+    "url": "https://script.google.com/macros/s/AKfycbyFJX5Cqjf5F0jAhUNv46kGpXbENlFo9_TpMNAGSE62XbTgjFPUEK_U-mR4x6wb9ZhYvw/exec",
+    "note": "Mismo backend que vacacionesV2Backend (apps-script/vacaciones/): lo sigue leyendo el Time Report (?modo=publico, festivos). El antiguo era apps-script/vacaciones-antiguo/."
   },
   "vacacionesV2Backend": {
-    "url": "PEGAR_AQUI_URL_EXEC_VACACIONES_V2",
+    "url": "https://script.google.com/macros/s/AKfycbyFJX5Cqjf5F0jAhUNv46kGpXbENlFo9_TpMNAGSE62XbTgjFPUEK_U-mR4x6wb9ZhYvw/exec",
     "note": "Backend del sistema NUEVO de vacaciones (/vacaciones y /vacaciones-gestion): un solo Apps Script ligado al Excel «Vacaciones RDR» (apps-script/vacaciones/). Mientras esté sin URL, /vacaciones sigue con el backend antiguo (vacacionesBackend)."
   },
   "controlBackend": {

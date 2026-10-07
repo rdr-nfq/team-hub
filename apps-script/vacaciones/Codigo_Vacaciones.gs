@@ -876,11 +876,10 @@ function crearAnio(p) {
   return { anio: anio, personas: filas.length };
 }
 
-/** Escribe una rejilla nueva con formato. filas: [{nombre, email, grupo, activo, anteriores, dias, codigos:{iso: código}}] */
+/** Escribe una rejilla nueva. filas: [{nombre, email, grupo, activo, anteriores, dias, codigos:{iso: código}}] */
 function _crearRejilla(ss, anio, filas) {
   const nDias = _diasAnio(anio);
-  const nombre = _nombreHoja(anio);
-  const sh = ss.insertSheet(nombre);
+  const sh = ss.insertSheet(_nombreHoja(anio));
   const nCols = G.DIA1 - 1 + nDias;
   if (sh.getMaxColumns() < nCols) sh.insertColumnsAfter(sh.getMaxColumns(), nCols - sh.getMaxColumns());
   const nFilas = Math.max(filas.length, 1);
@@ -895,71 +894,137 @@ function _crearRejilla(ss, anio, filas) {
     fDia.push(d);
     fSem.push(LETRA_DIA[_dow(iso)]);
   }
-  const izq1 = ['VACACIONES ' + anio, '', '', '', '', '', '', '', ''];
-  sh.getRange(G.FILA_MES, 1, 1, nCols).setValues([izq1.concat(fMes)]);
+  sh.getRange(G.FILA_MES, 1, 1, nCols).setValues([['VACACIONES ' + anio, '', '', '', '', '', '', '', ''].concat(fMes)]);
   sh.getRange(G.FILA_DIA, 1, 1, nCols).setValues([CABECERA_GRID.concat(fDia)]);
   sh.getRange(G.FILA_SEM, 1, 1, nCols).setValues([['', '', '', '', '', '', '', '', ''].concat(fSem)]);
-  sh.getRange(1, 1, 3, nCols).setFontWeight('bold').setHorizontalAlignment('center');
-  sh.getRange(G.FILA_MES, 1).setHorizontalAlignment('left').setFontSize(12);
-  sh.getRange(G.FILA_DIA, 1, 1, G.DIA1 - 1).setBackground('#001391').setFontColor('#F7F8F8').setWrap(true);
 
-  // Personas.
+  // Personas: datos y códigos (las fórmulas G:I las pone _formatearRejilla).
   if (filas.length) {
-    const ultCol = _colLetra(nCols);
-    const valores = filas.map(function (f, k) {
-      const fila = G.FILA_1 + k;
-      const izq = [f.nombre, f.email || '', f.grupo || '', f.activo !== false, Number(f.anteriores) || 0, Number(f.dias) || 0,
-        '=E' + fila + '+F' + fila,
-        '=COUNTIF(' + _colLetra(G.DIA1) + fila + ':' + ultCol + fila + ',"VA")',
-        '=G' + fila + '-H' + fila];
+    const valores = filas.map(function (f) {
+      const izq = [f.nombre, f.email || '', f.grupo || '', f.activo !== false, Number(f.anteriores) || 0, Number(f.dias) || 0, '', '', ''];
       const dias = [];
       for (let i = 0; i < nDias; i++) dias.push(f.codigos[_isoDeIdx(anio, i)] || '');
       return izq.concat(dias);
     });
     sh.getRange(G.FILA_1, 1, filas.length, nCols).setValues(valores);
-    sh.getRange(G.FILA_1, G.ACTIVO, filas.length, 1).insertCheckboxes();
-    sh.getRange(G.FILA_1, G.TOTAL, filas.length, 3).setBackground('#F7F8F8').setFontWeight('bold');
   }
+  _formatearRejilla(ss, sh, anio);
+  return sh;
+}
 
-  // Formato de la zona de días.
-  const filasFmt = G.FILA_1 + nFilas + 15;
-  const zona = sh.getRange(G.FILA_DIA, G.DIA1, filasFmt, nDias);
-  zona.setHorizontalAlignment('center').setFontSize(9);
-  const fondos = [];
-  for (let r = 0; r < filasFmt; r++) {
-    const fila = [];
-    for (let i = 0; i < nDias; i++) fila.push(_finde(_isoDeIdx(anio, i)) ? '#E2E6EA' : null);
-    fondos.push(fila);
+/* Fórmulas y formato de Vacas_<año>. No toca los datos: se puede volver a
+   ejecutar sobre una pestaña existente (aplicarFormatoVacas). */
+function _formatearRejilla(ss, sh, anio) {
+  const nDias = _diasAnio(anio);
+  const nCols = G.DIA1 - 1 + nDias;
+  const ELECTRIC = '#001391', LINEA = '#CAD1D8';
+  const ultimaPersona = Math.max(sh.getLastRow(), G.FILA_1);
+  const nPersonas = ultimaPersona - G.FILA_1 + 1;
+  const filasFmt = nPersonas + 15;                       // margen para añadir gente
+  if (sh.getMaxRows() < G.FILA_1 + filasFmt) sh.insertRowsAfter(sh.getMaxRows(), G.FILA_1 + filasFmt - sh.getMaxRows());
+  const ultCol = _colLetra(nCols), dia1 = _colLetra(G.DIA1);
+
+  // Fórmulas con setFormulas (sintaxis inglesa, la que espera la API en
+  // cualquier idioma) y SIN separadores de argumentos: con setValues el Excel
+  // en español esperaba ";" y daba #ERROR!.
+  const nombres = sh.getRange(G.FILA_1, G.PERSONA, filasFmt, 1).getValues();
+  const formulas = [];
+  for (let k = 0; k < filasFmt; k++) {
+    const f = G.FILA_1 + k;
+    const hayPersona = String(nombres[k][0] || '').trim();
+    formulas.push(hayPersona
+      ? ['=E' + f + '+F' + f, '=SUMPRODUCT(--(' + dia1 + f + ':' + ultCol + f + '="VA"))', '=G' + f + '-H' + f]
+      : ['', '', '']);
   }
-  zona.setBackgrounds(fondos);
-  for (let i = 0; i < nDias; i++) {
-    if (_isoDeIdx(anio, i).slice(8, 10) === '01') {
-      sh.getRange(G.FILA_MES, G.DIA1 + i, filasFmt + 2, 1).setBorder(null, true, null, null, null, null, '#001391', SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+  sh.getRange(G.FILA_1, G.TOTAL, filasFmt, 3).setFormulas(formulas);
+
+  // Sin cuadrícula; todo el texto en Electric Blue.
+  sh.setHiddenGridlines(true);
+  const todo = sh.getRange(1, 1, G.FILA_1 + filasFmt - 1, nCols);
+  todo.setFontColor(ELECTRIC).setFontFamily('Lato').setVerticalAlignment('middle');
+  sh.getRange(1, 1, 3, nCols).setFontWeight('bold').setHorizontalAlignment('center');
+  sh.getRange(G.FILA_MES, 1).setHorizontalAlignment('left').setFontSize(13).setFontFamily('Source Serif 4');
+
+  // Cabecera de columnas fijas: Electric con texto claro.
+  sh.getRange(G.FILA_DIA, 1, 2, G.DIA1 - 1).setBackground(ELECTRIC).setFontColor('#F7F8F8').setWrap(true);
+  try { sh.getRange(G.FILA_DIA, 1, 2, G.DIA1 - 1).mergeVertically(); } catch (_) {}
+
+  // Meses: celdas combinadas sobre sus días, alternando tono, y agrupados
+  // (botón −/+ encima) para poder plegar meses sin romper nada.
+  sh.getRange(G.FILA_MES, G.DIA1, 1, nDias).breakApart();
+  let ini = 0;
+  for (let m = 0; m < 12; m++) {
+    const n = new Date(Date.UTC(anio, m + 1, 0)).getUTCDate();
+    const rMes = sh.getRange(G.FILA_MES, G.DIA1 + ini, 1, n);
+    rMes.merge().setValue(MESES_ES[m]).setBackground(m % 2 ? '#D6EDFF' : '#85C8FF').setFontColor(ELECTRIC);
+    sh.getRange(G.FILA_DIA, G.DIA1 + ini, 2, n).setBackground(m % 2 ? '#F2F9FF' : '#E6F3FF');
+    sh.getRange(G.FILA_MES, G.DIA1 + ini, G.FILA_1 + filasFmt - 1, 1)
+      .setBorder(null, true, null, null, null, null, ELECTRIC, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+    try {
+      if (!sh.getColumnGroup(G.DIA1 + ini, 1)) sh.getRange(1, G.DIA1 + ini, 1, n).shiftColumnGroupDepth(1);
+    } catch (e) {
+      try { sh.getRange(1, G.DIA1 + ini, 1, n).shiftColumnGroupDepth(1); } catch (_) {}
     }
+    ini += n;
   }
-  const zonaCodigos = sh.getRange(G.FILA_1, G.DIA1, filasFmt, nDias);
-  const reglas = Object.keys(CODIGOS).map(function (c) {
-    return SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo(c)
-      .setBackground(CODIGOS[c].color).setFontColor('#001391').setBold(true).setRanges([zonaCodigos]).build();
-  });
-  sh.setConditionalFormatRules(reglas);
+  try { sh.setColumnGroupControlPosition(SpreadsheetApp.GroupControlTogglePosition.BEFORE); } catch (_) {}
 
-  // Validación del grupo (desplegable con Grupos_Festivos).
+  // Zona de días: centrado, fines de semana en gris.
+  const zona = sh.getRange(G.FILA_1, G.DIA1, filasFmt, nDias);
+  zona.setHorizontalAlignment('center').setFontSize(9);
+  const fondos = [], fondoCab = [];
+  for (let i = 0; i < nDias; i++) fondoCab.push(_finde(_isoDeIdx(anio, i)) ? '#CAD1D8' : null);
+  for (let r = 0; r < filasFmt; r++) fondos.push(fondoCab.map(function (c) { return c ? '#E2E6EA' : null; }));
+  zona.setBackgrounds(fondos);
+  const cabDias = sh.getRange(G.FILA_DIA, G.DIA1, 2, nDias);
+  const fondosCab = cabDias.getBackgrounds().map(function (fila) { return fila.map(function (c, i) { return fondoCab[i] || c; }); });
+  cabDias.setBackgrounds(fondosCab);
+
+  // Columnas fijas: totales resaltados, datos centrados.
+  sh.getRange(G.FILA_1, G.ACTIVO, filasFmt, G.DIA1 - G.ACTIVO).setHorizontalAlignment('center');
+  sh.getRange(G.FILA_1, G.TOTAL, filasFmt, 3).setBackground('#F7F8F8').setFontWeight('bold');
+  if (nPersonas > 0) sh.getRange(G.FILA_1, G.ACTIVO, nPersonas, 1).insertCheckboxes();
+
+  // Una línea horizontal por persona para seguir la fila.
+  sh.getRange(G.FILA_1, 1, filasFmt, nCols)
+    .setBorder(null, null, true, null, null, true, LINEA, SpreadsheetApp.BorderStyle.SOLID);
+  // Separador entre columnas fijas y días.
+  sh.getRange(G.FILA_DIA, G.DIA1 - 1, filasFmt + 2, 1)
+    .setBorder(null, null, null, true, null, null, ELECTRIC, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+
+  // Colores por código (texto Electric sobre acento).
+  const zonaCodigos = sh.getRange(G.FILA_1, G.DIA1, filasFmt, nDias);
+  sh.setConditionalFormatRules(Object.keys(CODIGOS).map(function (c) {
+    return SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo(c)
+      .setBackground(CODIGOS[c].color).setFontColor(ELECTRIC).setBold(true).setRanges([zonaCodigos]).build();
+  }));
+
+  // Grupo de festivos: desplegable con Grupos_Festivos.
   const shG = _hoja(ss, HOJA.GRUPOS, ['Grupo', 'País (ES/MX)']);
   sh.getRange(G.FILA_1, G.GRUPO, filasFmt, 1).setDataValidation(
     SpreadsheetApp.newDataValidation().requireValueInRange(shG.getRange('A2:A200'), true).setAllowInvalid(true).build());
 
-  sh.setColumnWidth(G.PERSONA, 210);
+  sh.setColumnWidth(G.PERSONA, 230);
   sh.setColumnWidth(G.EMAIL, 200);
   sh.setColumnWidth(G.GRUPO, 110);
-  sh.setColumnWidths(G.ACTIVO, G.DIA1 - G.ACTIVO, 70);
-  sh.setColumnWidths(G.DIA1, nDias, 28);
+  sh.setColumnWidths(G.ACTIVO, G.DIA1 - G.ACTIVO, 68);
+  sh.setColumnWidths(G.DIA1, nDias, 26);
+  sh.setRowHeight(G.FILA_MES, 26);
   sh.setFrozenRows(3);
   sh.setFrozenColumns(1);
   sh.getRange(G.FILA_MES, 1).setNote(
     'Códigos: ' + Object.keys(CODIGOS).map(function (c) { return c + ' ' + CODIGOS[c].texto; }).join(' · ') +
-    '\nSolo VA descuenta del saldo. No insertes ni borres columnas de días (J = 1 de enero).');
-  return sh;
+    '\nSolo VA descuenta del saldo. Puedes ocultar o plegar meses (−/+ de arriba), pero no insertes ni borres columnas de días (J = 1 de enero).');
+}
+
+/* EJECUTAR DESDE EL EDITOR si hace falta: vuelve a poner fórmulas y formato a
+   las pestañas Vacas_<año> existentes (sin tocar personas ni días). */
+function aplicarFormatoVacas() {
+  const ss = _ss();
+  _anios(ss).forEach(function (a) {
+    _formatearRejilla(ss, ss.getSheetByName(_nombreHoja(a)), a);
+    Logger.log('Formato y fórmulas aplicados a ' + _nombreHoja(a));
+  });
 }
 
 // ── Correos (MailApp: los emojis del asunto llegan bien) ────────────────────
