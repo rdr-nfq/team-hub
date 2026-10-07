@@ -19,6 +19,7 @@ export default function Header() {
     ["/formacion/equipo", "Formaciones del equipo"],
     ["/formacion", "Ruta formativa · niveles 00–06"],
     ["/comidas", "Comidas del equipo"],
+    ["/vacaciones-gestion", "Vacaciones · Coordinación"],
     ["/vacaciones", "Vacaciones del equipo"],
     ["/retro", "Retrospectivas del equipo"],
     ["/simulador", "Simulador de rentabilidad · Coordinación"],

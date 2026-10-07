@@ -11,6 +11,9 @@ import {
 } from "./constants";
 
 const ACCENT = PALETTE.mandarin;
+// Color de "mis días" y de la selección (exportados para las leyendas).
+export const YO_COLOR = (theme) => (theme === "light" ? "#1B7A3E" : "#88E783");
+export const MARCA_COLOR = (theme) => (theme === "light" ? "#5B4BD6" : "#9694FF");
 
 /** ¿El dispositivo tiene puntero con hover? (tooltip) o es táctil (bottom sheet). */
 function useCanHover() {
@@ -80,7 +83,7 @@ function DayTooltip({ tip }) {
 function DayCell({
   dia, mesNombre, dateStr, esHoy, esFinde, festivo, alerta,
   count, ausenciasClick, personaMode, personaNombre, personaAusente, personaColor,
-  empleadosMap, canHover, onOpenDay, onTip,
+  empleadosMap, canHover, onOpenDay, onTip, mio = false, marcado = false,
 }) {
   const { theme } = useTheme();
   const light = theme === "light";
@@ -121,6 +124,13 @@ function DayCell({
 
   // Alerta de personal: anillo rojo interior (compatible con el foco global).
   if (alerta) sombras.push(`inset 0 0 0 2px ${alertColor(theme)}`);
+  // Mis días: anillo lime (vista de equipo). Selección: contorno purple
+  // discontinuo (la solicitud que coordinación está revisando).
+  if (mio) sombras.push(`inset 0 0 0 2px ${YO_COLOR(theme)}`);
+  if (marcado) {
+    style.outline = `2px dashed ${MARCA_COLOR(theme)}`;
+    style.outlineOffset = "1px";
+  }
   if (sombras.length) style.boxShadow = sombras.join(", ");
   if (clicable) cls += " cursor-pointer hover:-translate-y-px hover:border-serene/60";
 
@@ -139,6 +149,7 @@ function DayCell({
           {dia}
         </span>
       )}
+      {mio && <span aria-hidden className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full" style={{ background: YO_COLOR(theme) }} />}
       {/* Contenido central */}
       {personaMode ? (
         !personaAusente && count > 0 ? (
@@ -167,6 +178,8 @@ function DayCell({
   if (festivo) partes.push(FESTIVO_LABEL[festivo]);
   if (esHoy) partes.push("hoy");
   if (alerta) partes.push("alerta de personal");
+  if (mio) partes.push("tienes ausencia");
+  if (marcado) partes.push("en la solicitud seleccionada");
   const base = `${dia} de ${mesNombre.toLowerCase()}`;
   const ariaLabel =
     personaMode && personaAusente
@@ -196,7 +209,7 @@ function DayCell({
   return <div className={cls} style={style} aria-label={ariaLabel}>{inner}</div>;
 }
 
-function MonthCard({ mes, anio, hoyStr, festivos, ausenciasPorDia, filtros, personaNombre, personaColor, totalActivos, empleadosMap, canHover, onOpenDay, onTip, delay }) {
+function MonthCard({ mes, anio, hoyStr, festivos, ausenciasPorDia, filtros, personaNombre, personaColor, totalActivos, empleadosMap, canHover, onOpenDay, onTip, delay, yo, marca }) {
   const { theme } = useTheme();
   const mapAccent = useAccentMap();
   const primerDia = new Date(anio, mes, 1);
@@ -250,6 +263,8 @@ function MonthCard({ mes, anio, hoyStr, festivos, ausenciasPorDia, filtros, pers
         canHover={canHover}
         onOpenDay={onOpenDay}
         onTip={onTip}
+        mio={!!yo && ausencias.some((a) => a.nombre === yo)}
+        marcado={!!marca && marca.has(dateStr)}
       />
     );
   }
@@ -291,7 +306,7 @@ function MonthCard({ mes, anio, hoyStr, festivos, ausenciasPorDia, filtros, pers
  * alerta si quedan <10 disponibles, mapa de calor y "modo persona" con
  * exactamente 1 filtro.
  */
-export default function Calendario({ datos, filtros, totalActivos, onOpenDay }) {
+export default function Calendario({ datos, filtros, totalActivos, onOpenDay, yo = null, marca = null }) {
   const canHover = useCanHover();
   const mapAccent = useAccentMap();
   const [tip, setTip] = useState(null);
@@ -345,7 +360,9 @@ export default function Calendario({ datos, filtros, totalActivos, onOpenDay }) 
     <div className="space-y-4" role="presentation">
       {[0, 1, 2, 3].map((q) => {
         const pliega = plegable(q);
-        const abierto = !pliega || abiertos.has(q);
+        // Un trimestre pasado se abre solo si contiene la selección (marca).
+        const conMarca = !!marca && Array.from(marca).some((k) => Math.floor((Number(k.slice(5, 7)) - 1) / 3) === q);
+        const abierto = !pliega || abiertos.has(q) || conMarca;
         return (
           <div key={q}>
             {pliega && (
@@ -387,6 +404,8 @@ export default function Calendario({ datos, filtros, totalActivos, onOpenDay }) 
                     onOpenDay={onOpenDay}
                     onTip={setTip}
                     delay={i * 30}
+                    yo={yo}
+                    marca={marca}
                   />
                 ))}
               </div>

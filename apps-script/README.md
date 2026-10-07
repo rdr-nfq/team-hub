@@ -20,7 +20,8 @@ pegan en el editor; el principal se llama siempre `Codigo_<Proyecto>.gs`.
 | `pases/` | `Codigo_Pases.gs`, `Avisos_Pases.gs` | Ligado al Sheet de Pases (`pasesSheet`) | `/pases` | `pasesBackend` | `instalarTriggerAvisos()` |
 | `seguimiento/` | `Codigo_Seguimiento.gs` | Independiente | `/seguimiento` | `seguimientoBackend` | `autorizar()` |
 | `timereport/` | `Codigo_TimeReport.gs` | Independiente (crea su propio Sheet) | `/timereport`, `/timereport-gestion` | `timereportBackend` | Propiedad `EVIDENCIAS_FOLDER_ID`, `autorizar()`, `crearTriggerRecordatorioTR()` |
-| `vacaciones/` | `Codigo_Vacaciones.gs`, `Index.html`, `Formulario.gs`, `Migracion.gs` | Ligado al Sheet auxiliar de vacaciones | `/vacaciones` (+ panel de responsables servido por `doGet` con `Index.html`) | `vacacionesBackend` | Trigger «Al enviar formulario» → `alEnviarFormulario` |
+| `vacaciones/` | `Codigo_Vacaciones.gs`, `Migracion_2026.gs` | **Ligado al Excel «Vacaciones RDR»** (el único: pestañas `Vacas_<año>`, `Solicitudes`, `Festivos`, `Grupos_Festivos`) | `/vacaciones` (equipo), `/vacaciones-gestion` (coordinación) | `vacacionesV2Backend` (y `vacacionesBackend` para el Time Report, `?modo=publico`) | `autorizar()`, `migrar2026()` una vez y revisar la pestaña `Migracion_2026` |
+| `vacaciones-antiguo/` | `Codigo_Vacaciones.gs`, `Index.html`, `Formulario.gs`, `Migracion.gs` | Sistema ANTERIOR (Excel auxiliar + Google Form + panel de responsables). Se retira cuando el nuevo esté desplegado | `/vacaciones` mientras `vacacionesV2Backend` esté vacío | `vacacionesBackend` | — |
 
 **Pendientes de incorporar** (en uso, pero su código solo está en
 script.google.com): `formacionesBackend` (`/formacion/equipo`) y

@@ -58,6 +58,10 @@
     "url": "https://script.google.com/a/macros/nfq.es/s/AKfycbw0Fl7SwR-jtV5iUdoVYj4CXhCVFlXUaSjw9g8b0Aem3WfUXLxLLAS_fKd6WDjj2Mo/exec",
     "note": "Backend Apps Script de /vacaciones (dominio nfq.es). Código: apps-script/vacaciones/. Cambia en cada despliegue."
   },
+  "vacacionesV2Backend": {
+    "url": "PEGAR_AQUI_URL_EXEC_VACACIONES_V2",
+    "note": "Backend del sistema NUEVO de vacaciones (/vacaciones y /vacaciones-gestion): un solo Apps Script ligado al Excel «Vacaciones RDR» (apps-script/vacaciones/). Mientras esté sin URL, /vacaciones sigue con el backend antiguo (vacacionesBackend)."
+  },
   "controlBackend": {
     "url": "https://script.google.com/macros/s/AKfycbzMyQ98NgYaHwvvxhaPQBsQVrf2SuqQXMlo7xgPBNeg1o5TU-631ZD2l5cQ0tuKEr4AGQ/exec",
     "note": "Backend Apps Script de /simulador y /capacidad (dominio nfq.es). Código: apps-script/control/. Cambia en cada despliegue."

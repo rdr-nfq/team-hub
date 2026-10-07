@@ -10,7 +10,7 @@ import { IconUsers, IconFilterOff, IconChevron } from "./icons";
 const ACCENT = PALETTE.mandarin;
 
 /** Tarjeta de persona: dot de color + nombre + badges Eq/Cons/Pend. */
-function EmpCard({ emp, seleccionado, hayFiltros, onToggle }) {
+function EmpCard({ emp, seleccionado, hayFiltros, onToggle, esYo }) {
   const dimmed = hayFiltros && !seleccionado;
   return (
     <button
@@ -35,6 +35,7 @@ function EmpCard({ emp, seleccionado, hayFiltros, onToggle }) {
           }`}
         >
           {emp.nombre}
+          {esYo && <span className="ml-1.5 rounded-full bg-lime/15 px-1.5 py-px align-middle text-[9.5px] font-bold uppercase tracking-wide text-lime">Tú</span>}
         </span>
         <span className="mt-1 flex flex-wrap gap-1 text-[10px] text-sand/60">
           {emp.equipo ? (
@@ -42,19 +43,27 @@ function EmpCard({ emp, seleccionado, hayFiltros, onToggle }) {
               Eq. <b className="text-sand/85">{emp.equipo}</b>
             </span>
           ) : null}
-          <span className="rounded border border-white/10 bg-white/[0.06] px-1.5 py-px tabular-nums">
-            Cons: <b className="text-sand/85">{emp.consumidas}</b>
-          </span>
-          <span className="rounded border border-white/10 bg-white/[0.06] px-1.5 py-px tabular-nums">
-            Pend: <b className="text-sand/85">{emp.pendientes}</b>
-          </span>
+          {/* Saldos solo si el backend los manda (el antiguo sí; el nuevo, nunca en la vista de equipo). */}
+          {emp.consumidas != null && (
+            <span className="rounded border border-white/10 bg-white/[0.06] px-1.5 py-px tabular-nums">
+              Cons: <b className="text-sand/85">{emp.consumidas}</b>
+            </span>
+          )}
+          {emp.pendientes != null && (
+            <span className="rounded border border-white/10 bg-white/[0.06] px-1.5 py-px tabular-nums">
+              Pend: <b className="text-sand/85">{emp.pendientes}</b>
+            </span>
+          )}
+          {emp.grupo ? (
+            <span className="rounded border border-white/10 bg-white/[0.06] px-1.5 py-px">{emp.grupo}</span>
+          ) : null}
         </span>
       </span>
     </button>
   );
 }
 
-function Leyenda({ paletaEquipos, equiposEnUso }) {
+function Leyenda({ paletaEquipos, equiposEnUso, extra }) {
   const { theme } = useTheme();
   return (
     <div className="border-t border-white/10 px-4 py-4 text-xs text-sand/70">
@@ -80,6 +89,7 @@ function Leyenda({ paletaEquipos, equiposEnUso }) {
         <span className="h-3.5 w-3.5 shrink-0 rounded border-2" style={{ borderColor: alertColor(theme) }} aria-hidden />
         Alerta: &lt;10 disponibles
       </div>
+      {extra}
     </div>
   );
 }
@@ -89,7 +99,7 @@ function Leyenda({ paletaEquipos, equiposEnUso }) {
  * + leyenda de festivos/equipos. En móvil es plegable para no empujar el
  * calendario fuera de la vista; en desktop va siempre abierto y sticky.
  */
-export default function EquipoPanel({ empleados, paletaEquipos, filtros, onToggle, onClear, ausentesHoy = 0 }) {
+export default function EquipoPanel({ empleados, paletaEquipos, filtros, onToggle, onClear, ausentesHoy = 0, yo = null, leyendaExtra = null }) {
   const [abierto, setAbierto] = useState(false);
   const mapAccent = useAccentMap();
   const hayFiltros = filtros.size > 0;
@@ -154,12 +164,12 @@ export default function EquipoPanel({ empleados, paletaEquipos, filtros, onToggl
         <div className="max-h-[50vh] space-y-1 overflow-y-auto px-2 pb-2 lg:max-h-[46vh]" role="list" aria-label="Miembros del equipo">
           {empleados.map((emp) => (
             <div role="listitem" key={emp.nombre}>
-              <EmpCard emp={emp} seleccionado={filtros.has(emp.nombre)} hayFiltros={hayFiltros} onToggle={onToggle} />
+              <EmpCard emp={emp} seleccionado={filtros.has(emp.nombre)} hayFiltros={hayFiltros} onToggle={onToggle} esYo={!!yo && emp.nombre === yo} />
             </div>
           ))}
         </div>
 
-        <Leyenda paletaEquipos={paletaEquipos || {}} equiposEnUso={equiposEnUso} />
+        <Leyenda paletaEquipos={paletaEquipos || {}} equiposEnUso={equiposEnUso} extra={leyendaExtra} />
       </div>
     </section>
   );

@@ -27,7 +27,7 @@ const VISTAS = [
   { id: "personas", label: "Personas", icon: IconUsers },
 ];
 
-function AmbientBackground() {
+export function AmbientBackground() {
   return (
     <div aria-hidden className="pointer-events-none fixed inset-[-3%] -z-10 overflow-hidden">
       <span className="rdr-blob left-[-8%] top-[4%] h-80 w-80" style={{ background: ACCENT }} />
@@ -38,7 +38,7 @@ function AmbientBackground() {
 }
 
 /** Skeleton de carga con la misma estructura que la vista real (sin CLS). */
-function VacacionesSkeleton() {
+export function VacacionesSkeleton() {
   return (
     <div aria-busy="true">
       <div className="mb-8">
@@ -63,7 +63,7 @@ function VacacionesSkeleton() {
   );
 }
 
-function ErrorCard({ mensaje, onRetry }) {
+export function ErrorCard({ mensaje, onRetry }) {
   const { theme } = useTheme();
   // Rojo por tema: salmón sobre Midnight; sobre Sand, rojo oscuro con contraste AA.
   const borde = theme === "light" ? "border-[#C53030]/40" : "border-[#FF7A7A]/40";

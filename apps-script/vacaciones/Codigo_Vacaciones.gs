@@ -1,734 +1,897 @@
-// ============================================================
-// Codigo_Vacaciones.gs — Backend Vacaciones RDR
-// ============================================================
-// Modo de funcionamiento:
-//   - doGet() sin parámetros → sirve el HTML de responsables
-//     (Index.html), igual que hasta ahora. Se accede vía mail.
-//   - doGet(?modo=publico)   → devuelve JSON de SOLO LECTURA
-//     para alimentar la web pública en GitHub Pages.
-//
-// Al aprobar una solicitud, además de pintar el Excel principal
-// y notificar por mail, se crea un evento all-day en el calendario
-// compartido del equipo (ID_CALENDARIO_AUSENCIAS).
-//
-// Todo el resto (obtenerDatosCompletos, procesarSolicitud,
-// forzarSincronizacionWeb) funciona idéntico al original.
-// Formulario.gs y Migracion.gs no se tocan.
-// ============================================================
+/**
+ * ============================================================================
+ *  VACACIONES RDR  ·  Apps Script (backend de /vacaciones y /vacaciones-gestion)
+ * ============================================================================
+ *
+ *  UN solo proyecto, ligado al Excel de siempre ("Vacaciones RDR"). Sustituye
+ *  al Excel auxiliar, al Google Form y al panel de responsables antiguos
+ *  (apps-script/vacaciones-antiguo/).
+ *
+ *  PESTAÑAS DEL EXCEL
+ *   · Vacas_<año> (Vacas_2026, Vacas_2027…): rejilla editable a mano.
+ *       Fila 1 mes · fila 2 día del mes · fila 3 día de la semana.
+ *       Desde la fila 4, una persona por fila:
+ *         A Persona · B Email · C Grupo festivos · D Activo
+ *         E Días año anterior · F Días del año · G Total (=E+F)
+ *         H VA (nº de días VA) · I Quedan (=G-H)
+ *         J… una columna por día del año (1 ene → 31 dic) con el código:
+ *         VA Vacaciones · VP Vac. proyecto · FO Formación · ES Permiso especial
+ *         BA Baja · RE Revisión · FT Festivo trabajado · FE Festivo · VE Votación
+ *       ⚠ No insertar ni borrar columnas de días: la columna de cada fecha se
+ *         calcula (J = 1 de enero). Personas: añadir/quitar filas sin problema.
+ *   · Solicitudes: una fila por petición (PENDIENTE/APROBADA/RECHAZADA/CANCELADA).
+ *   · Festivos: Fecha · Grupo · Nombre (un festivo por grupo y día).
+ *   · Grupos_Festivos: Grupo · País (ES/MX), p. ej. Madrid/ES, México DC/MX.
+ *   Las pestañas antiguas ("Vacaciones 2026", "2026_Calendario") quedan solo
+ *   como registro: migrar2026() (Migracion_2026.gs) copia una vez a Vacas_2026.
+ *
+ *  REGLAS
+ *   · Solo VA descuenta del saldo (igual que la fórmula del Excel antiguo).
+ *   · Días de una solicitud = laborables: ni sábado/domingo ni festivo del
+ *     grupo de la persona (ni celda FE en su fila).
+ *   · Al aprobar se escribe el código en los días laborables del rango, se crea
+ *     el evento en el calendario compartido y se avisa a quien lo pidió.
+ *   · Coordinación = "coordinador": true en equipo.json (igual que el resto
+ *     del hub). Desde la web se piden VA, FO y ES.
+ *
+ *  DESPLIEGUE (proyecto LIGADO al Excel "Vacaciones RDR"):
+ *   1. Abrir el Excel -> Extensiones -> Apps Script -> pegar este fichero y
+ *      Migracion_2026.gs (dos ficheros del mismo proyecto).
+ *   2. Ejecutar `autorizar` y aceptar permisos (Hojas, Calendar, correo, UrlFetch).
+ *   3. Ejecutar `migrar2026` y revisar la pestaña "Migracion_2026" (informe).
+ *   4. Implementar -> Aplicación web (Ejecutar como: Yo · Acceso: Cualquier
+ *      persona). Pegar la URL /exec en links.json -> "vacacionesV2Backend".
+ *
+ *  API — respuesta { ok, data | error }
+ *   GET  ?action=ping
+ *   GET  ?action=datos&anio=2026&email=…   calendario + mis solicitudes
+ *        (+ saldos, solicitudes pendientes y grupos si el email es de coordinación)
+ *   GET  ?modo=publico                      formato antiguo (lo usa el Time Report)
+ *   POST text/plain JSON { action, email, … }:
+ *        solicitar     { tipo, desde, hasta, comentario }
+ *        cancelar      { id }                                   (la propia, pendiente)
+ *        resolver      { id, decision:'aprobar'|'rechazar', motivo?, forzar? }   (coord.)
+ *        guardarFestivo{ fecha, nombre, grupos:[…] }                              (coord.)
+ *        borrarFestivo { fecha, grupo }                                            (coord.)
+ *        guardarGrupo  { grupo, pais, anterior? }   (crear o renombrar)            (coord.)
+ *        borrarGrupo   { grupo }                                                   (coord.)
+ *        asignarGrupo  { anio, persona, grupo }                                    (coord.)
+ *        crearAnio     { anio }                     (Vacas_<anio> desde el anterior) (coord.)
+ * ============================================================================
+ */
 
-
-// ------------------------------------------------------------
-// 0a. CONFIGURACIÓN — IDs externos
-// ------------------------------------------------------------
-// ID del calendario compartido donde se crean los eventos al
-// aprobar una solicitud. Para obtenerlo:
-//   Google Calendar → ⚙ junto al calendario → "Configuración y uso compartido"
-//   → busca "Integrar el calendario" → copia el "ID del calendario"
-//   (es una cadena tipo "abc123@group.calendar.google.com").
-// Importante: la cuenta que ejecuta el Web App debe tener
-// permisos de edición sobre este calendario.
-// ------------------------------------------------------------
-const ID_CALENDARIO_AUSENCIAS = 'c_7f897d2240e831b1b87e40c7018e7c9d300b59f1b57146aade363d870536c314@group.calendar.google.com';
-
-
-// ------------------------------------------------------------
-// 0. PALETA DE EQUIPOS
-// ------------------------------------------------------------
-// Mapeo: número de equipo (string) → color hex BBVA.
-// Para añadir equipos nuevos, simplemente añade aquí.
-// Los HTML no necesitan cambios: reciben el color ya resuelto
-// dentro de cada empleado.
-// ------------------------------------------------------------
-const COLOR_POR_EQUIPO = {
-  '1': '#001391', // Electric Blue
-  '2': '#88E783', // Lime
-  '3': '#FFB56B', // Mandarin
-  '4': '#9694FF', // Purple
-  '5': '#8BE1E9', // Aqua / Ice
-  '6': '#FFE761'  // Canary
+const V_CONFIG = {
+  EXCEL_ID: '1yCexnLp49FBu9f-g1Gf5glfz2UEFc4u_d0hzBgTnTmA',
+  EQUIPO_JSON_URL: 'https://raw.githubusercontent.com/rdr-nfq/team-hub/main/beyond-the-grid/public/equipo/equipo.json',
+  WEB_URL: 'https://rdr-nfq.github.io/team-hub/vacaciones/',
+  GESTION_URL: 'https://rdr-nfq.github.io/team-hub/vacaciones-gestion/',
+  // Calendario compartido donde se crea un evento al aprobar (vacío = no se crea).
+  CALENDARIO_ID: 'c_7f897d2240e831b1b87e40c7018e7c9d300b59f1b57146aade363d870536c314@group.calendar.google.com',
+  REMITE: 'Vacaciones RDR',
+  TIPOS_SOLICITABLES: ['VA', 'FO', 'ES']
 };
-const COLOR_EQUIPO_FALLBACK = '#ADB8C2'; // Gray-4 BBVA — gente sin equipo asignado
 
-/** Normaliza el valor de la celda Equipo: "1.0" → "1", 2 → "2", "" → "". */
-function _normalizarNumEquipo(v) {
-  if (v === null || v === undefined) return '';
-  let s = String(v).trim();
-  if (!s) return '';
-  // Quitar decimales si vienen como "1.0"
-  s = s.replace(/\.0+$/, '');
-  return s;
+const HOJA = {
+  SOLICITUDES: 'Solicitudes',
+  FESTIVOS: 'Festivos',
+  GRUPOS: 'Grupos_Festivos'
+};
+const PREFIJO_ANIO = 'Vacas_';
+
+// Rejilla Vacas_<año>
+const G = {
+  FILA_MES: 1, FILA_DIA: 2, FILA_SEM: 3, FILA_1: 4,
+  PERSONA: 1, EMAIL: 2, GRUPO: 3, ACTIVO: 4, ANTERIORES: 5, DIAS: 6, TOTAL: 7, VA: 8, QUEDAN: 9,
+  DIA1: 10
+};
+const CABECERA_GRID = ['Persona', 'Email', 'Grupo festivos', 'Activo', 'Días año anterior', 'Días del año', 'Total', 'VA', 'Quedan'];
+
+const CODIGOS = {
+  VA: { texto: 'Vacaciones', color: '#88E783' },
+  VP: { texto: 'Vacaciones proyecto', color: '#8BE1E9' },
+  FO: { texto: 'Formación', color: '#85C8FF' },
+  ES: { texto: 'Permiso especial', color: '#9694FF' },
+  BA: { texto: 'Baja', color: '#FF9A9A' },
+  RE: { texto: 'Revisión', color: '#FFE761' },
+  FT: { texto: 'Festivo trabajado', color: '#FFB56B' },
+  FE: { texto: 'Festivo', color: '#CAD1D8' },
+  VE: { texto: 'Votación elecciones', color: '#E2E6EA' }
+};
+
+const COLS_SOL = ['Id', 'Creada', 'Email', 'Persona', 'Tipo', 'Desde', 'Hasta', 'Días', 'Comentario', 'Estado', 'Resuelta por', 'Resuelta', 'Motivo', 'Evento calendario'];
+const S = {}; COLS_SOL.forEach(function (c, i) { S[c] = i; });
+
+const MESES_ES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+const LETRA_DIA = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
+// Color por persona (solo para la web: identifica a cada uno en el calendario).
+const PALETA_PERSONAS = ['#85C8FF', '#88E783', '#FFB56B', '#9694FF', '#8BE1E9', '#FFE761', '#5BBEFF', '#F8CD51', '#B5E5A4', '#D0A3FF'];
+
+/* EJECUTAR UNA VEZ A MANO tras pegar código nuevo: pide todos los permisos. */
+function autorizar() {
+  _ss().getName();
+  MailApp.getRemainingDailyQuota();
+  UrlFetchApp.fetch(V_CONFIG.EQUIPO_JSON_URL, { muteHttpExceptions: true });
+  if (V_CONFIG.CALENDARIO_ID) CalendarApp.getCalendarById(V_CONFIG.CALENDARIO_ID);
+  Logger.log('Permisos concedidos. Excel: ' + _ss().getName());
 }
 
-/** Devuelve el color de un equipo o el fallback si no encaja. */
-function _colorDeEquipo(numEquipo) {
-  return COLOR_POR_EQUIPO[String(numEquipo)] || COLOR_EQUIPO_FALLBACK;
+function _ss() { return SpreadsheetApp.openById(V_CONFIG.EXCEL_ID); }
+
+// ── Entrada HTTP ─────────────────────────────────────────────────────────────
+function doGet(e) {
+  const p = (e && e.parameter) || {};
+  if (String(p.modo || '').toLowerCase() === 'publico') {
+    try { return _salida(datosPublicos(p.anio)); } catch (err) { return _salida({ error: String(err.message || err) }); }
+  }
+  return _servir(p);
 }
 
-// ------------------------------------------------------------
-// 0b. HELPER — Sincronización con Google Calendar
-// ------------------------------------------------------------
-// Crea un evento all-day en el calendario común al aprobar una
-// solicitud. Si algo falla (calendario mal configurado, sin
-// permisos, problema de red…), NO rompe la aprobación: solo
-// loggea y devuelve null. El Excel sigue siendo la fuente de
-// verdad; el calendario es una vista derivada.
-// ------------------------------------------------------------
+function doPost(e) {
+  let p = {};
+  try { p = JSON.parse((e && e.postData && e.postData.contents) || '{}'); } catch (_) {}
+  const q = (e && e.parameter) || {};
+  Object.keys(q).forEach(function (k) { if (p[k] === undefined) p[k] = q[k]; });
+  return _servir(p);
+}
 
-/** Tipo corto (VA/FO/ES) → etiqueta legible + color del evento. */
-function _infoTipoAusencia(tipoCorto) {
-  switch (tipoCorto) {
-    case 'VA': return { etiqueta: 'Vacaciones',       color: CalendarApp.EventColor.GREEN }; // verde — descanso
-    case 'FO': return { etiqueta: 'Formación',        color: CalendarApp.EventColor.BLUE  }; // azul — trabajo
-    case 'ES': return { etiqueta: 'Permiso especial', color: CalendarApp.EventColor.MAUVE }; // morado — especial
-    default:   return { etiqueta: 'Ausencia',         color: null };
+function _servir(p) {
+  try {
+    let data;
+    switch (p.action) {
+      case 'ping': data = { ok: true, excel: _ss().getName() }; break;
+      case 'datos': data = datos(p.anio, p.email); break;
+      case 'solicitar': data = solicitar(p); break;
+      case 'cancelar': data = cancelar(p); break;
+      case 'resolver': _exigirCoord(p.email); data = resolver(p); break;
+      case 'guardarFestivo': _exigirCoord(p.email); data = guardarFestivo(p); break;
+      case 'borrarFestivo': _exigirCoord(p.email); data = borrarFestivo(p); break;
+      case 'guardarGrupo': _exigirCoord(p.email); data = guardarGrupo(p); break;
+      case 'borrarGrupo': _exigirCoord(p.email); data = borrarGrupo(p); break;
+      case 'asignarGrupo': _exigirCoord(p.email); data = asignarGrupo(p); break;
+      case 'crearAnio': _exigirCoord(p.email); data = crearAnio(p); break;
+      default: throw new Error('Acción desconocida: ' + p.action);
+    }
+    return _salida({ ok: true, data: data });
+  } catch (err) {
+    console.error(err);
+    return _salida({ ok: false, error: String((err && err.message) || err) });
   }
 }
 
-/**
- * Crea un evento all-day en el calendario común.
- * @return {string|null} ID del evento creado, o null si falla.
- */
-function _crearEventoCalendarioAusencia(nombre, tipoCorto, fInicio, fFin, idSolicitud) {
+function _salida(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+// ── Fechas (ISO "yyyy-MM-dd", aritmética en UTC: sin sustos de zona horaria) ──
+function _pad(n) { return (n < 10 ? '0' : '') + n; }
+function _isoOk(s) { return /^\d{4}-\d{2}-\d{2}$/.test(String(s || '')); }
+function _utc(iso) { const p = iso.split('-').map(Number); return Date.UTC(p[0], p[1] - 1, p[2]); }
+function _isoDeUtc(t) { const d = new Date(t); return d.getUTCFullYear() + '-' + _pad(d.getUTCMonth() + 1) + '-' + _pad(d.getUTCDate()); }
+function _sumar(iso, n) { return _isoDeUtc(_utc(iso) + n * 86400000); }
+function _dow(iso) { return new Date(_utc(iso)).getUTCDay(); }
+function _finde(iso) { const d = _dow(iso); return d === 0 || d === 6; }
+function _diasAnio(anio) { return (Date.UTC(anio + 1, 0, 1) - Date.UTC(anio, 0, 1)) / 86400000; }
+function _idxDia(iso) { return Math.round((_utc(iso) - Date.UTC(Number(iso.slice(0, 4)), 0, 1)) / 86400000); }
+function _isoDeIdx(anio, idx) { return _isoDeUtc(Date.UTC(anio, 0, 1) + idx * 86400000); }
+function _rango(desde, hasta) { const out = []; for (let d = desde; d <= hasta; d = _sumar(d, 1)) out.push(d); return out; }
+function _hoyISO() { return Utilities.formatDate(new Date(), _ss().getSpreadsheetTimeZone() || 'Europe/Madrid', 'yyyy-MM-dd'); }
+function _fechaEs(iso) { const p = iso.split('-'); return p[2] + '/' + p[1] + '/' + p[0]; }
+
+/** Celda -> ISO: admite Date, "2026-10-08", "8/10/2026". '' si no es fecha. */
+function _isoDeCelda(v, tz) {
+  if (v instanceof Date && !isNaN(v)) return Utilities.formatDate(v, tz || 'Europe/Madrid', 'yyyy-MM-dd');
+  const s = String(v || '').trim();
+  if (_isoOk(s)) return s;
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/.exec(s);
+  if (m) return (m[3].length === 2 ? '20' + m[3] : m[3]) + '-' + _pad(Number(m[2])) + '-' + _pad(Number(m[1]));
+  return '';
+}
+
+function _colLetra(n) { let s = ''; while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); } return s; }
+function _norm(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+function _normEmail(s) { return String(s || '').trim().toLowerCase(); }
+function _esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+// ── Equipo (equipo.json) ────────────────────────────────────────────────────
+function _equipo() {
+  const cache = CacheService.getScriptCache();
+  const hit = cache.get('equipo');
+  if (hit) return JSON.parse(hit);
+  const resp = UrlFetchApp.fetch(V_CONFIG.EQUIPO_JSON_URL, { muteHttpExceptions: true, followRedirects: true });
+  if (resp.getResponseCode() !== 200) throw new Error('HTTP ' + resp.getResponseCode() + ' al leer equipo.json');
+  const team = (JSON.parse(resp.getContentText()).team || []).filter(function (m) { return m && m.nombre; });
+  cache.put('equipo', JSON.stringify(team), 300);
+  return team;
+}
+function _emailsDe(m) { return [m.email, m.emailBBVA].map(_normEmail).filter(Boolean); }
+function _esCoord(email) {
+  const e = _normEmail(email);
+  return !!e && _equipo().some(function (m) { return m.coordinador === true && _emailsDe(m).indexOf(e) >= 0; });
+}
+function _exigirCoord(email) {
+  if (!_esCoord(email)) throw new Error('Solo coordinación puede hacer esto (' + (email || 'sin email') + ').');
+}
+function _coordinadores() {
+  return _equipo().filter(function (m) { return m.coordinador === true && m.email; }).map(function (m) { return _normEmail(m.email); });
+}
+/** Emails (web y BBVA) de equipo.json que corresponden a un email dado. */
+function _aliasEmail(email) {
+  const e = _normEmail(email);
+  const m = _equipo().filter(function (x) { return _emailsDe(x).indexOf(e) >= 0; })[0];
+  return m ? _emailsDe(m) : [e];
+}
+
+// ── Grupos y festivos ───────────────────────────────────────────────────────
+function _hoja(ss, nombre, cabecera, textoCols) {
+  let sh = ss.getSheetByName(nombre);
+  if (!sh) {
+    sh = ss.insertSheet(nombre);
+    sh.getRange(1, 1, 1, cabecera.length).setValues([cabecera]).setFontWeight('bold').setBackground('#E2E6EA');
+    sh.setFrozenRows(1);
+    (textoCols || []).forEach(function (c) { sh.getRange(2, c, 1000, 1).setNumberFormat('@'); });
+  }
+  return sh;
+}
+
+function _leerGrupos(ss) {
+  const sh = _hoja(ss, HOJA.GRUPOS, ['Grupo', 'País (ES/MX)']);
+  const vals = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues() : [];
+  return vals.filter(function (r) { return String(r[0]).trim(); }).map(function (r, i) {
+    return { grupo: String(r[0]).trim(), pais: String(r[1] || 'ES').trim().toUpperCase() === 'MX' ? 'MX' : 'ES', fila: i + 2 };
+  });
+}
+
+function _leerFestivos(ss) {
+  const sh = _hoja(ss, HOJA.FESTIVOS, ['Fecha', 'Grupo', 'Nombre'], [1]);
+  const tz = ss.getSpreadsheetTimeZone();
+  const vals = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, 3).getValues() : [];
+  const out = [];
+  vals.forEach(function (r, i) {
+    const fecha = _isoDeCelda(r[0], tz);
+    const grupo = String(r[1] || '').trim();
+    if (fecha && grupo) out.push({ fecha: fecha, grupo: grupo, nombre: String(r[2] || '').trim(), fila: i + 2 });
+  });
+  return out;
+}
+
+/** { grupo: Set(iso) } */
+function _festivosPorGrupo(festivos) {
+  const out = {};
+  festivos.forEach(function (f) { (out[f.grupo] = out[f.grupo] || {})[f.fecha] = true; });
+  return out;
+}
+
+// ── Rejilla Vacas_<año> ─────────────────────────────────────────────────────
+function _nombreHoja(anio) { return PREFIJO_ANIO + anio; }
+function _anios(ss) {
+  return ss.getSheets().map(function (s) { const m = /^Vacas_(\d{4})$/.exec(s.getName()); return m ? Number(m[1]) : null; })
+    .filter(Boolean).sort();
+}
+
+/** Lee Vacas_<anio>: { sh, anio, nDias, personas:[{fila, nombre, email, grupo, activo, anteriores, dias, total, va, quedan, codigos[]}] } */
+function _leerAnio(ss, anio) {
+  const sh = ss.getSheetByName(_nombreHoja(anio));
+  if (!sh) return null;
+  const nDias = _diasAnio(anio);
+  const ultima = sh.getLastRow();
+  const personas = [];
+  if (ultima >= G.FILA_1) {
+    const vals = sh.getRange(G.FILA_1, 1, ultima - G.FILA_1 + 1, G.DIA1 - 1 + nDias).getValues();
+    vals.forEach(function (r, i) {
+      const nombre = String(r[G.PERSONA - 1] || '').trim();
+      if (!nombre) return;
+      const codigos = r.slice(G.DIA1 - 1).map(function (c) { return String(c || '').trim().toUpperCase(); });
+      const anteriores = Number(r[G.ANTERIORES - 1]) || 0;
+      const dias = Number(r[G.DIAS - 1]) || 0;
+      const va = codigos.filter(function (c) { return c === 'VA'; }).length;
+      const activoRaw = r[G.ACTIVO - 1];
+      personas.push({
+        fila: G.FILA_1 + i, nombre: nombre,
+        email: _normEmail(r[G.EMAIL - 1]),
+        grupo: String(r[G.GRUPO - 1] || '').trim(),
+        activo: !(activoRaw === false || String(activoRaw).toUpperCase() === 'FALSE' || String(activoRaw).toUpperCase() === 'FALSO'),
+        anteriores: anteriores, dias: dias, total: anteriores + dias, va: va, quedan: anteriores + dias - va,
+        codigos: codigos
+      });
+    });
+  }
+  return { sh: sh, anio: anio, nDias: nDias, personas: personas };
+}
+
+function _personaPorEmail(grid, email) {
+  const alias = _aliasEmail(email);
+  let p = grid.personas.filter(function (x) { return x.email && alias.indexOf(x.email) >= 0; })[0];
+  if (p) return p;
+  // Sin email en la rejilla: por nombre de equipo.json.
+  const m = _equipo().filter(function (x) { return _emailsDe(x).indexOf(_normEmail(email)) >= 0; })[0];
+  if (!m) return null;
+  return grid.personas.filter(function (x) { return _mismoNombre(x.nombre, m.nombre); })[0] || null;
+}
+function _personaPorNombre(grid, nombre) {
+  return grid.personas.filter(function (x) { return x.nombre === nombre; })[0] || null;
+}
+
+/** Nombres "parecidos": iguales normalizados o con 2+ palabras en común. */
+function _mismoNombre(a, b) {
+  const x = _norm(a), y = _norm(b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  const tx = x.split(' '), ty = y.split(' ');
+  const comunes = tx.filter(function (t) { return t.length > 1 && ty.indexOf(t) >= 0; }).length;
+  return comunes >= 2 || (comunes === 1 && Math.min(tx.length, ty.length) === 1);
+}
+
+/** ¿Día laborable para esta persona? (ni finde, ni festivo de su grupo, ni FE en su fila) */
+function _laborable(persona, iso, fxg) {
+  if (_finde(iso)) return false;
+  if (persona.grupo && fxg[persona.grupo] && fxg[persona.grupo][iso]) return false;
+  const c = persona.codigos[_idxDia(iso)];
+  return c !== 'FE';
+}
+
+// ── Lectura para la web ─────────────────────────────────────────────────────
+function datos(anioParam, email) {
+  const ss = _ss();
+  const anios = _anios(ss);
+  const anioHoy = Number(_hoyISO().slice(0, 4));
+  const anio = Number(anioParam) || (anios.indexOf(anioHoy) >= 0 ? anioHoy : anios[anios.length - 1]);
+  const grid = anio ? _leerAnio(ss, anio) : null;
+  if (!grid) throw new Error('No existe la pestaña ' + _nombreHoja(anio || anioHoy) + ' en el Excel. ¿Se ha ejecutado migrar2026()?');
+
+  const grupos = _leerGrupos(ss);
+  const festivos = _leerFestivos(ss).filter(function (f) { return f.fecha.slice(0, 4) === String(anio); });
+  const esCoord = _esCoord(email);
+  const yo = email ? _personaPorEmail(grid, email) : null;
+
+  // Personas: activas primero y alfabético; color fijo por persona.
+  const orden = grid.personas.slice().sort(function (a, b) {
+    if (a.activo !== b.activo) return a.activo ? -1 : 1;
+    return a.nombre.localeCompare(b.nombre, 'es');
+  });
+  const empleados = orden.map(function (p, i) {
+    return { nombre: p.nombre, color: PALETA_PERSONAS[i % PALETA_PERSONAS.length], activo: p.activo, grupo: p.grupo };
+  });
+  const empleadosMap = {};
+  empleados.forEach(function (e) { empleadosMap[e.nombre] = e; });
+
+  const ausenciasPorDia = {};
+  grid.personas.forEach(function (p) {
+    p.codigos.forEach(function (c, i) {
+      if (!c || c === 'FE') return;
+      const iso = _isoDeIdx(anio, i);
+      (ausenciasPorDia[iso] = ausenciasPorDia[iso] || []).push({ nombre: p.nombre, motivo: c });
+    });
+  });
+
+  const out = {
+    v: 2, year: anio, anios: anios, generatedAt: new Date().toISOString(),
+    esCoordinador: esCoord,
+    yo: yo ? { nombre: yo.nombre, grupo: yo.grupo } : null,
+    empleados: empleados, empleadosMap: empleadosMap, paletaEquipos: {},
+    ausenciasPorDia: ausenciasPorDia,
+    festivos: _festivosVista(festivos, grupos),
+    festivosDetalle: festivos.map(function (f) { return { fecha: f.fecha, grupo: f.grupo, nombre: f.nombre }; }),
+    grupos: grupos.map(function (g) { return { grupo: g.grupo, pais: g.pais }; }),
+    tipos: V_CONFIG.TIPOS_SOLICITABLES.map(function (t) { return { id: t, texto: CODIGOS[t].texto }; }),
+    misSolicitudes: []
+  };
+
+  const sols = _leerSolicitudes(ss);
+  if (email) {
+    const alias = _aliasEmail(email);
+    out.misSolicitudes = sols.filter(function (s) { return alias.indexOf(s.email) >= 0; })
+      .sort(function (a, b) { return b.creada.localeCompare(a.creada); }).slice(0, 40).map(_solPublica);
+  }
+
+  if (esCoord) {
+    const pendientes = sols.filter(function (s) { return s.estado === 'PENDIENTE'; });
+    out.pendientes = pendientes.sort(function (a, b) { return a.desde.localeCompare(b.desde); }).map(_solPublica);
+    out.recientes = sols.filter(function (s) { return s.estado !== 'PENDIENTE'; })
+      .sort(function (a, b) { return String(b.resuelta).localeCompare(String(a.resuelta)); }).slice(0, 25).map(_solPublica);
+    out.saldos = grid.personas.map(function (p) {
+      const pend = pendientes.filter(function (s) { return s.persona === p.nombre && s.tipo === 'VA' && s.desde.slice(0, 4) === String(anio); })
+        .reduce(function (n, s) { return n + (Number(s.dias) || 0); }, 0);
+      return {
+        nombre: p.nombre, email: p.email, grupo: p.grupo, activo: p.activo,
+        anteriores: p.anteriores, dias: p.dias, total: p.total, va: p.va, quedan: p.quedan,
+        pendientesVA: pend, quedanTrasPendientes: p.quedan - pend
+      };
+    });
+    out.festivosTodos = _leerFestivos(ss).map(function (f) { return { fecha: f.fecha, grupo: f.grupo, nombre: f.nombre }; });
+  }
+  return out;
+}
+
+/** Vista de calendario: fecha -> 'ES' | 'MX' | 'AMBOS' según el país de los grupos. */
+function _festivosVista(festivos, grupos) {
+  const pais = {};
+  grupos.forEach(function (g) { pais[g.grupo] = g.pais; });
+  const out = {};
+  festivos.forEach(function (f) {
+    const p = pais[f.grupo] || 'ES';
+    out[f.fecha] = out[f.fecha] && out[f.fecha] !== p ? 'AMBOS' : p;
+  });
+  return out;
+}
+
+/** Formato antiguo (?modo=publico): lo sigue usando el Time Report (festivos). */
+function datosPublicos(anio) {
+  const d = datos(anio, '');
+  return {
+    year: d.year, generatedAt: d.generatedAt,
+    empleados: d.empleados, empleadosMap: d.empleadosMap, paletaEquipos: {},
+    ausenciasPorDia: d.ausenciasPorDia, festivos: d.festivos
+  };
+}
+
+// ── Solicitudes ─────────────────────────────────────────────────────────────
+function _hojaSolicitudes(ss) { return _hoja(ss, HOJA.SOLICITUDES, COLS_SOL, [S.Creada + 1, S.Desde + 1, S.Hasta + 1, S.Resuelta + 1]); }
+
+function _leerSolicitudes(ss) {
+  const sh = _hojaSolicitudes(ss);
+  const tz = ss.getSpreadsheetTimeZone();
+  if (sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, COLS_SOL.length).getValues().map(function (r, i) {
+    return {
+      fila: i + 2, id: String(r[S.Id]), creada: String(r[S.Creada] instanceof Date ? r[S.Creada].toISOString() : r[S.Creada]),
+      email: _normEmail(r[S.Email]), persona: String(r[S.Persona]).trim(), tipo: String(r[S.Tipo]).trim().toUpperCase(),
+      desde: _isoDeCelda(r[S.Desde], tz), hasta: _isoDeCelda(r[S.Hasta], tz), dias: Number(r[S.Días]) || 0,
+      comentario: String(r[S.Comentario] || ''), estado: String(r[S.Estado] || '').trim().toUpperCase(),
+      resueltaPor: String(r[S['Resuelta por']] || ''), resuelta: String(r[S.Resuelta] instanceof Date ? r[S.Resuelta].toISOString() : r[S.Resuelta] || ''),
+      motivo: String(r[S.Motivo] || ''), evento: String(r[S['Evento calendario']] || '')
+    };
+  }).filter(function (s) { return s.id; });
+}
+
+function _solPublica(s) {
+  return {
+    id: s.id, creada: s.creada, persona: s.persona, tipo: s.tipo, desde: s.desde, hasta: s.hasta, dias: s.dias,
+    comentario: s.comentario, estado: s.estado, resueltaPor: s.resueltaPor, resuelta: s.resuelta, motivo: s.motivo
+  };
+}
+
+/** Días laborables del rango para la persona y días en conflicto (celdas ocupadas). */
+function _analizarRango(persona, desde, hasta, fxg) {
+  const laborables = [], ocupados = [];
+  _rango(desde, hasta).forEach(function (iso) {
+    if (!_laborable(persona, iso, fxg)) return;
+    laborables.push(iso);
+    const c = persona.codigos[_idxDia(iso)];
+    if (c) ocupados.push(iso + ' (' + c + ')');
+  });
+  return { laborables: laborables, ocupados: ocupados };
+}
+
+function solicitar(p) {
+  const email = _normEmail(p.email);
+  if (!email) throw new Error('Falta tu email.');
+  const tipo = String(p.tipo || '').toUpperCase();
+  if (V_CONFIG.TIPOS_SOLICITABLES.indexOf(tipo) < 0) throw new Error('Tipo no válido: ' + p.tipo);
+  const desde = String(p.desde || ''), hasta = String(p.hasta || '');
+  if (!_isoOk(desde) || !_isoOk(hasta)) throw new Error('Fechas no válidas.');
+  if (hasta < desde) throw new Error('La fecha de fin es anterior a la de inicio.');
+  if (desde.slice(0, 4) !== hasta.slice(0, 4)) throw new Error('La solicitud no puede cruzar de año: divídela en dos (hasta el 31/12 y desde el 1/1).');
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
   try {
-    if (!ID_CALENDARIO_AUSENCIAS || ID_CALENDARIO_AUSENCIAS.indexOf('PEGA_') === 0) {
-      Logger.log('Calendario no configurado (ID_CALENDARIO_AUSENCIAS vacío). Salto sincronización.');
-      return null;
+    const ss = _ss();
+    const anio = Number(desde.slice(0, 4));
+    const grid = _leerAnio(ss, anio);
+    if (!grid) throw new Error('Todavía no existe la pestaña ' + _nombreHoja(anio) + ': avisa a coordinación.');
+    const persona = _personaPorEmail(grid, email);
+    if (!persona) throw new Error('No apareces en ' + _nombreHoja(anio) + ' (' + email + '): pide a coordinación que te añada.');
+    const fxg = _festivosPorGrupo(_leerFestivos(ss));
+    const a = _analizarRango(persona, desde, hasta, fxg);
+    if (!a.laborables.length) throw new Error('El rango no tiene días laborables (fines de semana o festivos).');
+    if (a.ocupados.length) throw new Error('Ya tienes días registrados en ese rango: ' + a.ocupados.join(', ') + '.');
+
+    const sols = _leerSolicitudes(ss);
+    const solapa = sols.filter(function (s) {
+      return s.estado === 'PENDIENTE' && s.persona === persona.nombre && !(s.hasta < desde || s.desde > hasta);
+    });
+    if (solapa.length) throw new Error('Ya tienes una solicitud pendiente que se solapa (' + _fechaEs(solapa[0].desde) + ' – ' + _fechaEs(solapa[0].hasta) + ').');
+
+    const id = 'VAC-' + Utilities.formatDate(new Date(), 'Europe/Madrid', 'yyyyMMdd-HHmmss') + '-' + Math.floor(Math.random() * 1000);
+    const fila = [];
+    fila[S.Id] = id; fila[S.Creada] = new Date().toISOString(); fila[S.Email] = email; fila[S.Persona] = persona.nombre;
+    fila[S.Tipo] = tipo; fila[S.Desde] = desde; fila[S.Hasta] = hasta; fila[S.Días] = a.laborables.length;
+    fila[S.Comentario] = String(p.comentario || '').slice(0, 1000); fila[S.Estado] = 'PENDIENTE';
+    fila[S['Resuelta por']] = ''; fila[S.Resuelta] = ''; fila[S.Motivo] = ''; fila[S['Evento calendario']] = '';
+    _hojaSolicitudes(ss).appendRow(fila);
+
+    let saldoTras = null;
+    if (tipo === 'VA') {
+      const pendVA = sols.filter(function (s) { return s.estado === 'PENDIENTE' && s.persona === persona.nombre && s.tipo === 'VA'; })
+        .reduce(function (n, s) { return n + s.dias; }, 0);
+      saldoTras = persona.quedan - pendVA - a.laborables.length;
     }
+    const sol = { id: id, persona: persona.nombre, email: email, tipo: tipo, desde: desde, hasta: hasta, dias: a.laborables.length, comentario: String(p.comentario || '') };
+    const aviso = _avisar(function () { _correoNuevaSolicitud(sol, saldoTras); });
+    return { solicitud: sol, aviso: aviso };
+  } finally {
+    lock.releaseLock();
+  }
+}
 
-    const cal = CalendarApp.getCalendarById(ID_CALENDARIO_AUSENCIAS);
-    if (!cal) {
-      Logger.log('No se puede acceder al calendario: ' + ID_CALENDARIO_AUSENCIAS);
-      return null;
+function cancelar(p) {
+  const ss = _ss();
+  const alias = _aliasEmail(p.email);
+  const s = _leerSolicitudes(ss).filter(function (x) { return x.id === String(p.id); })[0];
+  if (!s) throw new Error('No se encuentra la solicitud.');
+  if (alias.indexOf(s.email) < 0) throw new Error('Solo puedes cancelar tus propias solicitudes.');
+  if (s.estado !== 'PENDIENTE') throw new Error('Solo se pueden cancelar solicitudes pendientes (esta está ' + s.estado.toLowerCase() + ').');
+  const sh = _hojaSolicitudes(ss);
+  sh.getRange(s.fila, S.Estado + 1).setValue('CANCELADA');
+  sh.getRange(s.fila, S.Resuelta + 1).setValue(new Date().toISOString());
+  return { id: s.id, estado: 'CANCELADA' };
+}
+
+function resolver(p) {
+  const decision = String(p.decision || '').toLowerCase();
+  if (decision !== 'aprobar' && decision !== 'rechazar') throw new Error('Decisión no válida.');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const ss = _ss();
+    const s = _leerSolicitudes(ss).filter(function (x) { return x.id === String(p.id); })[0];
+    if (!s) throw new Error('No se encuentra la solicitud.');
+    if (s.estado !== 'PENDIENTE') throw new Error('La solicitud ya está ' + s.estado.toLowerCase() + '.');
+    const sh = _hojaSolicitudes(ss);
+    const quien = _normEmail(p.email);
+    const motivo = String(p.motivo || '').trim().slice(0, 500);
+    let eventoId = '';
+    let escritos = 0;
+
+    if (decision === 'aprobar') {
+      const anio = Number(s.desde.slice(0, 4));
+      const grid = _leerAnio(ss, anio);
+      if (!grid) throw new Error('No existe la pestaña ' + _nombreHoja(anio) + '.');
+      const persona = _personaPorNombre(grid, s.persona);
+      if (!persona) throw new Error(s.persona + ' ya no está en ' + _nombreHoja(anio) + '.');
+      const fxg = _festivosPorGrupo(_leerFestivos(ss));
+      const a = _analizarRango(persona, s.desde, s.hasta, fxg);
+      if (a.ocupados.length && !p.forzar) {
+        throw new Error('SOLAPAMIENTO: ' + s.persona + ' ya tiene días registrados: ' + a.ocupados.join(', ') + '. Revísalo en el Excel o aprueba forzando.');
+      }
+      a.laborables.forEach(function (iso) {
+        grid.sh.getRange(persona.fila, G.DIA1 + _idxDia(iso)).setValue(s.tipo);
+        escritos++;
+      });
+      eventoId = _crearEvento(s) || '';
+      sh.getRange(s.fila, S.Días + 1).setValue(a.laborables.length);
     }
+    sh.getRange(s.fila, S.Estado + 1).setValue(decision === 'aprobar' ? 'APROBADA' : 'RECHAZADA');
+    sh.getRange(s.fila, S['Resuelta por'] + 1).setValue(quien);
+    sh.getRange(s.fila, S.Resuelta + 1).setValue(new Date().toISOString());
+    sh.getRange(s.fila, S.Motivo + 1).setValue(motivo);
+    sh.getRange(s.fila, S['Evento calendario'] + 1).setValue(eventoId);
+    const aviso = _avisar(function () { _correoResolucion(s, decision, motivo, quien); });
+    return { id: s.id, estado: decision === 'aprobar' ? 'APROBADA' : 'RECHAZADA', dias: escritos, evento: !!eventoId, aviso: aviso };
+  } finally {
+    lock.releaseLock();
+  }
+}
 
-    const info = _infoTipoAusencia(tipoCorto);
-    const titulo = nombre + ' — ' + info.etiqueta;
-
-    // En createAllDayEvent(title, startDate, endDate), endDate es EXCLUSIVO.
-    // Si la solicitud es del 1 al 5, el evento all-day debe ir de 1 a 6.
-    const fInicioCopy = new Date(fInicio.getFullYear(), fInicio.getMonth(), fInicio.getDate());
-    const fFinExclusivo = new Date(fFin.getFullYear(), fFin.getMonth(), fFin.getDate() + 1);
-
-    const descripcion =
-      'Empleado: ' + nombre + '\n' +
-      'Tipo: ' + info.etiqueta + ' (' + tipoCorto + ')\n' +
-      'Solicitud: ' + idSolicitud + '\n\n' +
-      'Generado automáticamente por Vacaciones RDR.';
-
-    let evento;
-    if (fInicioCopy.getTime() === fFin.getTime()) {
-      // Un solo día — la firma de 1 día es distinta
-      evento = cal.createAllDayEvent(titulo, fInicioCopy, { description: descripcion });
-    } else {
-      evento = cal.createAllDayEvent(titulo, fInicioCopy, fFinExclusivo, { description: descripcion });
-    }
-
-    if (info.color) {
-      try { evento.setColor(info.color); } catch (e) { /* ignorar; no es crítico */ }
-    }
-
-    return evento.getId();
-  } catch (err) {
-    Logger.log('ERROR creando evento Calendar: ' + err.message);
+function _crearEvento(s) {
+  try {
+    if (!V_CONFIG.CALENDARIO_ID) return null;
+    const cal = CalendarApp.getCalendarById(V_CONFIG.CALENDARIO_ID);
+    if (!cal) return null;
+    const p1 = s.desde.split('-').map(Number), p2 = _sumar(s.hasta, 1).split('-').map(Number);
+    const ini = new Date(p1[0], p1[1] - 1, p1[2]);
+    const finExcl = new Date(p2[0], p2[1] - 1, p2[2]);
+    const titulo = s.persona + ' — ' + ((CODIGOS[s.tipo] || {}).texto || s.tipo);
+    const ev = cal.createAllDayEvent(titulo, ini, finExcl, { description: 'Solicitud ' + s.id + ' · generado por Vacaciones RDR.' });
+    try { ev.setColor(s.tipo === 'VA' ? CalendarApp.EventColor.GREEN : s.tipo === 'FO' ? CalendarApp.EventColor.BLUE : CalendarApp.EventColor.MAUVE); } catch (_) {}
+    return ev.getId();
+  } catch (e) {
+    console.error('Calendario: ' + e);
     return null;
   }
 }
 
-/**
- * Lee la hoja RDR y construye:
- *   { emailToNombre, nombreToEquipo, esResponsableEmail }
- * Usado por las funciones de lectura para no duplicar el barrido.
- */
-function _leerIndiceRDR(emailUsuario) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const hojaRDR = ss.getSheetByName("RDR");
-  const result = { emailToNombre: {}, nombreToEquipo: {}, esResponsable: false };
-  if (!hojaRDR) return result;
-
-  const datosRDR = hojaRDR.getDataRange().getValues();
-  // Cabecera en fila 0: A=Nombre, B=Email, C=Rol, D=Equipo
-  for (let i = 1; i < datosRDR.length; i++) {
-    let nombre  = String(datosRDR[i][0] || '').trim();
-    let email   = String(datosRDR[i][1] || '').toLowerCase().trim();
-    let rol     = String(datosRDR[i][2] || '').trim().replace(/\.0+$/, '');
-    let equipo  = _normalizarNumEquipo(datosRDR[i][3]);
-
-    if (email && nombre) result.emailToNombre[email] = nombre;
-    if (nombre && equipo) result.nombreToEquipo[nombre] = equipo;
-    if (emailUsuario && email === emailUsuario && (rol === '1' || rol === '2')) {
-      result.esResponsable = true;
-    }
+// ── Festivos y grupos (coordinación) ────────────────────────────────────────
+/** Recalcula los FE de una persona según su grupo (solo toca celdas vacías o FE). */
+function _sincronizarFE(grid, persona, fxg) {
+  const set = (persona.grupo && fxg[persona.grupo]) || {};
+  const r = grid.sh.getRange(persona.fila, G.DIA1, 1, grid.nDias);
+  const vals = r.getValues()[0];
+  let cambios = 0;
+  for (let i = 0; i < grid.nDias; i++) {
+    const iso = _isoDeIdx(grid.anio, i);
+    const c = String(vals[i] || '').trim().toUpperCase();
+    if (set[iso] && !c) { vals[i] = 'FE'; cambios++; }
+    else if (!set[iso] && c === 'FE') { vals[i] = ''; cambios++; }
   }
-  return result;
+  if (cambios) r.setValues([vals]);
+  return cambios;
 }
 
-
-// ------------------------------------------------------------
-// 1. ENTRY POINT
-// ------------------------------------------------------------
-
-function doGet(e) {
-  const modo = (e && e.parameter && e.parameter.modo) ? String(e.parameter.modo).toLowerCase() : '';
-
-  // --- Endpoint público (JSON) para GitHub Pages ---
-  if (modo === 'publico') {
-    let payload;
-    try {
-      payload = obtenerDatosPublicos();
-    } catch (err) {
-      payload = { error: err.message };
-    }
-    return ContentService
-      .createTextOutput(JSON.stringify(payload))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-
-  // --- Modo original: HTML para responsables ---
-  return HtmlService
-    .createTemplateFromFile('Index')
-    .evaluate()
-    .setTitle('Dashboard RDR')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-}
-
-
-// ------------------------------------------------------------
-// 2. LECTURA DE LA BASE DE DATOS (responsables)
-// ------------------------------------------------------------
-// Igual que el original. Sigue usándose vía google.script.run.
-// ------------------------------------------------------------
-
-function obtenerDatosCompletos() {
+function guardarFestivo(p) {
+  const fecha = String(p.fecha || '');
+  if (!_isoOk(fecha)) throw new Error('Fecha no válida.');
+  const grupos = [].concat(p.grupos || []).map(function (g) { return String(g).trim(); }).filter(Boolean);
+  if (!grupos.length) throw new Error('Elige al menos un grupo.');
+  const ss = _ss();
+  const existentes = _leerGrupos(ss).map(function (g) { return g.grupo; });
+  grupos.forEach(function (g) { if (existentes.indexOf(g) < 0) throw new Error('No existe el grupo ' + g + '.'); });
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const emailUsuario = Session.getActiveUser().getEmail().toLowerCase().trim();
-
-    // Leer RDR (permisos + diccionario email→nombre + nombre→equipo)
-    const idx = _leerIndiceRDR(emailUsuario);
-    const emailToNombre  = idx.emailToNombre;
-    const nombreToEquipo = idx.nombreToEquipo;
-    const isResponsable  = idx.esResponsable;
-
-    // Leer Equipo (datos del empleado). El color YA NO sale de la columna B,
-    // sale de la paleta de equipos cruzando con RDR.
-    const hojaEquipo = ss.getSheetByName("Equipo");
-    const datosEquipo = hojaEquipo.getDataRange().getValues();
-    let empleadosList = []; let empleadosMap = {};
-    for (let i = 1; i < datosEquipo.length; i++) {
-      let nombre = String(datosEquipo[i][0]).trim();
-      if (!nombre) continue;
-      let numEquipo = nombreToEquipo[nombre] || '';
-      let emp = {
-        nombre: nombre,
-        equipo: numEquipo,                        // string ('1', '2', '' si no asignado)
-        color: _colorDeEquipo(numEquipo),         // color resuelto desde la paleta
-        consumidas: parseFloat(datosEquipo[i][3]) || 0,
-        pendientes: parseFloat(datosEquipo[i][4]) || 0,
-        activo: datosEquipo[i][5] !== false
-      };
-      empleadosList.push(emp); empleadosMap[nombre] = emp;
+    const sh = _hoja(ss, HOJA.FESTIVOS, ['Fecha', 'Grupo', 'Nombre'], [1]);
+    const ya = _leerFestivos(ss);
+    const nombre = String(p.nombre || 'Festivo').trim();
+    grupos.forEach(function (g) {
+      const f = ya.filter(function (x) { return x.fecha === fecha && x.grupo === g; })[0];
+      if (f) sh.getRange(f.fila, 3).setValue(nombre);
+      else sh.appendRow([fecha, g, nombre]);
+    });
+    // FE en la rejilla del año para quienes son de esos grupos.
+    const grid = _leerAnio(ss, Number(fecha.slice(0, 4)));
+    const ocupados = [];
+    if (grid) {
+      const col = G.DIA1 + _idxDia(fecha);
+      grid.personas.filter(function (x) { return grupos.indexOf(x.grupo) >= 0; }).forEach(function (x) {
+        const c = x.codigos[_idxDia(fecha)];
+        if (!c) grid.sh.getRange(x.fila, col).setValue('FE');
+        else if (c !== 'FE') ocupados.push(x.nombre + ' (' + c + ')');
+      });
     }
-
-    // Leer Ausencias
-    const hojaAprobadas = ss.getSheetByName("Ausencias Aprobadas");
-    const datosAprobadas = hojaAprobadas.getDataRange().getValues();
-    let ausenciasPorDia = {};
-    for (let i = 1; i < datosAprobadas.length; i++) {
-      let nombre = String(datosAprobadas[i][0]).trim();
-      let fecha = datosAprobadas[i][1];
-      let tipo = String(datosAprobadas[i][2]).trim();
-      if (!nombre || !fecha) continue;
-      let dateStr = formatearFecha(fecha);
-      if (!ausenciasPorDia[dateStr]) ausenciasPorDia[dateStr] = [];
-      ausenciasPorDia[dateStr].push({ nombre: nombre, motivo: tipo });
-    }
-
-    // Leer Festivos
-    const hojaFestivos = ss.getSheetByName("Festivos");
-    let festivosMap = {};
-    if (hojaFestivos) {
-      const datosFestivos = hojaFestivos.getDataRange().getValues();
-      for (let i = 1; i < datosFestivos.length; i++) {
-        let fecha = datosFestivos[i][0]; let pais = String(datosFestivos[i][1]).trim().toUpperCase();
-        if (fecha && pais) festivosMap[formatearFecha(fecha)] = pais;
-      }
-    }
-
-    // Leer Solicitudes (Buscando columnas por nombre)
-    let solicitudes = [];
-    if (isResponsable) {
-      const hojaSol = ss.getSheets()[0];
-      const datosSol = hojaSol.getDataRange().getValues();
-      if (datosSol.length > 0) {
-        let cabeceras = datosSol[0];
-        let cEmail = 1, cTipo = 2, cIni = 3, cFin = 4, cCom = 5, cEst = 6, cID = 7;
-
-        for (let c = 0; c < cabeceras.length; c++) {
-          let t = String(cabeceras[c]).toUpperCase().trim();
-          if (t.includes("CORREO")) cEmail = c;
-          if (t.includes("TIPO")) cTipo = c;
-          if (t.includes("INICIO")) cIni = c;
-          if (t.includes("FIN")) cFin = c;
-          if (t.includes("COMENTARIO")) cCom = c;
-          if (t === "ESTADO") cEst = c;
-          if (t.includes("ID")) cID = c;
-        }
-
-        for (let i = 1; i < datosSol.length; i++) {
-          let estado = String(datosSol[i][cEst] || "").trim().toUpperCase();
-          if (estado === "PENDIENTE") {
-            let emailSol = String(datosSol[i][cEmail]).toLowerCase().trim();
-            let nombreAsignado = emailToNombre[emailSol] || "Empleado (" + emailSol + ")";
-
-            solicitudes.push({
-              timestamp: String(datosSol[i][0]),
-              email: emailSol,
-              nombre: nombreAsignado,
-              tipo: String(datosSol[i][cTipo]).trim(),
-              inicioStr: formatearFecha(datosSol[i][cIni]),
-              finStr: formatearFecha(datosSol[i][cFin]),
-              comentarios: datosSol[i][cCom],
-              id: datosSol[i][cID]
-            });
-          }
-        }
-      }
-    }
-
-    return {
-      year: new Date().getFullYear(),
-      empleados: empleadosList,
-      empleadosMap: empleadosMap,
-      ausenciasPorDia: ausenciasPorDia,
-      festivos: festivosMap,
-      solicitudes: solicitudes,
-      isResponsable: isResponsable,
-      paletaEquipos: COLOR_POR_EQUIPO   // { '1': '#001391', '2': '#88E783', ... }
-    };
-  } catch (error) { return { error: error.message }; }
-}
-
-
-// ------------------------------------------------------------
-// 2.b. DATOS PÚBLICOS (GitHub Pages)
-// ------------------------------------------------------------
-// Mismo perímetro de datos que el dashboard normal PERO:
-//   - Nunca devuelve `solicitudes` (no se exponen peticiones).
-//   - Nunca devuelve la columna de email de los empleados.
-//   - No depende de Session.getActiveUser() (el endpoint es anónimo).
-// Si quisieras endurecer más adelante puedes:
-//   - Filtrar empleados inactivos.
-//   - Anonimizar nombres (iniciales).
-//   - Usar una "key" en la URL como semi-secreto.
-// ------------------------------------------------------------
-
-function obtenerDatosPublicos() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-
-  // Cruzar nombres con la columna Equipo de RDR
-  const idx = _leerIndiceRDR(null); // sin email — endpoint anónimo
-  const nombreToEquipo = idx.nombreToEquipo;
-
-  // Equipo
-  const hojaEquipo = ss.getSheetByName("Equipo");
-  const datosEquipo = hojaEquipo.getDataRange().getValues();
-  let empleadosList = []; let empleadosMap = {};
-  for (let i = 1; i < datosEquipo.length; i++) {
-    let nombre = String(datosEquipo[i][0]).trim();
-    if (!nombre) continue;
-    let numEquipo = nombreToEquipo[nombre] || '';
-    let emp = {
-      nombre: nombre,
-      equipo: numEquipo,
-      color: _colorDeEquipo(numEquipo),
-      consumidas: parseFloat(datosEquipo[i][3]) || 0,
-      pendientes: parseFloat(datosEquipo[i][4]) || 0,
-      activo: datosEquipo[i][5] !== false
-    };
-    empleadosList.push(emp);
-    empleadosMap[nombre] = emp;
-  }
-
-  // Ausencias
-  const hojaAprobadas = ss.getSheetByName("Ausencias Aprobadas");
-  const datosAprobadas = hojaAprobadas.getDataRange().getValues();
-  let ausenciasPorDia = {};
-  for (let i = 1; i < datosAprobadas.length; i++) {
-    let nombre = String(datosAprobadas[i][0]).trim();
-    let fecha = datosAprobadas[i][1];
-    let tipo = String(datosAprobadas[i][2]).trim();
-    if (!nombre || !fecha) continue;
-    let dateStr = formatearFecha(fecha);
-    if (!ausenciasPorDia[dateStr]) ausenciasPorDia[dateStr] = [];
-    ausenciasPorDia[dateStr].push({ nombre: nombre, motivo: tipo });
-  }
-
-  // Festivos
-  const hojaFestivos = ss.getSheetByName("Festivos");
-  let festivosMap = {};
-  if (hojaFestivos) {
-    const datosFestivos = hojaFestivos.getDataRange().getValues();
-    for (let i = 1; i < datosFestivos.length; i++) {
-      let fecha = datosFestivos[i][0];
-      let pais = String(datosFestivos[i][1]).trim().toUpperCase();
-      if (fecha && pais) festivosMap[formatearFecha(fecha)] = pais;
-    }
-  }
-
-  return {
-    year: new Date().getFullYear(),
-    empleados: empleadosList,
-    empleadosMap: empleadosMap,
-    ausenciasPorDia: ausenciasPorDia,
-    festivos: festivosMap,
-    paletaEquipos: COLOR_POR_EQUIPO,
-    generatedAt: new Date().toISOString()
-  };
-}
-
-
-// ------------------------------------------------------------
-// 3. LÓGICA DE APROBAR / RECHAZAR (sin cambios)
-// ------------------------------------------------------------
-
-function procesarSolicitud(idSolicitud, accion) {
-  let hojaSol, filaActualizar = -1, cEst = 6;
-
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const emailUsuario = Session.getActiveUser().getEmail().toLowerCase().trim();
-
-    // --- 1. IDENTIFICACIÓN Y PERMISOS ---
-    const hojaRDR = ss.getSheetByName("RDR");
-    let esJefe = false; let emailToNombre = {};
-    const datosRDR = hojaRDR.getDataRange().getValues();
-    for (let i = 1; i < datosRDR.length; i++) {
-      let emailFila = String(datosRDR[i][1]).toLowerCase().trim();
-      let rolFila = String(datosRDR[i][2]).trim().replace(".0", "");
-      if (emailFila) emailToNombre[emailFila] = String(datosRDR[i][0]).trim();
-      if (emailFila === emailUsuario && (rolFila === "1" || rolFila === "2")) esJefe = true;
-    }
-    if (!esJefe) throw new Error("No tienes permisos de responsable.");
-
-    // --- 2. DATOS DE LA SOLICITUD ---
-    hojaSol = ss.getSheets()[0];
-    const datosSol = hojaSol.getDataRange().getValues();
-    let cabeceras = datosSol[0];
-    let cEmail = 1, cTipo = 2, cIni = 3, cFin = 4, cID = 7;
-    for (let c = 0; c < cabeceras.length; c++) {
-      let t = String(cabeceras[c]).toUpperCase().trim();
-      if (t.includes("ESTADO")) cEst = c;
-      if (t.includes("CORREO") || t.includes("EMAIL")) cEmail = c;
-      if (t.includes("TIPO")) cTipo = c;
-      if (t.includes("INICIO")) cIni = c;
-      if (t.includes("FIN")) cFin = c;
-      if (t.includes("ID")) cID = c;
-    }
-
-    let datosFila = null;
-    for (let i = 1; i < datosSol.length; i++) {
-      if (String(datosSol[i][cID]).trim() === String(idSolicitud).trim()) {
-        filaActualizar = i + 1; datosFila = datosSol[i]; break;
-      }
-    }
-    if (filaActualizar === -1) throw new Error("No se encontró la solicitud.");
-
-    const emailEmpleado = datosFila[cEmail];
-    const nombre = emailToNombre[String(emailEmpleado).toLowerCase().trim()] || "Empleado";
-    const tipoCompleto = datosFila[cTipo];
-    const tipoCorto = tipoCompleto.includes('VA') ? 'VA' : (tipoCompleto.includes('FO') ? 'FO' : 'ES');
-    const fInicio = new Date(datosFila[cIni]); const fFin = new Date(datosFila[cFin]);
-    const strInicio = `${String(fInicio.getDate()).padStart(2, '0')}/${String(fInicio.getMonth() + 1).padStart(2, '0')}/${fInicio.getFullYear()}`;
-    const strFin = `${String(fFin.getDate()).padStart(2, '0')}/${String(fFin.getMonth() + 1).padStart(2, '0')}/${fFin.getFullYear()}`;
-
-    if (accion === 'APROBAR') {
-      const hojaAprobadas = ss.getSheetByName("Ausencias Aprobadas");
-
-      // 🛑 BARRERA ANTI-SOLAPAMIENTOS
-      const datosAprobados = hojaAprobadas.getDataRange().getValues();
-      let check = new Date(fInicio);
-      while (check <= fFin) {
-        if (check.getDay() !== 0 && check.getDay() !== 6) {
-          let s = formatearFecha(check);
-          for (let a = 1; a < datosAprobados.length; a++) {
-            if (String(datosAprobados[a][0]).trim() === nombre && formatearFecha(datosAprobados[a][1]) === s) {
-              throw new Error(`¡SOLAPAMIENTO! ${nombre} ya tiene una ausencia el ${s}.`);
-            }
-          }
-        }
-        check.setDate(check.getDate() + 1);
-      }
-
-      const ssPrincipal = SpreadsheetApp.openById(ID_EXCEL_PRINCIPAL);
-      const yearReq = fInicio.getFullYear();
-      const meses = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
-
-      // ============================================================
-      // 🚀 MOTOR A: "Vacaciones <año de la solicitud>"
-      // (antes 'Vacaciones 2026' fijo: una solicitud de 2027 escribía,
-      // sin avisar, en la pestaña de 2026 en vez de en la de 2027)
-      // ============================================================
-      const hojaVaca = ssPrincipal.getSheetByName(`Vacaciones ${yearReq}`);
-      if (hojaVaca) {
-        const dataV = hojaVaca.getRange(1, 1, hojaVaca.getLastRow(), Math.min(hojaVaca.getLastColumn(), 50)).getValues();
-        let mapaV = {};
-        for (let r = 0; r < dataV.length; r++) {
-          let mIdx = -1;
-          for(let c = 0; c < 10; c++) {
-            let v = dataV[r][c];
-            let s = (v instanceof Date) ? meses[v.getMonth()] : String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
-            if (meses.indexOf(s) !== -1) { mIdx = meses.indexOf(s); break; }
-          }
-          if (mIdx !== -1) {
-            let rDias = -1;
-            for (let dr = r; dr <= r + 4; dr++) {
-              if (dr >= dataV.length) break;
-              let dCount = 0;
-              for (let dc = 0; dc < dataV[0].length; dc++) { if (parseInt(dataV[dr][dc]) >= 1) dCount++; }
-              if (dCount >= 28) { rDias = dr; break; }
-            }
-            if (rDias !== -1) {
-              let colMap = {};
-              for (let dc = 0; dc < dataV[0].length; dc++) {
-                let n = parseInt(dataV[rDias][dc]); if (n >= 1) colMap[n] = dc + 1;
-              }
-              for (let re = rDias + 1; re < rDias + 60; re++) {
-                if (re >= dataV.length) break;
-                if (String(dataV[re][0] || dataV[re][1] || "").trim() === nombre) {
-                  for (let d in colMap) {
-                    mapaV[`${yearReq}-${String(mIdx + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`] = { r: re + 1, c: colMap[d] };
-                  }
-                  break;
-                }
-              }
-            }
-          }
-        }
-        let dV = new Date(fInicio);
-        while (dV <= fFin) {
-          if (dV.getDay() !== 0 && dV.getDay() !== 6) {
-            let claveA = `${dV.getFullYear()}-${String(dV.getMonth() + 1).padStart(2,'0')}-${String(dV.getDate()).padStart(2,'0')}`;
-            if (mapaV[claveA]) hojaVaca.getRange(mapaV[claveA].r, mapaV[claveA].c).setValue(tipoCorto);
-          }
-          dV.setDate(dV.getDate() + 1);
-        }
-      }
-
-      // ============================================================
-      // 🚀 MOTOR B: "<año de la solicitud>_Calendario"
-      // (antes '2026_Calendario' fijo: mismo problema que el Motor A)
-      // ============================================================
-      const nombreHojaCal = `${yearReq}_Calendario`;
-      const hojaCal = ssPrincipal.getSheetByName(nombreHojaCal);
-      if (!hojaCal) throw new Error(`No existe la pestaña ${nombreHojaCal}.`);
-
-      const dataCal = hojaCal.getRange(1, 1, hojaCal.getLastRow(), hojaCal.getLastColumn()).getValues();
-      let filaEmp = -1; let colMapeadas = {};
-
-      // 1. Buscar Empleado
-      for (let r = 0; r < dataCal.length; r++) {
-        for (let c = 0; c < 5; c++) {
-          if (String(dataCal[r][c] || "").trim() === nombre) { filaEmp = r + 1; break; }
-        }
-        if (filaEmp !== -1) break;
-      }
-      if (filaEmp === -1) throw new Error(`El empleado ${nombre} no está en ${nombreHojaCal}.`);
-
-      // 2. Buscar fila de Meses y Días
-      let filaMeses = -1; let filaDias = -1;
-      for(let r = 0; r < 15; r++) {
-         for(let c = 0; c < dataCal[0].length; c++) {
-            let val = String(dataCal[r][c] || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
-            if(meses.some(m => val === m || val.includes(m))) { filaMeses = r; break; }
-         }
-         if(filaMeses !== -1) break;
-      }
-      if (filaMeses !== -1) {
-        for(let r = filaMeses + 1; r <= filaMeses + 3; r++) {
-           if (r >= dataCal.length) break;
-           let numCount = 0;
-           for(let c = 0; c < dataCal[0].length; c++) {
-              let cell = dataCal[r][c];
-              if (cell instanceof Date) {
-                numCount++;
-              } else {
-                let v = parseInt(cell);
-                if(!isNaN(v) && v >= 1 && v <= 31) numCount++;
-              }
-           }
-           if(numCount >= 28) { filaDias = r; break; }
-        }
-      }
-      if (filaMeses === -1 || filaDias === -1) throw new Error("No se pudo leer la fila de meses o días.");
-
-      // 3. Mapeo de Fechas
-      let mesAct = -1;
-      for (let c = 0; c < dataCal[0].length; c++) {
-        let celdaMes = String(dataCal[filaMeses][c] || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
-        if (meses.indexOf(celdaMes) !== -1) mesAct = meses.indexOf(celdaMes);
-
-        if (mesAct !== -1) {
-          let celdaDia = dataCal[filaDias][c];
-          let dNum = -1;
-
-          if (celdaDia instanceof Date) {
-            dNum = celdaDia.getDate();
-            mesAct = celdaDia.getMonth();
-          } else {
-            dNum = parseInt(celdaDia);
-          }
-
-          if (!isNaN(dNum) && dNum >= 1 && dNum <= 31) {
-            let clave = `${yearReq}-${String(mesAct + 1).padStart(2,'0')}-${String(dNum).padStart(2,'0')}`;
-            colMapeadas[clave] = c + 1;
-          }
-        }
-      }
-
-      // 4. Escribir
-      let dC = new Date(fInicio);
-      let pintados = 0;
-      while (dC <= fFin) {
-        if (dC.getDay() !== 0 && dC.getDay() !== 6) {
-          let claveB = `${dC.getFullYear()}-${String(dC.getMonth() + 1).padStart(2,'0')}-${String(dC.getDate()).padStart(2,'0')}`;
-          if (colMapeadas[claveB]) {
-            hojaCal.getRange(filaEmp, colMapeadas[claveB]).setValue(tipoCorto);
-            pintados++;
-          }
-        }
-        dC.setDate(dC.getDate() + 1);
-      }
-      if (pintados === 0) throw new Error("Las fechas de la solicitud no existen en las columnas del Calendario.");
-
-      // --- REGISTRO FINAL Y CORREOS ---
-      hojaSol.getRange(filaActualizar, cEst + 1).setValue('APROBADA');
-
-      // === SINCRONIZACIÓN CON GOOGLE CALENDAR ===
-      // Se ejecuta UNA sola vez por solicitud (un solo evento all-day
-      // que abarca todo el rango). Si falla, devuelve null y seguimos
-      // sin romper la aprobación.
-      const eventId = _crearEventoCalendarioAusencia(nombre, tipoCorto, fInicio, fFin, idSolicitud);
-
-      let d2 = new Date(fInicio);
-      while (d2 <= fFin) {
-        if (d2.getDay() !== 0 && d2.getDay() !== 6) {
-          hojaAprobadas.appendRow([nombre, new Date(d2), tipoCorto, idSolicitud, eventId || '']);
-        }
-        d2.setDate(d2.getDate() + 1);
-      }
-      if(emailEmpleado) {
-        const bodyAprobado = `Hola <b>${nombre}</b>,<br><br>
-        Nos complace informarte que tu solicitud de <b>${tipoCompleto}</b> ha sido <span style="color: #001391;"><b>APROBADA</b></span>.<br><br>
-        <b>Detalles de la solicitud:</b><br>
-        <ul>
-          <li><b>Fecha de inicio:</b> ${strInicio}</li>
-          <li><b>Fecha de fin:</b> ${strFin}</li>
-        </ul><br>
-        ¡Que tengas un buen día!<br><br>
-        Tu equipo responsable.`;
-
-        MailApp.sendEmail({
-          to: emailEmpleado,
-          subject: "✅ Solicitud APROBADA",
-          htmlBody: bodyAprobado
-        });
-      }
-
-    } else if (accion === 'RECHAZAR') {
-      hojaSol.getRange(filaActualizar, cEst + 1).setValue('RECHAZADA');
-
-      if(emailEmpleado) {
-        const bodyRechazado = `Hola <b>${nombre}</b>,<br><br>
-        Te informamos que tu solicitud de <b>${tipoCompleto}</b> ha sido <span style="color: #46536D;"><b>DENEGADA</b></span>.<br><br>
-        <b>Detalles de la solicitud:</b><br>
-        <ul>
-          <li><b>Fecha de inicio:</b> ${strInicio}</li>
-          <li><b>Fecha de fin:</b> ${strFin}</li>
-        </ul><br>
-        Si tienes alguna duda o necesitas más contexto, por favor contacta con tu responsable.<br><br>
-        Un saludo.`;
-
-        MailApp.sendEmail({
-          to: emailEmpleado,
-          subject: "❌ Solicitud DENEGADA",
-          htmlBody: bodyRechazado
-        });
-      }
-    }
-    return { success: true };
-
-  } catch(err) {
-    try {
-      if (filaActualizar !== -1) {
-        hojaSol.getRange(filaActualizar, cEst + 1).setValue("ERROR: " + err.message);
-      }
-    } catch(e) {}
-
-    return { success: false, message: err.message };
+    return { fecha: fecha, grupos: grupos, ocupados: ocupados };
+  } finally {
+    lock.releaseLock();
   }
 }
 
-
-// ------------------------------------------------------------
-// 4. UTILIDADES
-// ------------------------------------------------------------
-
-function formatearFecha(fecha) {
-  if (!(fecha instanceof Date)) return String(fecha);
-  const m = String(fecha.getMonth() + 1).padStart(2, '0');
-  const d = String(fecha.getDate()).padStart(2, '0');
-  return `${fecha.getFullYear()}-${m}-${d}`;
+function borrarFestivo(p) {
+  const ss = _ss();
+  const fecha = String(p.fecha || ''), grupo = String(p.grupo || '').trim();
+  const f = _leerFestivos(ss).filter(function (x) { return x.fecha === fecha && x.grupo === grupo; })[0];
+  if (!f) throw new Error('No existe ese festivo.');
+  ss.getSheetByName(HOJA.FESTIVOS).deleteRow(f.fila);
+  const grid = _leerAnio(ss, Number(fecha.slice(0, 4)));
+  if (grid) {
+    const col = G.DIA1 + _idxDia(fecha);
+    grid.personas.filter(function (x) { return x.grupo === grupo && x.codigos[_idxDia(fecha)] === 'FE'; })
+      .forEach(function (x) { grid.sh.getRange(x.fila, col).setValue(''); });
+  }
+  return { fecha: fecha, grupo: grupo };
 }
 
-function forzarSincronizacionWeb() {
-  try {
-    ejecutarMigracionHistoricaV3();
-    return { success: true };
-  } catch (err) {
-    return { success: false, message: err.message };
+function guardarGrupo(p) {
+  const ss = _ss();
+  const grupo = String(p.grupo || '').trim();
+  const pais = String(p.pais || 'ES').toUpperCase() === 'MX' ? 'MX' : 'ES';
+  if (!grupo) throw new Error('Falta el nombre del grupo.');
+  const grupos = _leerGrupos(ss);
+  const sh = ss.getSheetByName(HOJA.GRUPOS);
+  const anterior = String(p.anterior || '').trim();
+  if (anterior && anterior !== grupo) {
+    const g = grupos.filter(function (x) { return x.grupo === anterior; })[0];
+    if (!g) throw new Error('No existe el grupo ' + anterior + '.');
+    if (grupos.some(function (x) { return x.grupo === grupo; })) throw new Error('Ya existe un grupo ' + grupo + '.');
+    sh.getRange(g.fila, 1, 1, 2).setValues([[grupo, pais]]);
+    // Renombrar en festivos y en todas las rejillas.
+    const shF = ss.getSheetByName(HOJA.FESTIVOS);
+    _leerFestivos(ss).filter(function (f) { return f.grupo === anterior; }).forEach(function (f) { shF.getRange(f.fila, 2).setValue(grupo); });
+    _anios(ss).forEach(function (a) {
+      const grid = _leerAnio(ss, a);
+      grid.personas.filter(function (x) { return x.grupo === anterior; }).forEach(function (x) { grid.sh.getRange(x.fila, G.GRUPO).setValue(grupo); });
+    });
+    return { grupo: grupo, pais: pais, renombrado: anterior };
   }
+  const g = grupos.filter(function (x) { return x.grupo === grupo; })[0];
+  if (g) sh.getRange(g.fila, 2).setValue(pais);
+  else sh.appendRow([grupo, pais]);
+  return { grupo: grupo, pais: pais };
 }
 
+function borrarGrupo(p) {
+  const ss = _ss();
+  const grupo = String(p.grupo || '').trim();
+  const g = _leerGrupos(ss).filter(function (x) { return x.grupo === grupo; })[0];
+  if (!g) throw new Error('No existe el grupo ' + grupo + '.');
+  const usan = [];
+  _anios(ss).forEach(function (a) {
+    _leerAnio(ss, a).personas.forEach(function (x) { if (x.grupo === grupo) usan.push(x.nombre + ' (' + a + ')'); });
+  });
+  if (usan.length) throw new Error('No se puede borrar: lo tienen asignado ' + usan.join(', ') + '.');
+  const shF = ss.getSheetByName(HOJA.FESTIVOS);
+  _leerFestivos(ss).filter(function (f) { return f.grupo === grupo; }).map(function (f) { return f.fila; })
+    .sort(function (a, b) { return b - a; }).forEach(function (fila) { shF.deleteRow(fila); });
+  ss.getSheetByName(HOJA.GRUPOS).deleteRow(g.fila);
+  return { grupo: grupo };
+}
 
-// ------------------------------------------------------------
-// 5. DIAGNÓSTICO MANUAL (opcional)
-// ------------------------------------------------------------
+function asignarGrupo(p) {
+  const ss = _ss();
+  const anio = Number(p.anio);
+  const grid = _leerAnio(ss, anio);
+  if (!grid) throw new Error('No existe ' + _nombreHoja(anio) + '.');
+  const persona = _personaPorNombre(grid, String(p.persona || ''));
+  if (!persona) throw new Error('No existe ' + p.persona + ' en ' + _nombreHoja(anio) + '.');
+  const grupo = String(p.grupo || '').trim();
+  if (grupo && !_leerGrupos(ss).some(function (g) { return g.grupo === grupo; })) throw new Error('No existe el grupo ' + grupo + '.');
+  grid.sh.getRange(persona.fila, G.GRUPO).setValue(grupo);
+  persona.grupo = grupo;
+  const cambios = _sincronizarFE(grid, persona, _festivosPorGrupo(_leerFestivos(ss)));
+  return { persona: persona.nombre, grupo: grupo, celdasFE: cambios };
+}
 
-/**
- * Función de prueba: ejecútala manualmente desde el editor de Apps
- * Script (Ejecutar → testCalendarioAusencias) para verificar que
- * tienes bien configurado el ID y los permisos antes de aprobar
- * una solicitud real. Crea un evento de prueba de mañana, te
- * loggea el resultado, y lo borra automáticamente.
- */
-function testCalendarioAusencias() {
-  if (!ID_CALENDARIO_AUSENCIAS || ID_CALENDARIO_AUSENCIAS.indexOf('PEGA_') === 0) {
-    Logger.log('❌ ID_CALENDARIO_AUSENCIAS no está configurado. Edita la constante al principio del archivo.');
-    return;
-  }
-  const cal = CalendarApp.getCalendarById(ID_CALENDARIO_AUSENCIAS);
-  if (!cal) {
-    Logger.log('❌ No se puede acceder al calendario con ID: ' + ID_CALENDARIO_AUSENCIAS);
-    Logger.log('   Verifica que el ID es correcto y que la cuenta que ejecuta este script tiene permisos sobre ese calendario.');
-    return;
-  }
-  Logger.log('✅ Calendario accesible. Nombre: "' + cal.getName() + '"');
+/** Crea Vacas_<anio> a partir del año anterior: personas activas, grupo,
+ *  días del año, y como "Días año anterior" lo que les quedaba. */
+function crearAnio(p) {
+  const ss = _ss();
+  const anio = Number(p.anio);
+  if (!(anio >= 2000 && anio < 2100)) throw new Error('Año no válido.');
+  if (ss.getSheetByName(_nombreHoja(anio))) throw new Error('Ya existe ' + _nombreHoja(anio) + '.');
+  const prev = _leerAnio(ss, anio - 1);
+  if (!prev) throw new Error('No existe ' + _nombreHoja(anio - 1) + ' para copiar las personas.');
+  const filas = prev.personas.filter(function (x) { return x.activo; }).map(function (x) {
+    return { nombre: x.nombre, email: x.email, grupo: x.grupo, activo: true, anteriores: Math.max(0, x.quedan), dias: x.dias, codigos: {} };
+  });
+  const fxg = _festivosPorGrupo(_leerFestivos(ss));
+  filas.forEach(function (f) {
+    Object.keys(fxg[f.grupo] || {}).forEach(function (iso) { if (iso.slice(0, 4) === String(anio)) f.codigos[iso] = 'FE'; });
+  });
+  _crearRejilla(ss, anio, filas);
+  return { anio: anio, personas: filas.length };
+}
 
-  const manana = new Date();
-  manana.setDate(manana.getDate() + 1);
-  const eventId = _crearEventoCalendarioAusencia('PRUEBA - puede borrarse', 'VA', manana, manana, 'TEST-' + Date.now());
+/** Escribe una rejilla nueva con formato. filas: [{nombre, email, grupo, activo, anteriores, dias, codigos:{iso: código}}] */
+function _crearRejilla(ss, anio, filas) {
+  const nDias = _diasAnio(anio);
+  const nombre = _nombreHoja(anio);
+  const sh = ss.insertSheet(nombre);
+  const nCols = G.DIA1 - 1 + nDias;
+  if (sh.getMaxColumns() < nCols) sh.insertColumnsAfter(sh.getMaxColumns(), nCols - sh.getMaxColumns());
+  const nFilas = Math.max(filas.length, 1);
+  if (sh.getMaxRows() < G.FILA_1 + nFilas + 20) sh.insertRowsAfter(sh.getMaxRows(), G.FILA_1 + nFilas + 20 - sh.getMaxRows());
 
-  if (!eventId) {
-    Logger.log('❌ La función helper devolvió null. Mira logs anteriores para el motivo.');
-    return;
+  // Cabeceras: mes (fila 1), día (fila 2), letra de la semana (fila 3).
+  const fMes = [], fDia = [], fSem = [];
+  for (let i = 0; i < nDias; i++) {
+    const iso = _isoDeIdx(anio, i);
+    const d = Number(iso.slice(8, 10));
+    fMes.push(d === 1 ? MESES_ES[Number(iso.slice(5, 7)) - 1] : '');
+    fDia.push(d);
+    fSem.push(LETRA_DIA[_dow(iso)]);
   }
-  Logger.log('✅ Evento de prueba creado correctamente. ID: ' + eventId);
-  Logger.log('   Voy a borrarlo automáticamente en 3 segundos para no dejar basura...');
-  Utilities.sleep(3000);
-  try {
-    const evt = cal.getEventById(eventId);
-    if (evt) { evt.deleteEvent(); Logger.log('✅ Evento de prueba borrado. Todo listo.'); }
-  } catch (e) {
-    Logger.log('⚠ No pude borrarlo automáticamente. Hazlo a mano en el calendario. (' + e.message + ')');
+  const izq1 = ['VACACIONES ' + anio, '', '', '', '', '', '', '', ''];
+  sh.getRange(G.FILA_MES, 1, 1, nCols).setValues([izq1.concat(fMes)]);
+  sh.getRange(G.FILA_DIA, 1, 1, nCols).setValues([CABECERA_GRID.concat(fDia)]);
+  sh.getRange(G.FILA_SEM, 1, 1, nCols).setValues([['', '', '', '', '', '', '', '', ''].concat(fSem)]);
+  sh.getRange(1, 1, 3, nCols).setFontWeight('bold').setHorizontalAlignment('center');
+  sh.getRange(G.FILA_MES, 1).setHorizontalAlignment('left').setFontSize(12);
+  sh.getRange(G.FILA_DIA, 1, 1, G.DIA1 - 1).setBackground('#001391').setFontColor('#F7F8F8').setWrap(true);
+
+  // Personas.
+  if (filas.length) {
+    const ultCol = _colLetra(nCols);
+    const valores = filas.map(function (f, k) {
+      const fila = G.FILA_1 + k;
+      const izq = [f.nombre, f.email || '', f.grupo || '', f.activo !== false, Number(f.anteriores) || 0, Number(f.dias) || 0,
+        '=E' + fila + '+F' + fila,
+        '=COUNTIF(' + _colLetra(G.DIA1) + fila + ':' + ultCol + fila + ',"VA")',
+        '=G' + fila + '-H' + fila];
+      const dias = [];
+      for (let i = 0; i < nDias; i++) dias.push(f.codigos[_isoDeIdx(anio, i)] || '');
+      return izq.concat(dias);
+    });
+    sh.getRange(G.FILA_1, 1, filas.length, nCols).setValues(valores);
+    sh.getRange(G.FILA_1, G.ACTIVO, filas.length, 1).insertCheckboxes();
+    sh.getRange(G.FILA_1, G.TOTAL, filas.length, 3).setBackground('#F7F8F8').setFontWeight('bold');
   }
+
+  // Formato de la zona de días.
+  const filasFmt = G.FILA_1 + nFilas + 15;
+  const zona = sh.getRange(G.FILA_DIA, G.DIA1, filasFmt, nDias);
+  zona.setHorizontalAlignment('center').setFontSize(9);
+  const fondos = [];
+  for (let r = 0; r < filasFmt; r++) {
+    const fila = [];
+    for (let i = 0; i < nDias; i++) fila.push(_finde(_isoDeIdx(anio, i)) ? '#E2E6EA' : null);
+    fondos.push(fila);
+  }
+  zona.setBackgrounds(fondos);
+  for (let i = 0; i < nDias; i++) {
+    if (_isoDeIdx(anio, i).slice(8, 10) === '01') {
+      sh.getRange(G.FILA_MES, G.DIA1 + i, filasFmt + 2, 1).setBorder(null, true, null, null, null, null, '#001391', SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+    }
+  }
+  const zonaCodigos = sh.getRange(G.FILA_1, G.DIA1, filasFmt, nDias);
+  const reglas = Object.keys(CODIGOS).map(function (c) {
+    return SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo(c)
+      .setBackground(CODIGOS[c].color).setFontColor('#001391').setBold(true).setRanges([zonaCodigos]).build();
+  });
+  sh.setConditionalFormatRules(reglas);
+
+  // Validación del grupo (desplegable con Grupos_Festivos).
+  const shG = _hoja(ss, HOJA.GRUPOS, ['Grupo', 'País (ES/MX)']);
+  sh.getRange(G.FILA_1, G.GRUPO, filasFmt, 1).setDataValidation(
+    SpreadsheetApp.newDataValidation().requireValueInRange(shG.getRange('A2:A200'), true).setAllowInvalid(true).build());
+
+  sh.setColumnWidth(G.PERSONA, 210);
+  sh.setColumnWidth(G.EMAIL, 200);
+  sh.setColumnWidth(G.GRUPO, 110);
+  sh.setColumnWidths(G.ACTIVO, G.DIA1 - G.ACTIVO, 70);
+  sh.setColumnWidths(G.DIA1, nDias, 28);
+  sh.setFrozenRows(3);
+  sh.setFrozenColumns(1);
+  sh.getRange(G.FILA_MES, 1).setNote(
+    'Códigos: ' + Object.keys(CODIGOS).map(function (c) { return c + ' ' + CODIGOS[c].texto; }).join(' · ') +
+    '\nSolo VA descuenta del saldo. No insertes ni borres columnas de días (J = 1 de enero).');
+  return sh;
+}
+
+// ── Correos (MailApp: los emojis del asunto llegan bien) ────────────────────
+function _avisar(fn) {
+  try { fn(); return null; } catch (e) { console.error(e); return String(e.message || e); }
+}
+
+function _marco(titulo, cuerpo, botonUrl, botonTexto, color) {
+  return '<div style="font-family:Lato,Arial,sans-serif;max-width:540px;margin:0 auto;color:#070E46;">'
+    + '<div style="background:#001391;color:#F7F8F8;border-radius:14px 14px 0 0;padding:20px 24px;">'
+    +   '<div style="font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#85C8FF;">Vacaciones RDR · BBVA × NFQ</div>'
+    +   '<div style="font-family:Georgia,\'Source Serif 4\',serif;font-size:22px;font-weight:bold;margin-top:4px;">' + titulo + '</div></div>'
+    + '<div style="border:1px solid #E2E6EA;border-top:0;border-radius:0 0 14px 14px;padding:22px 24px;background:#FFFFFF;">'
+    +   cuerpo
+    +   (botonUrl ? '<a href="' + botonUrl + '" style="display:inline-block;background:' + (color || '#85C8FF') + ';color:#001391;font-weight:bold;text-decoration:none;padding:12px 26px;border-radius:999px;font-size:15px;margin-top:6px;">' + botonTexto + '</a>' : '')
+    + '</div></div>';
+}
+
+function _filaDato(k, v) { return '<tr><td style="padding:4px 12px 4px 0;color:#46536D;">' + k + '</td><td style="padding:4px 0;font-weight:bold;">' + v + '</td></tr>'; }
+
+function _correoNuevaSolicitud(s, saldoTras) {
+  const coords = _coordinadores();
+  if (!coords.length) throw new Error('No hay coordinadores en equipo.json.');
+  const tipo = (CODIGOS[s.tipo] || {}).texto || s.tipo;
+  const url = V_CONFIG.GESTION_URL + '?id=' + encodeURIComponent(s.id);
+  const asunto = '🌴 Nueva solicitud · ' + s.persona + ' · ' + tipo + ' (' + _fechaEs(s.desde) + (s.hasta !== s.desde ? ' – ' + _fechaEs(s.hasta) : '') + ')';
+  const cuerpo = '<p style="margin:0 0 14px;font-size:15px;">👋 <strong>' + _esc(s.persona) + '</strong> ha pedido:</p>'
+    + '<table style="font-size:14px;margin:0 0 16px;">'
+    + _filaDato('Tipo', tipo)
+    + _filaDato('Desde', _fechaEs(s.desde))
+    + _filaDato('Hasta', _fechaEs(s.hasta))
+    + _filaDato('Días laborables', s.dias)
+    + (saldoTras !== null ? _filaDato('Le quedarían', saldoTras + (saldoTras < 0 ? ' ⚠️ supera su saldo' : '')) : '')
+    + (s.comentario ? _filaDato('Comentario', _esc(s.comentario)) : '')
+    + '</table>';
+  const html = _marco('🌴 Nueva solicitud de ' + tipo.toLowerCase(), cuerpo, url, '✅ Revisar y aprobar →', '#88E783');
+  const texto = s.persona + ' ha pedido ' + tipo + ' del ' + _fechaEs(s.desde) + ' al ' + _fechaEs(s.hasta) + ' (' + s.dias + ' días laborables).\nRevisar: ' + url;
+  MailApp.sendEmail(coords.join(','), asunto, texto, { htmlBody: html, name: V_CONFIG.REMITE, replyTo: s.email });
+}
+
+function _correoResolucion(s, decision, motivo, quien) {
+  if (!s.email) return;
+  const tipo = (CODIGOS[s.tipo] || {}).texto || s.tipo;
+  const ok = decision === 'aprobar';
+  const asunto = (ok ? '✅ Aprobada' : '❌ Rechazada') + ' · tu solicitud de ' + tipo.toLowerCase() + ' (' + _fechaEs(s.desde) + (s.hasta !== s.desde ? ' – ' + _fechaEs(s.hasta) : '') + ')';
+  const cuerpo = '<p style="margin:0 0 14px;font-size:15px;">👋 Hola <strong>' + _esc(s.persona.split(' ')[0]) + '</strong>,</p>'
+    + '<p style="margin:0 0 14px;font-size:15px;line-height:1.55;">Tu solicitud de <strong>' + tipo.toLowerCase() + '</strong> del <strong>' + _fechaEs(s.desde) + '</strong> al <strong>' + _fechaEs(s.hasta) + '</strong> '
+    + (ok ? 'está <strong style="color:#1B7A3E;">aprobada</strong>. ¡A disfrutar! 🌴' : 'se ha <strong style="color:#C53030;">rechazado</strong>.') + '</p>'
+    + (motivo ? '<p style="margin:0 0 16px;font-size:14px;">💬 ' + _esc(motivo) + '</p>' : '');
+  const html = _marco(ok ? '✅ Solicitud aprobada' : '❌ Solicitud rechazada', cuerpo, V_CONFIG.WEB_URL, '📅 Ver el calendario →', ok ? '#88E783' : '#85C8FF');
+  const texto = 'Tu solicitud de ' + tipo + ' del ' + _fechaEs(s.desde) + ' al ' + _fechaEs(s.hasta) + ' está ' + (ok ? 'APROBADA' : 'RECHAZADA') + '.' + (motivo ? '\n' + motivo : '') + '\n' + V_CONFIG.WEB_URL;
+  const opts = { htmlBody: html, name: V_CONFIG.REMITE };
+  const coords = _coordinadores();
+  if (coords.length) opts.replyTo = coords.join(',');
+  MailApp.sendEmail(s.email, asunto, texto, opts);
+}
+
+// ── Diagnóstico (ejecutar desde el editor) ──────────────────────────────────
+function diagnosticar() {
+  const ss = _ss();
+  Logger.log('Excel: ' + ss.getName() + ' · pestañas de año: ' + _anios(ss).join(', '));
+  _anios(ss).forEach(function (a) {
+    const g = _leerAnio(ss, a);
+    const sinEmail = g.personas.filter(function (p) { return !p.email; }).map(function (p) { return p.nombre; });
+    const sinGrupo = g.personas.filter(function (p) { return !p.grupo; }).map(function (p) { return p.nombre; });
+    Logger.log(_nombreHoja(a) + ': ' + g.personas.length + ' personas · sin email: ' + (sinEmail.join(', ') || '—') + ' · sin grupo: ' + (sinGrupo.join(', ') || '—'));
+  });
+  Logger.log('Grupos: ' + _leerGrupos(ss).map(function (g) { return g.grupo + ' (' + g.pais + ')'; }).join(', '));
+  Logger.log('Festivos: ' + _leerFestivos(ss).length + ' · solicitudes pendientes: ' + _leerSolicitudes(ss).filter(function (s) { return s.estado === 'PENDIENTE'; }).length);
+  Logger.log('Coordinadores (equipo.json): ' + _coordinadores().join(', '));
+  Logger.log('Cuota de correo restante hoy: ' + MailApp.getRemainingDailyQuota());
 }
