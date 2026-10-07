@@ -67,7 +67,7 @@
     "note": "Backend Apps Script del generador de ofertas (/ofertas). Desplegar apps-script/ofertas/Codigo_Ofertas.gs como aplicación web (Ejecutar como Yo, acceso Cualquier persona) y pegar aquí la URL /exec."
   },
   "seguimientoBackend": {
-    "url": "PEGAR_AQUI_URL_EXEC_SEGUIMIENTO",
+    "url": "https://script.google.com/macros/s/AKfycbxrJBoUtmOFavy9hwHK8rIXBZFr8ACsYeHvrN17C8lKTR3weFdVX_YrxnwG8huLTroC8g/exec",
     "note": "Backend Apps Script de /seguimiento: guarda la presentación en Drive (Presentación seguimiento BBVA/AAAA/M. Mes/), actualizándola si ya existe. Desplegar apps-script/seguimiento/Codigo_Seguimiento.gs como aplicación web (Ejecutar como Yo, Cualquier persona), ejecutar autorizar() una vez y pegar aquí la URL /exec."
   },
   "timereportBackend": {
