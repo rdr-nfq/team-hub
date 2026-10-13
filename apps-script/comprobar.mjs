@@ -6,6 +6,11 @@
 //      `const` duplicado rompe el proyecto entero y una `function` duplicada
 //      pisa a la otra sin avisar.
 //
+//   3. (Solo aviso, no falla) Nombres globales repetidos ENTRE proyectos: es
+//      lo que hay que resolver para juntarlos todos en un único proyecto de
+//      Apps Script (objetivo a largo plazo: más fácil de traspasar).
+//      vacaciones-antiguo/ no cuenta: se retira.
+//
 //   node apps-script/comprobar.mjs
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -18,6 +23,7 @@ const RE_GLOBAL = /^(?:async\s+)?(function\*?|const|let|var|class)\s+([A-Za-z_$]
 
 let errores = 0;
 let total = 0;
+const entreProyectos = new Map(); // nombre -> Set(carpetas)
 for (const carpeta of readdirSync(raiz).sort()) {
   const dir = join(raiz, carpeta);
   if (!statSync(dir).isDirectory()) continue;
@@ -36,6 +42,10 @@ for (const carpeta of readdirSync(raiz).sort()) {
       continue;
     }
     for (const [, , nombre] of src.matchAll(RE_GLOBAL)) {
+      if (carpeta !== "vacaciones-antiguo") {
+        if (!entreProyectos.has(nombre)) entreProyectos.set(nombre, new Set());
+        entreProyectos.get(nombre).add(carpeta);
+      }
       const previo = globales.get(nombre);
       if (previo && previo !== f) {
         errores++;
@@ -52,3 +62,9 @@ if (errores) {
   process.exit(1);
 }
 console.log(`✓ ${total} ficheros .gs sin errores de sintaxis ni globales duplicados`);
+
+const repetidos = [...entreProyectos].filter(([, s]) => s.size > 1);
+if (repetidos.length) {
+  console.log(`\nℹ Camino a un único proyecto: ${repetidos.length} nombres globales se repiten entre proyectos`);
+  for (const [n, s] of repetidos.sort((a, b) => b[1].size - a[1].size)) console.log(`   ${n}: ${[...s].join(", ")}`);
+}

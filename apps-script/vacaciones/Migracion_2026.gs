@@ -21,8 +21,7 @@
  *  frente al "Vacaciones Pendientes" antiguo) y TODAS las diferencias día a
  *  día con 2026_Calendario. Revísalo antes de dar la migración por buena.
  *
- *  TODO DE UNA, DESDE CERO: empezarDeCero() (o menú 🌴 Vacaciones → «Migrar
- *  2026 desde cero») borra lo generado antes (Vacas_2026, Festivos_2026,
+ *  TODO DE UNA, DESDE CERO: empezarDeCero() (desde el editor) borra lo generado antes (Vacas_2026, Festivos_2026,
  *  Migracion_2026 y las pestañas sin año de versiones previas; las de
  *  solicitudes con filas se guardan como copia) y lo rehace entero: rejilla
  *  con fórmulas y formato, Festivos_2026 (grupos + festivos), Solicitudes_2026
@@ -40,7 +39,7 @@ const MIG = {
   MESES: ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
 };
 
-/** Migración completa desde cero (ejecutar desde el editor o desde el menú). */
+/** Migración completa desde cero (ejecutar desde el editor de Apps Script). */
 function empezarDeCero() {
   const r = migrar2026(true);
   diagnosticar();
