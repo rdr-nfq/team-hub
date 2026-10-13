@@ -29,12 +29,15 @@ script.google.com): `formacionesBackend` (`/formacion/equipo`) y
 `formaciones/` y `retro/`.
 
 **En espera — remitente común de los correos.** Hoy cada script envía a su
-manera y casi todos desde la cuenta personal de quien lo despliega (pases, con
-`noReply` a bbva.com). Plan acordado, pendiente de que IT permita crear el
-grupo `rdr-hub@nfq.es`: añadirlo como alias «Enviar como» y unificar el envío
-en un módulo común `_comun/Correo.gs` (remitente en un solo sitio, plantilla de
-marca, asunto con emojis vía API de Gmail, copia oculta con reintento). A
-medio plazo, cuenta dedicada con un único proyecto de envío.
+manera y casi todos desde la cuenta personal de quien lo despliega. Plan
+acordado, pendiente de que IT cree el grupo (p. ej. `rdr-hub@nfq.es`):
+añadirlo como alias «Enviar como» en la cuenta que ejecuta los scripts y
+unificar el envío en un módulo común `_comun/Correo.gs`: remitente del grupo
+en un solo sitio, **un correo individual por persona** (sin copias ocultas,
+personalizado y solo a quien le falta algo: evidencias del TR, comidas…),
+reintento por persona, asunto con emojis vía API de Gmail y plantilla de
+marca. Los avisos personales (vacaciones, pases) salen con el mismo
+remitente. A medio plazo, cuenta dedicada con un único proyecto de envío.
 
 ## Flujo para cambiar un backend
 
