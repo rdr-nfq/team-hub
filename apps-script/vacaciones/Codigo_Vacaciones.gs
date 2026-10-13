@@ -88,6 +88,11 @@
  *        guardarGrupo  { grupo, pais, anterior? }   (crear o renombrar)            (coord.)
  *        borrarGrupo   { grupo }                                                   (coord.)
  *        asignarGrupo  { anio, persona, grupo }                                    (coord.)
+ *        solicitarCampana { campana, semanas:[lunes…], comentario }   (formulario de Navidad/Verano…)
+ *                      una solicitud NUEVA por bloque de semanas seguidas (partida por año)
+ *        guardarCampana { campana:{ id?, nombre, emoji, activa, semanas, tipo,
+ *                         descripcionObligatoria, sugerencia, texto } }      (coord.)
+ *        borrarCampana  { id }                                              (coord.)
  *        crearAnio     { anio, rehacer? }           (Vacas_<anio> desde el anterior) (coord.)
  *                      rehacer: si ya existe, se borra Vacas_<anio> y se crea de cero
  *                      (Festivos_<anio> se conserva; Solicitudes_<anio> con filas -> copia)
@@ -134,7 +139,7 @@ const CODIGOS = {
 
 const COLS_SOL = ['Id', 'Creada', 'Email', 'Persona', 'Clase', 'Tipo', 'Desde', 'Hasta', 'Días',
   'Tipo original', 'Original desde', 'Original hasta', 'Días original', 'Referencia',
-  'Comentario', 'Estado', 'Resuelta por', 'Resuelta', 'Motivo', 'Evento calendario'];
+  'Comentario', 'Estado', 'Resuelta por', 'Resuelta', 'Motivo', 'Evento calendario', 'Campaña'];
 const CLASES = ['NUEVA', 'CANCELACION', 'MODIFICACION'];
 const S = {}; COLS_SOL.forEach(function (c, i) { S[c] = i; });
 
@@ -180,6 +185,9 @@ function _servir(p) {
       case 'ping': data = { ok: true, excel: _ss().getName() }; break;
       case 'datos': data = datos(p.anio, p.email); break;
       case 'solicitar': data = solicitar(p); break;
+      case 'solicitarCampana': data = solicitarCampana(p); break;
+      case 'guardarCampana': _exigirCoord(p.email); data = guardarCampana(p.campana); break;
+      case 'borrarCampana': _exigirCoord(p.email); data = borrarCampana(p.id); break;
       case 'cancelar': data = cancelar(p); break;
       case 'resolver': _exigirCoord(p.email); data = resolver(p); break;
       case 'guardarFestivo': _exigirCoord(p.email); data = guardarFestivo(p); break;
@@ -568,7 +576,9 @@ function datos(anioParam, email) {
     festivosDetalle: b.festivosDetalle,
     grupos: b.grupos,
     tipos: V_CONFIG.TIPOS_SOLICITABLES.map(function (t) { return { id: t, texto: CODIGOS[t].texto }; }),
-    misSolicitudes: []
+    misSolicitudes: [],
+    // Formularios especiales (Navidad, Verano…): la gente solo ve los abiertos.
+    campanas: _campanas().filter(function (c) { return c.activa; })
   };
 
   if (email) {
@@ -593,6 +603,8 @@ function datos(anioParam, email) {
       };
     });
     out.festivosTodos = b.festivosTodos;
+    out.campanas = _campanas();
+    out.solsCampana = b.sols.filter(function (s) { return s.campana; }).map(sinEmail);
   }
   return out;
 }
@@ -636,7 +648,10 @@ function _hojaSolicitudes(ss, anio) {
   }
   const cab = sh.getRange(1, 1, 1, COLS_SOL.length).getValues()[0];
   if (cab.join('|') !== COLS_SOL.join('|')) {
-    if (sh.getLastRow() > 1) throw new Error('La pestaña ' + nombre + ' tiene columnas de otra versión: renómbrala (p. ej. ' + nombre + '_old) y se creará de nuevo.');
+    // Versión anterior a la que solo le faltan columnas del final (p. ej. «Campaña»): se añaden.
+    const n = cab.filter(function (c) { return String(c) !== ''; }).length;
+    const prefijo = cab.slice(0, n).join('|') === COLS_SOL.slice(0, n).join('|') && cab.slice(n).every(function (c) { return c === ''; });
+    if (!prefijo && sh.getLastRow() > 1) throw new Error('La pestaña ' + nombre + ' tiene columnas de otra versión: renómbrala (p. ej. ' + nombre + '_old) y se creará de nuevo.');
     sh.getRange(1, 1, 1, COLS_SOL.length).setValues([COLS_SOL]).setFontWeight('bold');
   }
   return sh;
@@ -665,7 +680,8 @@ function _leerSolicitudes(ss, anio) {
         diasOrig: Number(r[S['Días original']]) || 0, ref: String(r[S.Referencia] || '').trim(),
         comentario: String(r[S.Comentario] || ''), estado: String(r[S.Estado] || '').trim().toUpperCase(),
         resueltaPor: String(r[S['Resuelta por']] || ''), resuelta: t(r[S.Resuelta]),
-        motivo: String(r[S.Motivo] || ''), evento: String(r[S['Evento calendario']] || '')
+        motivo: String(r[S.Motivo] || ''), evento: String(r[S['Evento calendario']] || ''),
+        campana: String(r[S['Campaña']] || '').trim()
       });
     });
   });
@@ -677,7 +693,7 @@ function _solPublica(s) {
     id: s.id, creada: s.creada, persona: s.persona, clase: s.clase, tipo: s.tipo, desde: s.desde, hasta: s.hasta, dias: s.dias,
     tipoOrig: s.tipoOrig, origDesde: s.origDesde, origHasta: s.origHasta, diasOrig: s.diasOrig, ref: s.ref,
     comentario: s.comentario, estado: s.estado, resueltaPor: s.resueltaPor, resuelta: s.resuelta, motivo: s.motivo,
-    deltaVA: _deltaVA(s)
+    campana: s.campana || '', deltaVA: _deltaVA(s)
   };
 }
 
@@ -770,6 +786,7 @@ function solicitar(p) {
       return rangos.some(function (r) { return suyos.some(function (x) { return !(x[1] < r[0] || x[0] > r[1]); }); });
     });
     if (solapa.length) throw new Error('Ya tienes una solicitud pendiente sobre esos días (' + _fechaEs(solapa[0].desde) + ' – ' + _fechaEs(solapa[0].hasta) + '): espera a que se resuelva o cancélala.');
+    if (p.soloValidar === true) return { dias: dias }; // solicitarCampana comprueba todo antes de escribir nada
 
     let ref = String(p.ref || '').trim();
     if (ref && !sols.some(function (s) { return s.id === ref && s.persona === persona.nombre && s.estado === 'APROBADA'; })) ref = '';
@@ -785,10 +802,12 @@ function solicitar(p) {
     fila[S['Tipo original']] = tipoOrig; fila[S['Original desde']] = origDesde; fila[S['Original hasta']] = origHasta;
     fila[S['Días original']] = clase === 'MODIFICACION' ? diasOrig : ''; fila[S.Referencia] = ref;
     fila[S.Comentario] = String(p.comentario || '').slice(0, 1000); fila[S.Estado] = 'PENDIENTE';
+    fila[S['Campaña']] = String(p.campana || '');
     _hojaSolicitudes(ss, anio).appendRow(fila);
 
     const sol = { id: id, persona: persona.nombre, email: email, clase: clase, tipo: tipo, desde: desde, hasta: hasta, dias: dias,
-      tipoOrig: tipoOrig, origDesde: origDesde, origHasta: origHasta, diasOrig: diasOrig, ref: ref, comentario: String(p.comentario || '') };
+      tipoOrig: tipoOrig, origDesde: origDesde, origHasta: origHasta, diasOrig: diasOrig, ref: ref, comentario: String(p.comentario || ''),
+      campana: String(p.campana || ''), campanaNombre: String(p.campanaNombre || '') };
     const pendDelta = sols.filter(function (s) { return s.estado === 'PENDIENTE' && s.persona === persona.nombre; })
       .reduce(function (n, s) { return n + _deltaVA(s); }, 0);
     const delta = _deltaVA(sol);
@@ -1064,6 +1083,111 @@ function asignarGrupo(p) {
   persona.grupo = grupo;
   const cambios = _sincronizarFE(grid, persona, _festivosPorGrupo(_leerFestivos(ss, anio)));
   return { persona: persona.nombre, grupo: grupo, celdasFE: cambios };
+}
+
+// ── Formularios especiales («campañas»: Navidad, Verano…) ───────────────────
+/* Coordinación abre o cierra un formulario con unas semanas concretas (lunes)
+   y una descripción obligatoria u opcional (p. ej. el backup que deja cada
+   uno). Se guardan en las Propiedades del script (no dependen del Excel). La
+   gente marca semanas y se crea una solicitud NUEVA normal por bloque de
+   semanas seguidas (partida por año), con la campaña en la columna «Campaña». */
+const PROP_CAMPANAS = 'vac:campanas';
+const CAMPANAS_INICIALES = [{
+  id: 'navidad-2026', nombre: 'Navidad 2026', emoji: '🎄', activa: true,
+  semanas: ['2026-12-21', '2026-12-28', '2027-01-04'], tipo: 'VA',
+  descripcionObligatoria: true,
+  sugerencia: 'Indica el backup que dejas en cada uno de tus proyectos (proyecto → persona que te cubre).',
+  texto: 'Marca la semana o semanas que te coges en Navidad.'
+}];
+
+function _campanas() {
+  const raw = PropertiesService.getScriptProperties().getProperty(PROP_CAMPANAS);
+  if (raw) { try { return JSON.parse(raw); } catch (e) { console.error(e); } }
+  return CAMPANAS_INICIALES;
+}
+function _guardarCampanas(lista) {
+  PropertiesService.getScriptProperties().setProperty(PROP_CAMPANAS, JSON.stringify(lista));
+}
+/** Lunes de la semana de una fecha ISO. */
+function _lunesDe(iso) {
+  const d = new Date(_utc(iso));
+  d.setUTCDate(d.getUTCDate() - (d.getUTCDay() + 6) % 7);
+  return d.toISOString().slice(0, 10);
+}
+function _isoMas(iso, n) {
+  const d = new Date(_utc(iso));
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+function guardarCampana(c) {
+  if (!c || typeof c !== 'object') throw new Error('No llegan los datos del formulario.');
+  const nombre = String(c.nombre || '').trim();
+  if (!nombre) throw new Error('Ponle un nombre al formulario.');
+  const semanas = (c.semanas || []).map(String).filter(_isoOk).map(_lunesDe)
+    .filter(function (x, i, a) { return a.indexOf(x) === i; }).sort();
+  if (!semanas.length) throw new Error('Añade al menos una semana.');
+  const tipo = String(c.tipo || 'VA').toUpperCase();
+  if (V_CONFIG.TIPOS_SOLICITABLES.indexOf(tipo) < 0) throw new Error('Tipo no válido: ' + c.tipo);
+  const lista = _campanas();
+  const id = String(c.id || '').trim() || (nombre.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Date.now().toString(36));
+  const nueva = {
+    id: id, nombre: nombre, emoji: String(c.emoji || '').slice(0, 4), activa: c.activa === true, semanas: semanas, tipo: tipo,
+    descripcionObligatoria: c.descripcionObligatoria !== false,
+    sugerencia: String(c.sugerencia || '').slice(0, 300), texto: String(c.texto || '').slice(0, 500)
+  };
+  const i = lista.findIndex(function (x) { return x.id === id; });
+  if (i >= 0) lista[i] = nueva; else lista.push(nueva);
+  _guardarCampanas(lista);
+  return nueva;
+}
+
+function borrarCampana(id) {
+  const lista = _campanas().filter(function (x) { return x.id !== String(id || ''); });
+  _guardarCampanas(lista);
+  return { borrada: id };
+}
+
+function solicitarCampana(p) {
+  const c = _campanas().filter(function (x) { return x.id === String(p.campana || ''); })[0];
+  if (!c || !c.activa) throw new Error('Este formulario ya no está abierto.');
+  const pedidas = (p.semanas || []).map(String);
+  if (!pedidas.length) throw new Error('Elige al menos una semana.');
+  pedidas.forEach(function (x) { if (c.semanas.indexOf(x) < 0) throw new Error('La semana del ' + _fechaEs(x) + ' no está en el formulario.'); });
+  const comentario = String(p.comentario || '').trim();
+  if (c.descripcionObligatoria && comentario.length < 3) throw new Error('Falta la descripción' + (c.sugerencia ? ': ' + c.sugerencia : '.'));
+
+  // Semanas seguidas -> un solo bloque (lunes a viernes); y partido si cruza de año.
+  const bloques = [];
+  pedidas.filter(function (x, i, a) { return a.indexOf(x) === i; }).sort().forEach(function (lunes) {
+    const ult = bloques[bloques.length - 1];
+    if (ult && _isoMas(ult.hasta, 3) === lunes) ult.hasta = _isoMas(lunes, 4);
+    else bloques.push({ desde: lunes, hasta: _isoMas(lunes, 4) });
+  });
+  const partes = [];
+  bloques.forEach(function (b) {
+    if (b.desde.slice(0, 4) === b.hasta.slice(0, 4)) partes.push(b);
+    else {
+      partes.push({ desde: b.desde, hasta: b.desde.slice(0, 4) + '-12-31' });
+      partes.push({ desde: b.hasta.slice(0, 4) + '-01-01', hasta: b.hasta });
+    }
+  });
+  const base = { email: p.email, clase: 'NUEVA', tipo: c.tipo || 'VA', comentario: comentario, campana: c.id, campanaNombre: (c.emoji ? c.emoji + ' ' : '') + c.nombre };
+  // Primero se comprueba todo (si algo falla no se guarda nada); los trozos
+  // sin ningún laborable (p. ej. solo festivos) se saltan.
+  const validas = partes.filter(function (r) {
+    try { solicitar(Object.assign({}, base, r, { soloValidar: true })); return true; } catch (e) {
+      if (/no tiene días laborables/.test(String(e.message))) return false;
+      throw e;
+    }
+  });
+  if (!validas.length) throw new Error('Las semanas elegidas no tienen días laborables para ti.');
+  const hechas = validas.map(function (r) { return solicitar(Object.assign({}, base, r)); });
+  return {
+    solicitudes: hechas.map(function (h) { return h.solicitud; }),
+    dias: hechas.reduce(function (n, h) { return n + h.solicitud.dias; }, 0),
+    aviso: hechas.map(function (h) { return h.aviso; }).filter(Boolean).join(' · ')
+  };
 }
 
 /** Crea Vacas_<anio> a partir del año anterior: personas activas, grupo,
@@ -1370,7 +1494,8 @@ function _correoNuevaSolicitud(s, saldoTras) {
   const cuerpo = '<p style="margin:0 0 14px;font-size:15px;">👋 <strong>' + _esc(s.persona) + '</strong> pide ' + (s.clase === 'NUEVA' ? 'días:' : 'un ' + c.nombre + ':') + '</p>'
     + '<table style="font-size:14px;margin:0 0 16px;">' + filas
     + (saldoTras !== null ? _filaDato('Le quedarían', saldoTras + (saldoTras < 0 ? ' ⚠️ supera su saldo' : '')) : '')
-    + (s.comentario ? _filaDato('Comentario', _esc(s.comentario)) : '')
+    + (s.campanaNombre ? _filaDato('Formulario', _esc(s.campanaNombre)) : '')
+    + (s.comentario ? _filaDato(s.campanaNombre ? 'Descripción' : 'Comentario', _esc(s.comentario)) : '')
     + '</table>';
   const html = _marco(c.emoji + ' ' + c.titulo, cuerpo, url, '✅ Revisar y aprobar →', '#88E783');
   const texto = s.persona + ' pide ' + c.frase + '.\nRevisar: ' + url;

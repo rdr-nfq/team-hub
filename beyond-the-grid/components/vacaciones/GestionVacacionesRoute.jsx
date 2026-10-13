@@ -10,6 +10,7 @@ import EquipoPanel from "./EquipoPanel";
 import Calendario, { MARCA_COLOR } from "./Calendario";
 import DaySheet from "./DaySheet";
 import AhoraPanel from "./AhoraPanel";
+import CampanasAdmin from "./CampanasAdmin";
 import { VacacionesSkeleton, ErrorCard } from "./VacacionesRoute";
 import { EstadoSolBadge } from "./SolicitudPanel";
 import { useVacaciones, useV2Configurado, fechaCortaEs, festivosDeGrupo, laborables, CLAVE_V2, CLASE_SOL } from "./datos";
@@ -39,6 +40,7 @@ const TABS = [
   { id: "calendario", label: "Calendario" },
   { id: "personas", label: "Personas" },
   { id: "festivos", label: "Festivos" },
+  { id: "formularios", label: "Formularios" },
 ];
 
 const BTN = "inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene";
@@ -547,6 +549,7 @@ export default function GestionVacacionesRoute() {
 
             {tab === "personas" && <Personas d={d} post={post} onCambio={recargar} />}
             {tab === "festivos" && <Festivos d={d} post={post} onCambio={recargar} />}
+            {tab === "formularios" && <CampanasAdmin d={d} post={post} onCambio={recargar} onAviso={setAviso} />}
 
             <DaySheet sheet={sheet} empleadosMap={datosVis.empleadosMap || {}} onClose={() => setSheet(null)} />
           </>

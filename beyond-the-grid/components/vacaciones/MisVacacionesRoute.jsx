@@ -11,6 +11,7 @@ import Calendario, { YO_COLOR } from "./Calendario";
 import DaySheet from "./DaySheet";
 import { AmbientBackground, VacacionesSkeleton, ErrorCard } from "./VacacionesRoute";
 import { SolicitudForm, MisSolicitudes, MisDias } from "./SolicitudPanel";
+import CampanaForm from "./CampanaForm";
 import { useVacaciones, festivosVistaGrupo } from "./datos";
 
 const ACCENT = PALETTE.mandarin;
@@ -86,6 +87,9 @@ export default function MisVacacionesRoute() {
         ) : (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
             <div className="space-y-4">
+              {(d.campanas || []).filter((c) => c.activa).map((c) => (
+                <CampanaForm key={c.id} campana={c} datos={d} post={post} onHecho={recargar} />
+              ))}
               <SolicitudForm datos={d} post={post} onHecho={recargar} />
               <MisDias datos={d} post={post} onHecho={recargar} />
               <MisSolicitudes solicitudes={d.misSolicitudes} post={post} onHecho={recargar} />
