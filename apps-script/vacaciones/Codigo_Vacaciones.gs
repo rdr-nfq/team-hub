@@ -88,7 +88,9 @@
  *        guardarGrupo  { grupo, pais, anterior? }   (crear o renombrar)            (coord.)
  *        borrarGrupo   { grupo }                                                   (coord.)
  *        asignarGrupo  { anio, persona, grupo }                                    (coord.)
- *        crearAnio     { anio }                     (Vacas_<anio> desde el anterior) (coord.)
+ *        crearAnio     { anio, rehacer? }           (Vacas_<anio> desde el anterior) (coord.)
+ *                      rehacer: si ya existe, se borra Vacas_<anio> y se crea de cero
+ *                      (Festivos_<anio> se conserva; Solicitudes_<anio> con filas -> copia)
  * ============================================================================
  */
 
@@ -1065,14 +1067,30 @@ function asignarGrupo(p) {
 }
 
 /** Crea Vacas_<anio> a partir del año anterior: personas activas, grupo,
- *  días del año, y como "Días año anterior" lo que les quedaba. */
+ *  días del año, y como "Días año anterior" lo que les quedaba.
+ *  Con p.rehacer y el año ya creado: lo vuelve a crear DESDE CERO (los días
+ *  apuntados en Vacas_<anio> se pierden; los festivos y grupos de
+ *  Festivos_<anio> se conservan y las solicitudes se guardan como copia). */
 function crearAnio(p) {
   const ss = _ss();
   const anio = Number(p.anio);
   if (!(anio >= 2000 && anio < 2100)) throw new Error('Año no válido.');
-  if (ss.getSheetByName(_nombreHoja(anio))) throw new Error('Ya existe ' + _nombreHoja(anio) + '.');
   const prev = _leerAnio(ss, anio - 1);
   if (!prev) throw new Error('No existe ' + _nombreHoja(anio - 1) + ' para copiar las personas.');
+  const existente = ss.getSheetByName(_nombreHoja(anio));
+  if (existente && p.rehacer !== true) throw new Error('Ya existe ' + _nombreHoja(anio) + '.');
+  if (existente) {
+    const lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
+      ss.deleteSheet(existente);
+      const sol = ss.getSheetByName(_nombreSolicitudes(anio));
+      if (sol && sol.getLastRow() > 1) sol.setName(_nombreSolicitudes(anio) + '_copia_' + Utilities.formatDate(new Date(), 'Europe/Madrid', 'yyyyMMdd-HHmm'));
+      else if (sol) ss.deleteSheet(sol);
+    } finally {
+      lock.releaseLock();
+    }
+  }
   const filas = prev.personas.filter(function (x) { return x.activo; }).map(function (x) {
     return { nombre: x.nombre, email: x.email, grupo: x.grupo, activo: true, anteriores: Math.max(0, x.quedan), dias: x.dias, codigos: {} };
   });
@@ -1088,7 +1106,7 @@ function crearAnio(p) {
   });
   _crearRejilla(ss, anio, filas);
   _hojaSolicitudes(ss, anio);
-  return { anio: anio, personas: filas.length, grupos: copiar.length };
+  return { anio: anio, personas: filas.length, grupos: copiar.length, rehecho: !!existente };
 }
 
 /** Escribe una rejilla nueva. filas: [{nombre, email, grupo, activo, anteriores, dias, codigos:{iso: código}}] */

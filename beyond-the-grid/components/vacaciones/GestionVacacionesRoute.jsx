@@ -186,17 +186,10 @@ function Personas({ d, post, onCambio }) {
     try { await post("asignarGrupo", { anio: d.year, persona, grupo }); onCambio(); } catch (e) { setError(String(e.message || e)); }
     setGuardando("");
   };
-  const siguiente = Math.max(...(d.anios || [d.year])) + 1;
-  const crearAnio = async () => {
-    if (!confirm(`¿Crear el año ${siguiente}? Se crean Vacas_${siguiente} (personas activas con su grupo y sus días del año; lo que les quede pasa a «Días año anterior»), Festivos_${siguiente} con los mismos grupos (sin festivos: añádelos en la pestaña Festivos) y Solicitudes_${siguiente}.`)) return;
-    setError("");
-    try { await post("crearAnio", { anio: siguiente }); onCambio(); } catch (e) { setError(String(e.message || e)); }
-  };
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-[12.5px] text-sand/60">Solo descuenta VA. «Quedarían» descuenta además lo pendiente de aprobar. Los días se editan en el Excel (pestaña Vacas_{d.year}).</p>
-        <button type="button" onClick={crearAnio} className={`${BTN} border border-white/15 bg-white/[0.055] text-sand/85 hover:border-white/30`}><IconPlus size={13} /> Crear Vacas_{siguiente}</button>
       </div>
       {error && <p className="rounded-lg border border-mandarin/50 bg-mandarin/10 px-3 py-2 text-xs font-bold text-mandarin">{error}</p>}
       <div className={`${GLASS} overflow-x-auto`}>
@@ -356,6 +349,47 @@ function Festivos({ d, post, onCambio }) {
   );
 }
 
+/* ── Año siguiente: crear (o rehacer desde cero) Vacas_<año+1> ── */
+/* Parte del año en curso: personas activas con su grupo y sus días del año,
+   y lo que les quede pasa a «Días año anterior». Si ya existe, se puede
+   rehacer de cero (se pierden los días apuntados en ese año; los festivos y
+   grupos se conservan y las solicitudes se guardan como copia). */
+function AnioSiguiente({ d, post, onHecho }) {
+  const [estado, setEstado] = useState("");
+  const sig = new Date().getFullYear() + 1;
+  const existe = (d.anios || []).includes(sig);
+  const hayBase = (d.anios || []).includes(sig - 1);
+  const crear = async () => {
+    if (existe) {
+      const r = prompt(
+        `Rehacer ${sig} DESDE CERO: se borra Vacas_${sig} y se vuelve a crear a partir de ${sig - 1} (personas activas, grupos, días del año y lo que les quede como «Días año anterior»).\n\n` +
+        `Se pierden los días apuntados en Vacas_${sig}. Los festivos de Festivos_${sig} se conservan y las solicitudes de ${sig} se guardan como copia.\n\nEscribe ${sig} para confirmar:`,
+      );
+      if (String(r || "").trim() !== String(sig)) return;
+    } else if (!confirm(`¿Crear el año ${sig}? Se crean Vacas_${sig} (personas activas de ${sig - 1} con su grupo y sus días del año; lo que les quede pasa a «Días año anterior»), Festivos_${sig} con los mismos grupos (sin festivos: añádelos en la pestaña Festivos) y Solicitudes_${sig}.`)) return;
+    setEstado("…");
+    try {
+      const r = await post("crearAnio", { anio: sig, rehacer: existe });
+      setEstado("");
+      onHecho(sig, `Año ${sig} ${r.rehecho ? "rehecho desde cero" : "creado"}: ${r.personas} personas${r.grupos ? ` · ${r.grupos} grupos copiados` : ""}. Añade sus festivos en la pestaña Festivos.`);
+    } catch (e) {
+      setEstado("error:" + String(e.message || e));
+    }
+  };
+  return (
+    <span className="inline-flex items-center gap-2">
+      <button
+        type="button" onClick={crear} disabled={!hayBase || estado === "…"}
+        title={hayBase ? "" : `Hace falta Vacas_${sig - 1} para crear ${sig}`}
+        className={`${BTN} border ${existe ? "border-mandarin/40 text-mandarin hover:border-mandarin/70" : "border-white/15 bg-white/[0.055] text-sand/85 hover:border-white/30"}`}
+      >
+        {estado === "…" ? `Creando ${sig}…` : existe ? <>↺ Rehacer {sig} desde cero</> : <><IconPlus size={13} /> Crear año {sig}</>}
+      </button>
+      {estado.startsWith("error:") && <span className="text-xs font-bold text-mandarin">{estado.slice(6)}</span>}
+    </span>
+  );
+}
+
 /* ── Ruta ── */
 export default function GestionVacacionesRoute() {
   const v2 = useV2Configurado();
@@ -412,6 +446,9 @@ export default function GestionVacacionesRoute() {
             {d?.anios?.length > 1 && d.anios.map((a) => (
               <Chip key={a} on={a === d.year} onClick={() => setAnio(a)}>{a}</Chip>
             ))}
+            {d?.esCoordinador && (
+              <AnioSiguiente d={d} post={post} onHecho={(a, msg) => { setAviso(msg); setAnio(a); reload(true); }} />
+            )}
             {snap?.actualizando && <span className="text-xs text-sand/50" role="status">Actualizando…</span>}
             <button type="button" onClick={() => reload(true)} disabled={!!snap?.actualizando} title="Recargar" className="rounded-full border border-white/15 p-2 text-sand/60 hover:text-sand disabled:opacity-50"><IconReload size={15} className={snap?.actualizando ? "animate-spin" : ""} /></button>
           </div>
