@@ -11,6 +11,7 @@ import { EJEMPLO } from "../seguimiento/ejemplo";
 import {
   FASES, ESTADOS, ESTADO, TIPOS_TRASPASO, ICONOS,
   cifras, nombreFichero, rutaDrive, fechaLarga, toISO, resumenProyecto,
+  trimestreDe, sumarTrimestres, etiquetaTrimestre,
 } from "../seguimiento/modelo";
 import { generarPresentacion } from "../seguimiento/plantillaPptx";
 
@@ -49,6 +50,19 @@ const normalizarFecha = (v) => {
     return toISO(new Date(anio, Number(m[2]) - 1, Number(m[1])));
   }
   return /^q/i.test(t) ? t.toUpperCase() : t;
+};
+
+/* Trimestres del selector del Gantt: un año antes y después del de la
+   reunión. "" = automático (sigue a la fecha de la reunión). */
+const opcionesTrimestre = (d) => {
+  const base = trimestreDe(d.fechaReunion);
+  const qs = [];
+  for (let i = -4; i <= 4; i++) qs.push(sumarTrimestres(base, i));
+  if (d.trimestreGantt && !qs.includes(d.trimestreGantt)) qs.push(d.trimestreGantt);
+  return [
+    { value: "", label: `Automático (${etiquetaTrimestre(base)})` },
+    ...qs.sort().map((q) => ({ value: q, label: etiquetaTrimestre(q) })),
+  ];
 };
 
 const lineas = (txt) => String(txt || "").split("\n");
@@ -434,6 +448,16 @@ export default function SeguimientoRoute() {
               />
             </Campo>
             <p className="pb-2 text-sm text-sand/60">{fechaLarga(datos.fechaReunion)}</p>
+            <Campo etiqueta="Trimestre del Gantt">
+              <select
+                value={datos.trimestreGantt || ""}
+                onChange={(e) => upd((d) => { d.trimestreGantt = e.target.value; })}
+                title="El Gantt muestra los 3 meses del trimestre y el mes siguiente"
+                className={`${FIELD} block`}
+              >
+                {opcionesTrimestre(datos).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </Campo>
             <div className="ml-auto flex flex-wrap items-center gap-2">
               <button
                 type="button" onClick={guardarDrive}

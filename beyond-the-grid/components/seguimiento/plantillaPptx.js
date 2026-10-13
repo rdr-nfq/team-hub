@@ -17,7 +17,7 @@
 import {
   COLOR as C, FASE, FASES_GANTT, EN_ESPERA, ESTADO, TIPO_TRASPASO, TIPOS_TRASPASO,
   fechaLarga, fechaTarea, etiquetaFase, colorFase, nombreCorto, resumenProyecto,
-  gruposPorInterno, cifras, enumerar, numTexto, semanasGantt, tramosGantt, rangoGantt,
+  gruposPorInterno, cifras, enumerar, numTexto, semanasGantt, trimestreGantt, tramosGantt, rangoGantt,
   etiquetaSemana, nombreMes, mesSemana, parseISO, addDays, completa,
 } from "./modelo.js";
 
@@ -188,7 +188,7 @@ export function generarPresentacion(PptxGenJS, datos, assets) {
     });
 
   // ── 01 · Planificación (Gantt) ────────────────────────────────────────────
-  const semanas = semanasGantt(fecha);
+  const semanas = semanasGantt(trimestreGantt(datos));
   separador({
     bg: C.serene,
     kicker: "BLOQUE 01 · PLANIFICACIÓN",
@@ -199,7 +199,7 @@ export function generarPresentacion(PptxGenJS, datos, assets) {
   });
 
   const GX = 3.25; // inicio de la línea temporal
-  const GW = 9.28; // ancho de la línea temporal (16 semanas)
+  const GW = 9.28; // ancho de la línea temporal (4 meses ≈ 17-18 semanas)
   const colW = GW / semanas.length;
   const t0 = semanas[0];
   const tFin = addDays(semanas[semanas.length - 1], 7);

@@ -7,6 +7,7 @@
    ESTRUCTURA DE DATOS (un documento por reunión):
    {
      fechaReunion: "2026-09-28",
+     trimestreGantt: "2026-Q4",              // opcional: Q del Gantt ("" = el de la reunión)
      proyectos: [{
        id, nombre: "Decomisado MIDAS · Migración Operaciones",
        nombreCorto: "Migración MIDAS",        // opcional: fila del Gantt
@@ -232,14 +233,42 @@ export const cifras = (datos) => {
 };
 
 // ── Gantt de planificación ──────────────────────────────────────────────────
-export const SEMANAS_ATRAS = 13;
-export const SEMANAS_ADELANTE = 2;
+// Ventana: los 3 meses del trimestre elegido + el mes siguiente (Q4 -> Oct–Ene).
+export const MESES_GANTT = 4;
 
-/** Semanas (lunes) visibles: 13 antes de la semana de la reunión y 2 después. */
-export const semanasGantt = (iso) => {
-  const base = lunes(parseISO(iso) || new Date());
+const RE_TRIM = /^(\d{4})-Q([1-4])$/;
+/** Trimestre ("2026-Q4") en el que cae una fecha ISO (hoy si no hay). */
+export const trimestreDe = (iso) => {
+  const d = parseISO(iso) || new Date();
+  return `${d.getFullYear()}-Q${Math.floor(d.getMonth() / 3) + 1}`;
+};
+/** Trimestre del Gantt: el elegido o, si no hay, el de la reunión. */
+export const trimestreGantt = (datos) =>
+  RE_TRIM.test(datos?.trimestreGantt || "") ? datos.trimestreGantt : trimestreDe(datos?.fechaReunion);
+/** "2026-Q4" desplazado n trimestres. */
+export const sumarTrimestres = (t, n) => {
+  const [, a, q] = RE_TRIM.exec(t);
+  const i = Number(a) * 4 + Number(q) - 1 + n;
+  return `${Math.floor(i / 4)}-Q${(i % 4) + 1}`;
+};
+/** "Q4 2026 · Oct – Ene" (para el selector). */
+export const etiquetaTrimestre = (t) => {
+  const [, a, q] = RE_TRIM.exec(t);
+  const m0 = (Number(q) - 1) * 3;
+  return `Q${q} ${a} · ${cap(MES3[m0])} – ${cap(MES3[(m0 + MESES_GANTT - 1) % 12])}`;
+};
+
+/** Semanas (lunes) visibles: las que caen —por su jueves— en los meses del
+    trimestre y el siguiente. Las semanas de frontera cuentan para el mes de su
+    jueves, como las ISO. */
+export const semanasGantt = (trimestre) => {
+  const [, a, q] = RE_TRIM.exec(trimestre);
+  const ini = new Date(Number(a), (Number(q) - 1) * 3, 1);
+  const fin = new Date(Number(a), (Number(q) - 1) * 3 + MESES_GANTT, 1);
+  let d = lunes(ini);
+  if (addDays(d, 3) < ini) d = addDays(d, 7);
   const out = [];
-  for (let i = -SEMANAS_ATRAS; i <= SEMANAS_ADELANTE; i++) out.push(addDays(base, i * 7));
+  for (; addDays(d, 3) < fin; d = addDays(d, 7)) out.push(d);
   return out;
 };
 
