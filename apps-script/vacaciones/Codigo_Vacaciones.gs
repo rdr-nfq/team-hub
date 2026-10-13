@@ -3,7 +3,7 @@
  *  VACACIONES RDR  ·  Apps Script (backend de /vacaciones y /vacaciones-gestion)
  * ============================================================================
  *
- *  UN solo proyecto, ligado al Excel principal ("Vacaciones RDR Pablo", V_CONFIG.EXCEL_ID). Sustituye
+ *  UN solo proyecto, ligado al Excel principal ("Vacaciones RDR", V_CONFIG.EXCEL_ID). Sustituye
  *  al Excel auxiliar, al Google Form y al panel de responsables antiguos
  *  (apps-script/vacaciones-antiguo/).
  *
@@ -84,7 +84,7 @@
  */
 
 const V_CONFIG = {
-  EXCEL_ID: '1XflnB-FMdEAK1RXrO3qxMLOLC-oxd9jL6pUkIkKfRwU', // «Vacaciones RDR Pablo»
+  EXCEL_ID: '1yCexnLp49FBu9f-g1Gf5glfz2UEFc4u_d0hzBgTnTmA', // «Vacaciones RDR» (el real)
   EQUIPO_JSON_URL: 'https://raw.githubusercontent.com/rdr-nfq/team-hub/main/beyond-the-grid/public/equipo/equipo.json',
   WEB_URL: 'https://rdr-nfq.github.io/team-hub/vacaciones/',
   GESTION_URL: 'https://rdr-nfq.github.io/team-hub/vacaciones-gestion/',

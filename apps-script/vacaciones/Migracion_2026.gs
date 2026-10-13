@@ -48,18 +48,20 @@ function empezarDeCero() {
   return r;
 }
 
-/** Borra lo que generó una migración anterior (también las pestañas sin año
- *  de versiones previas: Festivos, Grupos_Festivos, Solicitudes). Una pestaña
- *  de solicitudes con filas no se pierde: se renombra a <nombre>_copia_<fecha>. */
+/** Borra lo que generó una migración anterior (Vacas_2026, Festivos_2026,
+ *  Migracion_2026). Las pestañas sin año (Festivos, Grupos_Festivos,
+ *  Solicitudes) y Solicitudes_2026 con filas NO se borran: se renombran a
+ *  <nombre>_copia_<fecha> (en el Excel real podrían ser de otra cosa). */
 function _migLimpiar(ss) {
-  [_nombreHoja(MIG.ANIO), _nombreFestivos(MIG.ANIO), 'Festivos', 'Grupos_Festivos', MIG.INFORME].forEach(function (n) {
+  [_nombreHoja(MIG.ANIO), _nombreFestivos(MIG.ANIO), MIG.INFORME].forEach(function (n) {
     const sh = ss.getSheetByName(n);
     if (sh) ss.deleteSheet(sh);
   });
-  [_nombreSolicitudes(MIG.ANIO), 'Solicitudes'].forEach(function (n) {
+  [_nombreSolicitudes(MIG.ANIO), 'Solicitudes', 'Festivos', 'Grupos_Festivos'].forEach(function (n) {
     const sol = ss.getSheetByName(n);
     if (!sol) return;
-    if (sol.getLastRow() > 1) sol.setName(n + '_copia_' + Utilities.formatDate(new Date(), 'Europe/Madrid', 'yyyyMMdd-HHmm'));
+    // Solicitudes con solo la cabecera = vacía; las otras, con cualquier cosa escrita.
+    if (sol.getLastRow() > (n.indexOf('Solicitudes') === 0 ? 1 : 0)) sol.setName(n + '_copia_' + Utilities.formatDate(new Date(), 'Europe/Madrid', 'yyyyMMdd-HHmm'));
     else ss.deleteSheet(sol);
   });
 }
