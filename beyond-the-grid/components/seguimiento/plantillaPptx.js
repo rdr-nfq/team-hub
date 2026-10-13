@@ -45,7 +45,9 @@ export function generarPresentacion(PptxGenJS, datos, assets, opts = {}) {
   pres.company = "NFQ Advisory Services";
   const fecha = datos.fechaReunion;
   const anio = (parseISO(fecha) || new Date()).getFullYear();
-  pres.title = `Seguimiento RDR${autor ? ` · ${autor}` : ""} · ${fechaLarga(fecha)}`;
+  // La reunión es cada 2 semanas: fechaReunion es el LUNES de esa semana.
+  const semanaTxt = `semana del ${fechaLarga(fecha)}`;
+  pres.title = `Seguimiento RDR${autor ? ` · ${autor}` : ""} · ${cap(semanaTxt)}`;
 
   const k = cifras(datos);
   const visibles = (datos.proyectos || []).filter((p) => !p.anexo);
@@ -125,7 +127,7 @@ export function generarPresentacion(PptxGenJS, datos, assets, opts = {}) {
   add((s) => {
     s.background = { color: C.electric };
     img(s, assets.bbvaWhite, 11.08, 0.42, 1.7, 0.51);
-    txt(s, `SEGUIMIENTO · ${fechaLarga(fecha).toUpperCase()}`, { x: MX, y: 1.95, w: 9.5, h: 0.3, size: 10.5, bold: true, color: C.mute, valign: "middle" });
+    txt(s, `SEGUIMIENTO · ${semanaTxt.toUpperCase()}`, { x: MX, y: 1.95, w: 9.5, h: 0.3, size: 10.5, bold: true, color: C.mute, valign: "middle" });
     txt(s, [
       { text: "Seguimiento", options: { breakLine: true } },
       { text: autor ? `RDR · ${autor}` : `RDR Global ${anio}` },
@@ -149,7 +151,7 @@ export function generarPresentacion(PptxGenJS, datos, assets, opts = {}) {
     txt(s, `Nfq Advisory Services, ${anio}`, { x: MX, y: 6.96, w: 6.5, h: 0.32, size: 8.5, color: C.mute, valign: "middle" });
     txt(s, "HECHO POR", { x: 10.91, y: 6.96, w: 1.0, h: 0.33, size: 8, bold: true, color: C.mute, align: "right", valign: "middle" });
     img(s, assets.nfqWhite, 12.02, 6.96, 0.7, 0.33);
-    s.addNotes(`Seguimiento del equipo RDR a ${fechaLarga(fecha)}: ${k.proyectos} proyectos, ${k.tareas} tareas, ${k.incidencias + k.tareasAbiertas} incidencias o tareas abiertas y ${k.traspasos} traspasos pendientes.`);
+    s.addNotes(`Seguimiento del equipo RDR, ${semanaTxt}: ${k.proyectos} proyectos, ${k.tareas} tareas, ${k.incidencias + k.tareasAbiertas} incidencias o tareas abiertas y ${k.traspasos} traspasos pendientes.`);
   });
 
   // ── Índice ────────────────────────────────────────────────────────────────
@@ -594,7 +596,7 @@ export function generarPresentacion(PptxGenJS, datos, assets, opts = {}) {
         s.background = { color: C.sand };
         marco(s, { kicker: "04 · Time Report del trimestre", pie: `04 · Time Report — ${qLabel}`, page, total });
         cabecera(s, {
-          sobre: `${qLabel} · a ${fechaLarga(fecha)}`,
+          sobre: `${qLabel} · ${cap(semanaTxt)}`,
           titulo: `Time Report del trimestre${pags.length > 1 ? ` (${pi + 1}/${pags.length})` : ""}`,
           sub: soloSoporte
             ? "Sin proyectos con código en el trimestre: el equipo se dedica a Soporte a Usuarios."
@@ -639,7 +641,7 @@ export function generarPresentacion(PptxGenJS, datos, assets, opts = {}) {
     s.background = { color: C.electric };
     img(s, assets.bbvaWhite, (W - 2.4) / 2, 2.72, 2.4, 0.72);
     txt(s, "GRACIAS", { x: 0, y: 3.95, w: W, h: 0.3, size: 11.5, bold: true, color: C.sand, align: "center", valign: "middle" });
-    txt(s, `${titulo} · ${fechaLarga(fecha)}`, { x: 0, y: 4.27, w: W, h: 0.3, size: 9.5, color: C.mute, align: "center", valign: "middle" });
+    txt(s, `${titulo} · ${cap(semanaTxt)}`, { x: 0, y: 4.27, w: W, h: 0.3, size: 9.5, color: C.mute, align: "center", valign: "middle" });
     txt(s, "HECHO POR", { x: 5.05, y: 6.22, w: 1.5, h: 0.33, size: 8, bold: true, color: C.mute, align: "right", valign: "middle" });
     img(s, assets.nfqWhite, 6.68, 6.22, 0.7, 0.33);
     s.addNotes("Cierre.");

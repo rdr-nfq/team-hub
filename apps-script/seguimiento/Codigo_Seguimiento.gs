@@ -3,11 +3,20 @@
  *  SEGUIMIENTO RDR  ·  Apps Script (backend de la página /seguimiento)
  * ============================================================================
  *
- *  1) DATOS de la web, UNA PESTAÑA POR COORDINADOR (equipo.json,
+ *  1) DATOS de la web POR SEMANA (lunes de la semana de la reunión, que es
+ *     cada 2 semanas) y UNA PESTAÑA POR COORDINADOR (equipo.json,
  *     "coordinador": true) + la configuración de la presentación combinada.
- *     Cada pestaña es un JSON en <raíz>/_datos_web/seguimiento_<id>.json con
- *     un número de revisión: si dos personas editan la misma pestaña, la
- *     segunda en guardar recibe CONFLICTO en vez de pisar a la primera.
+ *     Cada pestaña de cada semana es un JSON en
+ *     <raíz>/_datos_web/seguimiento_<id>_<lunes>.json con un número de
+ *     revisión: si dos personas editan la misma pestaña, la segunda en guardar
+ *     recibe CONFLICTO en vez de pisar a la primera. Una semana sin datos de
+ *     un coordinador arranca con lo de su semana anterior ("previas").
+ *
+ *  1b) HISTÓRICO: las presentaciones hechas a mano de años anteriores
+ *     ("28/09/2026 Seguimiento_RDR_GLOBAL_2026.pptx") se pueden LEER para
+ *     copiar sus proyectos: el .pptx se descomprime aquí y se devuelven los
+ *     textos y tablas de cada diapositiva (la web los convierte en proyectos,
+ *     tareas, incidencias y traspasos).
  *
  *  2) PRESENTACIONES que genera la web:
  *
@@ -40,10 +49,15 @@
  *
  *  API (GET query o POST text/plain JSON) — respuesta { ok, data | error }:
  *    ping                                    -> { carpeta }
- *    datos   { email }                       -> { coordinadores:[{id,nombre,email}],
- *                                                 pestanas:{ <id>|'resumen': { doc, rev, actualizado, por } } }
- *    guardar { email, id, doc, rev, forzar? } -> { rev, actualizado, por }
+ *    datos   { email, semana }               -> { semana, coordinadores:[{id,nombre,email}],
+ *                                                 pestanas:{ <id>|'resumen': { doc, rev, actualizado, por } },
+ *                                                 previas:{ <id>: { semana, doc } },   (sin datos esa semana)
+ *                                                 semanas:[{ semana, ids:[…] }] }       (semanas con datos)
+ *    semana  { email, id, semana }           -> { doc, actualizado, por } | null   (para «Copiar de…»)
+ *    guardar { email, id, semana, doc, rev, forzar? } -> { rev, actualizado, por }
  *                                               (rev = la que se leyó; si ha cambiado: error "CONFLICTO: …")
+ *    historico { email }                     -> [{ id, nombre, fecha, anio }]  (.pptx hechos a mano)
+ *    leerPptx  { email, id }                 -> { slides:[{ oculta, textos:[…], tablas:[[[celda]]] }] }
  *    estado  { fecha:'2026-09-28', quien? }  -> { existe, nombre, ruta, url?, modificado?, carpetaUrl? }
  *    subir   { fecha, email, base64, quien? } -> { accion:'creada'|'actualizada', nombre, ruta, url, carpetaUrl, modificado }
  *            quien = id del coordinador (su presentación) o vacío (la combinada).
@@ -97,10 +111,22 @@ function _serve(p) {
         break;
       case 'datos':
         _exigirCoordinador(p.email);
-        data = datos();
+        data = datos(p.semana);
+        break;
+      case 'semana':
+        _exigirCoordinador(p.email);
+        data = leerSemana(p.id, p.semana);
         break;
       case 'guardar':
-        data = guardar(p.id, p.doc, p.rev, _exigirCoordinador(p.email), p.forzar === true);
+        data = guardar(p.id, p.semana, p.doc, p.rev, _exigirCoordinador(p.email), p.forzar === true);
+        break;
+      case 'historico':
+        _exigirCoordinador(p.email);
+        data = historico();
+        break;
+      case 'leerPptx':
+        _exigirCoordinador(p.email);
+        data = leerPptx(p.id);
         break;
       default: throw new Error('Acción desconocida: ' + p.action);
     }
@@ -270,36 +296,96 @@ function _sobrescribir(fileId, bytes) {
   }
 }
 
-// ── Datos de las pestañas (un JSON por coordinador en <raíz>/_datos_web) ────
+// ── Datos de las pestañas, por semana (<raíz>/_datos_web) ───────────────────
 var CARPETA_DATOS = '_datos_web';
+var RE_DATOS = /^seguimiento_(.+)_(\d{4}-\d{2}-\d{2})\.json$/;
+var RE_LEGADO = /^seguimiento_([^_]+)\.json$/; // versión sin semanas
 
 function _carpetaDatos() {
   var raiz = DriveApp.getFolderById(S_CONFIG.CARPETA_RAIZ_ID);
   return _hija(raiz, function (n) { return n === CARPETA_DATOS; }) || raiz.createFolder(CARPETA_DATOS);
 }
-function _nombreDatos(id) { return 'seguimiento_' + id + '.json'; }
-function _leerDatos(carpeta, id) {
-  var f = _fichero(carpeta, _nombreDatos(id));
-  if (!f) return null;
+function _nombreDatos(id, semana) { return 'seguimiento_' + id + '_' + semana + '.json'; }
+function _hoy() { return Utilities.formatDate(new Date(), 'Europe/Madrid', 'yyyy-MM-dd'); }
+
+/** Lunes de la semana de una fecha ISO. */
+function _lunes(iso) {
+  var f = _fecha(iso);
+  var d = new Date(Date.UTC(f.anio, f.mes - 1, f.dia));
+  d.setUTCDate(d.getUTCDate() - (d.getUTCDay() + 6) % 7);
+  return d.toISOString().slice(0, 10);
+}
+function _leerFichero(f) {
   try { return JSON.parse(f.getBlob().getDataAsString('UTF-8')); } catch (e) { return null; }
 }
 
-function datos() {
+/** Todo lo guardado: [{ id, semana, file }]. Los ficheros de la versión sin
+ *  semanas (seguimiento_<id>.json) pasan a la semana de su fecha de reunión. */
+function _indice(carpeta) {
+  var out = [], legado = [];
+  var it = carpeta.getFiles();
+  while (it.hasNext()) {
+    var f = it.next();
+    if (f.isTrashed()) continue;
+    var n = f.getName(), m;
+    if ((m = RE_DATOS.exec(n))) out.push({ id: m[1], semana: m[2], file: f });
+    else if ((m = RE_LEGADO.exec(n))) legado.push({ id: m[1], file: f });
+  }
+  legado.forEach(function (l) {
+    var d = _leerFichero(l.file);
+    var fecha = d && d.doc && /^\d{4}-\d{2}-\d{2}$/.test(d.doc.fechaReunion || '') ? d.doc.fechaReunion : _hoy();
+    var sem = _lunes(fecha);
+    if (out.some(function (x) { return x.id === l.id && x.semana === sem; })) return;
+    l.file.setName(_nombreDatos(l.id, sem));
+    out.push({ id: l.id, semana: sem, file: l.file });
+  });
+  return out;
+}
+
+function datos(semana) {
+  semana = _lunes(semana || _hoy());
   var coord = _coordinadores();
-  var carpeta = _carpetaDatos();
-  var pestanas = {};
+  var idx = _indice(_carpetaDatos());
+  var pestanas = {}, previas = {};
   coord.map(function (c) { return c.id; }).concat(['resumen']).forEach(function (id) {
-    var d = _leerDatos(carpeta, id);
-    if (d) pestanas[id] = d;
+    var suyos = idx.filter(function (x) { return x.id === id; });
+    var esta = suyos.filter(function (x) { return x.semana === semana; })[0];
+    if (esta) {
+      var d = _leerFichero(esta.file);
+      if (d) pestanas[id] = d;
+      return;
+    }
+    if (id === 'resumen') return;
+    // Sin datos esta semana: lo último que tuviera antes.
+    var ant = suyos.filter(function (x) { return x.semana < semana; })
+      .sort(function (a, b) { return a.semana < b.semana ? 1 : -1; })[0];
+    if (ant) {
+      var d2 = _leerFichero(ant.file);
+      if (d2) previas[id] = { semana: ant.semana, doc: d2.doc };
+    }
+  });
+  var porSemana = {};
+  idx.forEach(function (x) {
+    if (x.id !== 'resumen') (porSemana[x.semana] = porSemana[x.semana] || []).push(x.id);
   });
   return {
+    semana: semana,
     coordinadores: coord.map(function (c) { return { id: c.id, nombre: c.nombre, email: c.email }; }),
-    pestanas: pestanas
+    pestanas: pestanas,
+    previas: previas,
+    semanas: Object.keys(porSemana).sort().map(function (s) { return { semana: s, ids: porSemana[s] }; })
   };
 }
 
-function guardar(id, doc, rev, quien, forzar) {
+function leerSemana(id, semana) {
+  var f = _fichero(_carpetaDatos(), _nombreDatos(String(id || ''), _lunes(semana)));
+  var d = f ? _leerFichero(f) : null;
+  return d ? { doc: d.doc, actualizado: d.actualizado, por: d.por } : null;
+}
+
+function guardar(id, semana, doc, rev, quien, forzar) {
   id = String(id || '').trim();
+  semana = _lunes(semana);
   var ids = _coordinadores().map(function (c) { return c.id; }).concat(['resumen']);
   if (ids.indexOf(id) < 0) throw new Error('Pestaña desconocida: ' + id);
   if (!doc || typeof doc !== 'object') throw new Error('No llegan los datos de la pestaña.');
@@ -308,7 +394,9 @@ function guardar(id, doc, rev, quien, forzar) {
   lock.waitLock(30000);
   try {
     var carpeta = _carpetaDatos();
-    var actual = _leerDatos(carpeta, id);
+    var nombre = _nombreDatos(id, semana);
+    var f = _fichero(carpeta, nombre);
+    var actual = f ? _leerFichero(f) : null;
     var revActual = actual ? Number(actual.rev) || 0 : 0;
     if (!forzar && revActual !== (Number(rev) || 0)) {
       throw new Error('CONFLICTO: ' + (actual.por || 'otra persona') + ' guardó esta pestaña a las ' +
@@ -316,13 +404,117 @@ function guardar(id, doc, rev, quien, forzar) {
     }
     var nuevo = { rev: revActual + 1, actualizado: new Date().toISOString(), por: quien.nombre, doc: doc };
     var texto = JSON.stringify(nuevo);
-    var f = _fichero(carpeta, _nombreDatos(id));
     if (f) f.setContent(texto);
-    else carpeta.createFile(_nombreDatos(id), texto, 'application/json');
+    else carpeta.createFile(nombre, texto, 'application/json');
     return { rev: nuevo.rev, actualizado: nuevo.actualizado, por: nuevo.por };
   } finally {
     lock.releaseLock();
   }
+}
+
+// ── Histórico: presentaciones hechas a mano ─────────────────────────────────
+/** .pptx de las carpetas de año (y mes) que no son autogenerados (caché 10 min). */
+function historico() {
+  var cache = CacheService.getScriptCache();
+  var c = cache.get('historico');
+  if (c) return JSON.parse(c);
+  var out = [];
+  var buscar = function (carpeta, prof) {
+    var fs = carpeta.getFiles();
+    while (fs.hasNext()) {
+      var f = fs.next();
+      var n = f.getName();
+      if (f.isTrashed() || !/\.pptx$/i.test(n) || /Autogenerado/i.test(n)) continue;
+      var m = /(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/.exec(n);
+      var fecha = m ? m[3] + '-' + _n2(Number(m[2])) + '-' + _n2(Number(m[1])) : Utilities.formatDate(f.getLastUpdated(), 'Europe/Madrid', 'yyyy-MM-dd');
+      out.push({ id: f.getId(), nombre: n, fecha: fecha, anio: Number(fecha.slice(0, 4)) });
+    }
+    if (prof < 2) {
+      var ds = carpeta.getFolders();
+      while (ds.hasNext()) {
+        var d = ds.next();
+        if (d.getName() !== CARPETA_DATOS) buscar(d, prof + 1);
+      }
+    }
+  };
+  buscar(DriveApp.getFolderById(S_CONFIG.CARPETA_RAIZ_ID), 0);
+  out.sort(function (a, b) { return a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0; });
+  try { cache.put('historico', JSON.stringify(out), 600); } catch (e) {}
+  return out;
+}
+
+/** Textos y tablas de cada diapositiva de un .pptx del histórico, en orden. */
+function leerPptx(id) {
+  id = String(id || '');
+  if (!historico().some(function (x) { return x.id === id; })) throw new Error('Esa presentación no está en el histórico de Seguimiento.');
+  var cache = CacheService.getScriptCache();
+  var c = cache.get('pptx:' + id);
+  if (c) return JSON.parse(c);
+  var blob = DriveApp.getFileById(id).getBlob().setContentType('application/zip');
+  var partes = {};
+  Utilities.unzip(blob).forEach(function (b) { partes[b.getName()] = b; });
+  var leer = function (n) { return partes[n] ? partes[n].getDataAsString('UTF-8') : ''; };
+  // Orden real de las diapositivas: presentation.xml (sldIdLst) -> rels -> slideN.xml
+  var rels = {};
+  leer('ppt/_rels/presentation.xml.rels').replace(/<Relationship\b[^>]*>/g, function (tag) {
+    rels[_attr(tag, 'Id')] = _attr(tag, 'Target');
+    return '';
+  });
+  var slides = [];
+  leer('ppt/presentation.xml').replace(/<p:sldId\b[^>]*>/g, function (tag) {
+    var t = rels[_attr(tag, 'r:id')];
+    if (t) slides.push(_parseSlide(leer('ppt/' + t.replace(/^\/?ppt\//, ''))));
+    return '';
+  });
+  var out = { slides: slides };
+  try { cache.put('pptx:' + id, JSON.stringify(out), 3600); } catch (e) {}
+  return out;
+}
+
+function _attr(tag, nombre) {
+  var m = new RegExp('\\s' + nombre + '="([^"]*)"').exec(tag);
+  return m ? m[1] : '';
+}
+function _xmlTexto(s) {
+  return s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, function (_, n) { return String.fromCharCode(Number(n)); })
+    .replace(/&#x([0-9a-f]+);/gi, function (_, n) { return String.fromCharCode(parseInt(n, 16)); })
+    .replace(/&amp;/g, '&');
+}
+/** Párrafos (<a:p>) de un trozo de XML: cada uno, sus <a:t> seguidos (<a:br/> = salto). */
+function _parrafos(xml) {
+  var out = [];
+  xml.replace(/<a:p\b[^>]*>([\s\S]*?)<\/a:p>/g, function (_, p) {
+    var t = '';
+    p.replace(/<a:t>([\s\S]*?)<\/a:t>|<a:br\b[^>]*\/>/g, function (m, txt) { t += txt !== undefined ? _xmlTexto(txt) : '\n'; return ''; });
+    out.push(t);
+    return '';
+  });
+  return out;
+}
+function _parseSlide(xml) {
+  var tablas = [];
+  var resto = xml.replace(/<a:tbl>[\s\S]*?<\/a:tbl>/g, function (tbl) {
+    var filas = [];
+    tbl.replace(/<a:tr\b[^>]*>([\s\S]*?)<\/a:tr>/g, function (_, tr) {
+      var celdas = [];
+      tr.replace(/<a:tc\b[^>]*\/>|<a:tc\b[^>]*>([\s\S]*?)<\/a:tc>/g, function (m, tc) {
+        celdas.push(tc ? _parrafos(tc).join('\n').trim() : '');
+        return '';
+      });
+      filas.push(celdas);
+      return '';
+    });
+    tablas.push(filas);
+    return '';
+  });
+  var textos = [];
+  resto.replace(/<p:txBody>([\s\S]*?)<\/p:txBody>/g, function (_, body) {
+    var t = _parrafos(body).join('\n').trim();
+    if (t) textos.push(t);
+    return '';
+  });
+  return { oculta: /<p:sld\b[^>]*\sshow="0"/.test(xml), textos: textos, tablas: tablas };
 }
 
 // ── Permisos: solo coordinación ─────────────────────────────────────────────

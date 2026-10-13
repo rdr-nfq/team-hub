@@ -14,6 +14,7 @@ import {
   trimestreDe, sumarTrimestres, etiquetaTrimestre, trimestreGantt,
   docVacio, combinarDocs, qTimeReport, resumenTimeReport,
 } from "../seguimiento/modelo";
+import { docDesdePptx } from "../seguimiento/importarPptx";
 import { generarPresentacion } from "../seguimiento/plantillaPptx";
 
 /* Seguimiento RDR · panel de COORDINACIÓN.
@@ -314,20 +315,25 @@ function ProyectoEditor({ p, idx, total, abierto, toggle, upd, mover }) {
   );
 }
 
-// ── Datos compartidos: una pestaña por coordinador (backend) ────────────────
-/* Cada pestaña vive en el Apps Script (Drive) con un número de revisión. Los
-   cambios se guardan solos a los 1,5 s; si otra persona ha guardado la misma
-   pestaña entretanto, el backend responde CONFLICTO y no se pisa nada. Lo que
-   aún no se ha guardado se copia en localStorage por si se cierra la página. */
+// ── Datos compartidos: por semana, una pestaña por coordinador (backend) ────
+/* Cada pestaña de cada semana (lunes) vive en el Apps Script (Drive) con un
+   número de revisión. Los cambios se guardan solos a los 1,5 s; si otra
+   persona ha guardado la misma pestaña entretanto, el backend responde
+   CONFLICTO y no se pisa nada. Lo que aún no se ha guardado se copia en
+   localStorage por si se cierra la página. Una pestaña sin datos esa semana
+   muestra lo de su semana anterior ("previas") y se guarda al primer cambio. */
 const AUTOGUARDADO_MS = 1500;
-const clavePendiente = (id) => `rdr_seguimiento_pendiente_${id}`;
+const clavePendiente = (id, semana) => `rdr_seguimiento_pendiente_${id}_${semana}`;
 
-function useSeguimiento(backendUrl, email) {
+function useSeguimiento(backendUrl, email, semana) {
   const [estado, setEstado] = useState({ cargando: true, error: "" });
   const [coordinadores, setCoordinadores] = useState([]);
   const [tabs, setTabs] = useState({}); // id -> { doc, rev, actualizado, por, ver, verGuardada, guardando, error, conflicto }
+  const [previas, setPrevias] = useState({}); // id -> { semana, doc } (sin datos esta semana)
+  const [semanas, setSemanas] = useState([]); // [{ semana, ids }] con datos
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
+  const peticion = useRef(0); // descarta respuestas de una semana que ya no se mira
 
   const llamar = useCallback(async (body) => {
     return leerRespuesta(await fetch(backendUrl, {
@@ -339,10 +345,12 @@ function useSeguimiento(backendUrl, email) {
 
   // silencioso: refresco en segundo plano (Resumen) sin pantalla de carga.
   const cargar = useCallback(async (silencioso = false) => {
-    if (!backendUrl || !email) return;
-    if (!silencioso) setEstado({ cargando: true, error: "" });
+    if (!backendUrl || !email || !semana) return;
+    const n = ++peticion.current;
+    if (!silencioso) { setEstado({ cargando: true, error: "" }); setTabs({}); setPrevias({}); }
     try {
-      const d = await llamar({ action: "datos" });
+      const d = await llamar({ action: "datos", semana });
+      if (n !== peticion.current) return;
       const t = {};
       for (const [id, p] of Object.entries(d.pestanas || {}))
         t[id] = { doc: p.doc, rev: p.rev || 0, actualizado: p.actualizado, por: p.por, ver: 0, verGuardada: 0 };
@@ -350,18 +358,20 @@ function useSeguimiento(backendUrl, email) {
       // recuperan solo si nadie ha guardado esa pestaña después.
       for (const id of [...(d.coordinadores || []).map((c) => c.id), "resumen"]) {
         try {
-          const p = JSON.parse(localStorage.getItem(clavePendiente(id)) || "null");
+          const p = JSON.parse(localStorage.getItem(clavePendiente(id, semana)) || "null");
           if (p && p.doc && (p.rev || 0) === (t[id]?.rev || 0)) t[id] = { ...(t[id] || { rev: 0 }), doc: p.doc, ver: 1, verGuardada: 0 };
-          else if (p) localStorage.removeItem(clavePendiente(id));
+          else if (p) localStorage.removeItem(clavePendiente(id, semana));
         } catch { /* sin almacenamiento */ }
       }
       setCoordinadores(d.coordinadores || []);
       setTabs(t);
+      setPrevias(d.previas || {});
+      setSemanas(d.semanas || []);
       setEstado({ cargando: false, error: "" });
     } catch (e) {
-      if (!silencioso) setEstado({ cargando: false, error: String(e?.message || e) });
+      if (n === peticion.current && !silencioso) setEstado({ cargando: false, error: String(e?.message || e) });
     }
-  }, [backendUrl, email, llamar]);
+  }, [backendUrl, email, semana, llamar]);
   useEffect(() => { cargar(); }, [cargar]);
   const refrescar = useCallback(() => {
     // Solo si no hay nada a medio guardar: si no, se esperaría al autoguardado.
@@ -375,10 +385,11 @@ function useSeguimiento(backendUrl, email) {
       const cur = all[id] || { doc: base ? base() : docVacio(), rev: 0, ver: 0, verGuardada: 0 };
       const doc = clonar(cur.doc);
       fn(doc);
-      try { localStorage.setItem(clavePendiente(id), JSON.stringify({ rev: cur.rev || 0, doc })); } catch { /* lleno */ }
+      if (id !== "resumen") doc.fechaReunion = semana; // la fecha es la semana (su lunes)
+      try { localStorage.setItem(clavePendiente(id, semana), JSON.stringify({ rev: cur.rev || 0, doc })); } catch { /* lleno */ }
       return { ...all, [id]: { ...cur, doc, ver: (cur.ver || 0) + 1, error: "" } };
     });
-  }, []);
+  }, [semana]);
 
   const guardar = useCallback(async (id, forzar = false) => {
     const t = tabsRef.current[id];
@@ -386,19 +397,20 @@ function useSeguimiento(backendUrl, email) {
     const ver = t.ver;
     setTabs((all) => ({ ...all, [id]: { ...all[id], guardando: true } }));
     try {
-      const r = await llamar({ action: "guardar", id, doc: t.doc, rev: t.rev || 0, forzar });
+      const r = await llamar({ action: "guardar", id, semana, doc: t.doc, rev: t.rev || 0, forzar });
       setTabs((all) => {
         const cur = all[id];
-        if (cur.ver === ver) try { localStorage.removeItem(clavePendiente(id)); } catch { /* */ }
-        else try { localStorage.setItem(clavePendiente(id), JSON.stringify({ rev: r.rev, doc: cur.doc })); } catch { /* */ }
+        if (!cur) return all;
+        if (cur.ver === ver) try { localStorage.removeItem(clavePendiente(id, semana)); } catch { /* */ }
+        else try { localStorage.setItem(clavePendiente(id, semana), JSON.stringify({ rev: r.rev, doc: cur.doc })); } catch { /* */ }
         return { ...all, [id]: { ...cur, rev: r.rev, actualizado: r.actualizado, por: r.por, verGuardada: ver, guardando: false, error: "", conflicto: "" } };
       });
     } catch (e) {
       const m = String(e?.message || e);
       const conflicto = m.startsWith("CONFLICTO") ? m.replace(/^CONFLICTO:\s*/, "") : "";
-      setTabs((all) => ({ ...all, [id]: { ...all[id], guardando: false, conflicto, error: conflicto ? "" : m } }));
+      setTabs((all) => (all[id] ? { ...all, [id]: { ...all[id], guardando: false, conflicto, error: conflicto ? "" : m } } : all));
     }
-  }, [llamar]);
+  }, [llamar, semana]);
 
   // Autoguardado: lo que tenga cambios y no esté ya guardándose ni en conflicto o error.
   useEffect(() => {
@@ -417,12 +429,14 @@ function useSeguimiento(backendUrl, email) {
     return () => window.removeEventListener("beforeunload", fn);
   }, [tabs]);
 
-  return { estado, coordinadores, tabs, cargar, refrescar, editar, guardar };
+  // Algo a punto de guardarse (no cuenta lo que espera a que se resuelva un conflicto o error).
+  const sucio = Object.values(tabs).some((t) => t.guardando || (t.ver > t.verGuardada && !t.conflicto && !t.error));
+  return { estado, coordinadores, tabs, previas, semanas, sucio, cargar, refrescar, editar, guardar, llamar };
 }
 
 /** Estado de guardado de una pestaña (texto + acciones si hay conflicto/error). */
 function EstadoGuardado({ t, guardar, recargar }) {
-  if (!t) return <span className="text-[11.5px] text-sand/40">Sin datos todavía: se guarda sola al editar.</span>;
+  if (!t) return <span className="text-[11.5px] text-sand/40">Sin guardar en esta semana: se guarda sola al primer cambio.</span>;
   if (t.conflicto)
     return (
       <span className="inline-flex flex-wrap items-center gap-2 rounded-lg border border-mandarin/50 bg-mandarin/10 px-2.5 py-1.5 text-[11.5px] font-bold text-mandarin">
@@ -618,49 +632,99 @@ function Presentacion({ datos, quien, autor, borrar, backendUrl, trUrl, email, c
   );
 }
 
-/** Fecha de la reunión y trimestre del Gantt (comunes a pestaña y combinada). */
+/** Trimestre del Gantt y del Time Report (la fecha es la semana, arriba). */
 function CamposReunion({ datos, set }) {
   return (
-    <>
-      <Campo etiqueta="Fecha de la reunión">
-        <input type="date" value={datos.fechaReunion || ""} onChange={(e) => set({ fechaReunion: e.target.value })} className={`${FIELD} block`} />
-      </Campo>
-      <p className="pb-2 text-sm text-sand/60">{fechaLarga(datos.fechaReunion)}</p>
-      <Campo etiqueta="Trimestre del Gantt y del Time Report">
-        <select
-          value={datos.trimestreGantt || ""}
-          onChange={(e) => set({ trimestreGantt: e.target.value })}
-          title="El Gantt muestra los 3 meses del trimestre y el mes siguiente; el Time Report, ese trimestre"
-          className={`${FIELD} block`}
-        >
-          {opcionesTrimestre(datos).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-      </Campo>
-    </>
+    <Campo etiqueta="Trimestre del Gantt y del Time Report">
+      <select
+        value={datos.trimestreGantt || ""}
+        onChange={(e) => set({ trimestreGantt: e.target.value })}
+        title="El Gantt muestra los 3 meses del trimestre y el mes siguiente; el Time Report, ese trimestre"
+        className={`${FIELD} block`}
+      >
+        {opcionesTrimestre(datos).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </Campo>
   );
 }
 
-// ── Copiar proyectos de otra fuente ─────────────────────────────────────────
-/* Para arrancar una pestaña: trae proyectos, incidencias y traspasos de otra
-   pestaña, del borrador que se usaba antes en este navegador o del ejemplo
-   del 28/09/2026. Se marcan solos los proyectos y traspasos cuyo responsable
-   NFQ coincide con el nombre de la pestaña. */
-function CopiarDe({ fuentes, nombre, onCopiar, onCerrar }) {
-  const [fuenteId, setFuenteId] = useState(fuentes[0]?.id || "");
-  const fuente = fuentes.find((f) => f.id === fuenteId);
-  const pila = nombre.split(" ")[0].toLowerCase();
-  const esMio = (s) => String(s || "").toLowerCase().split(/[\s,/]+/).includes(pila);
-  const [sel, setSel] = useState({});
+// ── Copiar de otra semana / presentación antigua ────────────────────────────
+/* Trae proyectos, incidencias y traspasos de:
+     - otra semana (la tuya o la pestaña de otro coordinador),
+     - una presentación antigua de Drive (las hechas a mano, desde 2024: el
+       backend lee el .pptx e importarPptx.js lo convierte),
+     - el borrador que se usaba antes en este navegador o el ejemplo del 28/09.
+   Se marcan solos los proyectos y traspasos cuyo responsable NFQ coincide con
+   el nombre de la pestaña. Se añaden, o sustituyen lo que hay si se marca. */
+function CopiarDe({ nombre, idActual, comun, onCopiar, onCerrar }) {
+  const { semana, semanas, coordinadores, llamar } = comun;
+  const nombreDe = (id) => coordinadores.find((c) => c.id === id)?.nombre || id;
+  const conDatos = useMemo(
+    () => semanas.filter((x) => x.semana !== semana || x.ids.some((i) => i !== idActual)).slice().reverse(),
+    [semanas, semana, idActual],
+  );
+  const viejo = useMemo(() => leerBorrador(), []);
+  const [origen, setOrigen] = useState(conDatos.length ? "semana" : "drive");
+  const [selSemana, setSelSemana] = useState(conDatos[0]?.semana || "");
+  const idsSemana = conDatos.find((x) => x.semana === selSemana)?.ids.filter((i) => selSemana !== semana || i !== idActual) || [];
+  const [selId, setSelId] = useState("");
   useEffect(() => {
-    const d = fuente?.doc;
-    if (!d) return;
+    setSelId(idsSemana.includes(idActual) ? idActual : idsSemana[0] || "");
+  }, [selSemana]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [hist, setHist] = useState(null); // { lista } | { error }
+  const [anio, setAnio] = useState("");
+  const [fichero, setFichero] = useState("");
+  useEffect(() => {
+    if (origen !== "drive" || hist) return;
+    llamar({ action: "historico" }).then(
+      (lista) => {
+        setHist({ lista });
+        const a = lista[0]?.anio;
+        setAnio(a ? String(a) : "");
+        setFichero(lista[0]?.id || "");
+      },
+      (e) => setHist({ error: String(e?.message || e) }),
+    );
+  }, [origen, hist, llamar]);
+  const anios = [...new Set((hist?.lista || []).map((x) => String(x.anio)))];
+  const ficheros = (hist?.lista || []).filter((x) => String(x.anio) === anio);
+
+  // Documento de origen.
+  const [carga, setCarga] = useState({ estado: "idle", doc: null, error: "" });
+  useEffect(() => {
+    let vivo = true;
+    const fin = (doc) => vivo && setCarga({ estado: "ok", doc: doc || docVacio(), error: "" });
+    const mal = (e) => vivo && setCarga({ estado: "error", doc: null, error: String(e?.message || e) });
+    if (origen === "borrador") fin(viejo);
+    else if (origen === "ejemplo") fin(EJEMPLO);
+    else if (origen === "semana") {
+      if (!selSemana || !selId) { setCarga({ estado: "idle", doc: null, error: "" }); return; }
+      setCarga({ estado: "cargando", doc: null, error: "" });
+      llamar({ action: "semana", id: selId, semana: selSemana }).then((r) => fin(r?.doc), mal);
+    } else if (origen === "drive") {
+      if (!fichero) { setCarga({ estado: "idle", doc: null, error: "" }); return; }
+      const f = (hist?.lista || []).find((x) => x.id === fichero);
+      setCarga({ estado: "cargando", doc: null, error: "" });
+      llamar({ action: "leerPptx", id: fichero }).then((raw) => fin(docDesdePptx(raw, f?.fecha || semana)), mal);
+    }
+    return () => { vivo = false; };
+  }, [origen, selSemana, selId, fichero]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pila = nombre.split(" ")[0].toLowerCase();
+  const esMio = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[\s,/]+/)
+    .includes(pila.normalize("NFD").replace(/[̀-ͯ]/g, ""));
+  const [sel, setSel] = useState({});
+  const [sustituir, setSustituir] = useState(false);
+  const d = carga.doc || docVacio();
+  const todos = (v) => {
     const s = {};
-    (d.proyectos || []).forEach((p) => { s[`p:${p.id}`] = esMio(p.responsable); });
-    (d.traspasos || []).forEach((t) => { s[`t:${t.id}`] = esMio(t.nfq); });
-    (d.incidencias || []).forEach((i) => { s[`i:${i.id}`] = false; });
+    (d.proyectos || []).forEach((p) => { s[`p:${p.id}`] = v === "mios" ? esMio(p.responsable) : v; });
+    (d.traspasos || []).forEach((t) => { s[`t:${t.id}`] = v === "mios" ? esMio(t.nfq) : v; });
+    (d.incidencias || []).forEach((i) => { s[`i:${i.id}`] = v === "mios" ? false : v; });
     setSel(s);
-  }, [fuenteId]); // eslint-disable-line react-hooks/exhaustive-deps
-  const d = fuente?.doc || docVacio();
+  };
+  // Otra semana de la MISMA pestaña: todo marcado. Si no, solo lo suyo.
+  useEffect(() => { if (carga.doc) todos(origen === "semana" && selId === idActual ? true : "mios"); }, [carga.doc]); // eslint-disable-line react-hooks/exhaustive-deps
   const n = Object.values(sel).filter(Boolean).length;
   const Fila = ({ k, titulo, sub }) => (
     <label className="flex items-start gap-2 rounded-lg px-2 py-1.5 text-[12.5px] text-sand/80 hover:bg-white/5">
@@ -668,45 +732,109 @@ function CopiarDe({ fuentes, nombre, onCopiar, onCerrar }) {
       <span><b className="text-sand">{titulo || "—"}</b>{sub && <span className="block text-[11px] text-sand/50">{sub}</span>}</span>
     </label>
   );
+  const Opc = ({ v, children, disabled }) => (
+    <button type="button" disabled={disabled} onClick={() => setOrigen(v)}
+      className={`rounded-full border px-3 py-1.5 text-xs font-bold transition disabled:opacity-30 ${origen === v ? "border-serene/70 bg-serene/15 text-serene" : "border-white/15 text-sand/70 hover:text-sand"}`}>
+      {children}
+    </button>
+  );
+
   return (
     <section className={`${GLASS} mb-4 p-4`} aria-label="Copiar de otra fuente">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="mr-1 text-[10px] font-bold uppercase tracking-wide text-sand/50">Copiar de</span>
+        <Opc v="semana" disabled={!conDatos.length}>Otra semana</Opc>
+        <Opc v="drive">Presentación antigua (Drive)</Opc>
+        {viejo && <Opc v="borrador">Borrador anterior de este navegador</Opc>}
+        <Opc v="ejemplo">Ejemplo 28/09/2026</Opc>
+      </div>
+
       <div className="mb-3 flex flex-wrap items-end gap-3">
-        <Campo etiqueta="Copiar desde">
-          <select value={fuenteId} onChange={(e) => setFuenteId(e.target.value)} className={`${FIELD} block`}>
-            {fuentes.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
-          </select>
-        </Campo>
-        <p className="pb-2 text-[11.5px] text-sand/50">Marcados: los de {nombre.split(" ")[0]} como responsable NFQ. Se añaden a esta pestaña (no se borra nada).</p>
+        {origen === "semana" && (
+          <>
+            <Campo etiqueta="Semana">
+              <select value={selSemana} onChange={(e) => setSelSemana(e.target.value)} className={`${FIELD} block`}>
+                {conDatos.map((x) => <option key={x.semana} value={x.semana}>Semana del lunes {fechaCortaEs(x.semana)}</option>)}
+              </select>
+            </Campo>
+            <Campo etiqueta="Pestaña">
+              <select value={selId} onChange={(e) => setSelId(e.target.value)} className={`${FIELD} block`}>
+                {idsSemana.map((i) => <option key={i} value={i}>{nombreDe(i)}</option>)}
+              </select>
+            </Campo>
+          </>
+        )}
+        {origen === "drive" && (
+          hist?.error ? <p className="text-xs font-bold text-mandarin">No se pudo listar el histórico: {hist.error}</p>
+            : !hist ? <p className="text-xs text-sand/50">Buscando presentaciones en Drive…</p>
+              : !hist.lista.length ? <p className="text-xs text-sand/50">No hay presentaciones antiguas en la carpeta de Drive.</p>
+                : (
+                  <>
+                    <Campo etiqueta="Año">
+                      <select value={anio} onChange={(e) => { setAnio(e.target.value); setFichero(hist.lista.find((x) => String(x.anio) === e.target.value)?.id || ""); }} className={`${FIELD} block`}>
+                        {anios.map((a) => <option key={a} value={a}>{a}</option>)}
+                      </select>
+                    </Campo>
+                    <Campo etiqueta="Presentación">
+                      <select value={fichero} onChange={(e) => setFichero(e.target.value)} className={`${FIELD} block max-w-[22rem]`}>
+                        {ficheros.map((f) => <option key={f.id} value={f.id}>{f.nombre.includes(fechaCortaEs(f.fecha)) ? f.nombre : `${fechaCortaEs(f.fecha)} · ${f.nombre}`}</option>)}
+                      </select>
+                    </Campo>
+                  </>
+                )
+        )}
+        <label className="flex items-center gap-2 pb-2 text-[12px] text-sand/75">
+          <input type="checkbox" checked={sustituir} onChange={(e) => setSustituir(e.target.checked)} className="h-4 w-4 accent-[#85C8FF]" />
+          Sustituir lo que hay en la pestaña
+        </label>
         <div className="ml-auto flex gap-2">
           <button type="button" onClick={onCerrar} className={`${FIELD} px-3 py-2 text-xs font-bold`}>Cancelar</button>
           <button
-            type="button" disabled={!n}
-            onClick={() => onCopiar({
-              proyectos: (d.proyectos || []).filter((p) => sel[`p:${p.id}`]),
-              incidencias: (d.incidencias || []).filter((i) => sel[`i:${i.id}`]),
-              traspasos: (d.traspasos || []).filter((t) => sel[`t:${t.id}`]),
-            })}
+            type="button" disabled={!n || carga.estado !== "ok"}
+            onClick={() => {
+              if (sustituir && !confirm(`¿Sustituir todo lo de la pestaña de ${nombre} por los ${n} elementos marcados?`)) return;
+              onCopiar({
+                proyectos: (d.proyectos || []).filter((p) => sel[`p:${p.id}`]),
+                incidencias: (d.incidencias || []).filter((i) => sel[`i:${i.id}`]),
+                traspasos: (d.traspasos || []).filter((t) => sel[`t:${t.id}`]),
+                sustituir,
+              });
+            }}
             className="rounded-lg px-3 py-2 text-xs font-bold text-[#001391] disabled:opacity-40" style={{ background: PALETTE.serene }}
           >
             Copiar {n} {n === 1 ? "elemento" : "elementos"}
           </button>
         </div>
       </div>
-      <div className="grid max-h-80 gap-x-4 overflow-auto sm:grid-cols-3">
-        <div><p className="px-2 pb-1 text-[10px] font-bold uppercase tracking-wide text-sand/50">Proyectos</p>
-          {(d.proyectos || []).map((p) => <Fila key={p.id} k={`p:${p.id}`} titulo={p.nombre} sub={[p.interno, p.responsable].filter(Boolean).join(" · ")} />)}</div>
-        <div><p className="px-2 pb-1 text-[10px] font-bold uppercase tracking-wide text-sand/50">Incidencias y tareas</p>
-          {(d.incidencias || []).map((i) => <Fila key={i.id} k={`i:${i.id}`} titulo={i.titulo} sub={(TIPOS_INCIDENCIA.find((t) => t.id === i.tipo) || {}).label} />)}</div>
-        <div><p className="px-2 pb-1 text-[10px] font-bold uppercase tracking-wide text-sand/50">Traspasos</p>
-          {(d.traspasos || []).map((t) => <Fila key={t.id} k={`t:${t.id}`} titulo={`${t.codigo || ""} ${t.proyecto || ""}`} sub={t.nfq} />)}</div>
-      </div>
+
+      {carga.estado === "cargando" ? (
+        <p className="py-6 text-center text-xs text-sand/50">{origen === "drive" ? "Leyendo la presentación (puede tardar unos segundos)…" : "Cargando…"}</p>
+      ) : carga.estado === "error" ? (
+        <p className="py-3 text-xs font-bold text-mandarin">No se pudo leer: {carga.error}</p>
+      ) : carga.doc ? (
+        <>
+          <div className="mb-1 flex gap-3 px-2 text-[11px] font-bold text-sand/50">
+            <button type="button" className="hover:text-serene" onClick={() => todos(true)}>Todo</button>
+            <button type="button" className="hover:text-serene" onClick={() => todos(false)}>Nada</button>
+            <button type="button" className="hover:text-serene" onClick={() => todos("mios")}>Los de {nombre.split(" ")[0]}</button>
+          </div>
+          <div className="grid max-h-96 gap-x-4 overflow-auto sm:grid-cols-3">
+            <div><p className="px-2 pb-1 text-[10px] font-bold uppercase tracking-wide text-sand/50">Proyectos · {(d.proyectos || []).length}</p>
+              {(d.proyectos || []).map((p) => <Fila key={p.id} k={`p:${p.id}`} titulo={p.nombre} sub={[p.interno, p.responsable, `${(p.tareas || []).length} tareas`, p.anexo && "anexo"].filter(Boolean).join(" · ")} />)}</div>
+            <div><p className="px-2 pb-1 text-[10px] font-bold uppercase tracking-wide text-sand/50">Incidencias y tareas · {(d.incidencias || []).length}</p>
+              {(d.incidencias || []).map((i) => <Fila key={i.id} k={`i:${i.id}`} titulo={i.titulo} sub={(TIPOS_INCIDENCIA.find((t) => t.id === i.tipo) || {}).label} />)}</div>
+            <div><p className="px-2 pb-1 text-[10px] font-bold uppercase tracking-wide text-sand/50">Traspasos · {(d.traspasos || []).length}</p>
+              {(d.traspasos || []).map((t) => <Fila key={t.id} k={`t:${t.id}`} titulo={`${t.codigo || ""} ${t.proyecto || ""}`} sub={t.nfq} />)}</div>
+          </div>
+        </>
+      ) : null}
     </section>
   );
 }
 
 // ── Editor de una pestaña ───────────────────────────────────────────────────
-function EditorPestana({ id, nombre, esMia, t, upd, guardar, recargar, fuentes, comun }) {
-  const datos = t?.doc || docVacio(comun.fechaPorDefecto);
+function EditorPestana({ id, nombre, esMia, t, previa, upd, guardar, recargar, comun }) {
+  const datos = t?.doc || (previa ? { ...previa.doc, fechaReunion: comun.semana } : docVacio(comun.semana));
   const [tab, setTab] = useState("proyectos");
   const [abiertos, setAbiertos] = useState({});
   const [copiando, setCopiando] = useState(false);
@@ -734,9 +862,10 @@ function EditorPestana({ id, nombre, esMia, t, upd, guardar, recargar, fuentes, 
       alert(`No se pudo importar el JSON: ${e.message || e}`);
     }
   };
-  const copiar = ({ proyectos, incidencias, traspasos }) => {
+  const copiar = ({ proyectos, incidencias, traspasos, sustituir }) => {
     const nuevo = (pre) => (x) => ({ ...clonar(x), id: uid(pre) });
     upd((d) => {
+      if (sustituir) { d.proyectos = []; d.incidencias = []; d.traspasos = []; }
       d.proyectos.push(...proyectos.map(nuevo("p")));
       (d.incidencias ||= []).push(...incidencias.map(nuevo("i")));
       (d.traspasos ||= []).push(...traspasos.map(nuevo("tr")));
@@ -759,7 +888,12 @@ function EditorPestana({ id, nombre, esMia, t, upd, guardar, recargar, fuentes, 
         </div>
       </div>
 
-      {copiando && <CopiarDe fuentes={fuentes} nombre={nombre} onCopiar={copiar} onCerrar={() => setCopiando(false)} />}
+      {!t && previa && (
+        <p className="mb-3 rounded-lg border border-serene/30 bg-serene/10 px-3 py-2 text-[12px] text-sand/80">
+          Esta semana aún no tiene datos guardados: se muestra lo de <b>la semana del lunes {fechaCortaEs(previa.semana)}</b>. Al primer cambio se guarda como esta semana (la anterior no se toca).
+        </p>
+      )}
+      {copiando && <CopiarDe nombre={nombre} idActual={id} comun={comun} onCopiar={copiar} onCerrar={() => setCopiando(false)} />}
 
       <Presentacion datos={datos} quien={id} autor={nombre} {...comun.backend}>
         <CamposReunion datos={datos} set={(cambios) => upd((d) => Object.assign(d, cambios))} />
@@ -889,7 +1023,7 @@ function EditorPestana({ id, nombre, esMia, t, upd, guardar, recargar, fuentes, 
 }
 
 // ── Resumen: presentación combinada ─────────────────────────────────────────
-function ResumenPestana({ coordinadores, tabs, upd, comun, irA, refrescar }) {
+function ResumenPestana({ coordinadores, tabs, previas, upd, comun, irA, refrescar }) {
   // Lo que han guardado los demás desde que se abrió la página: al entrar y
   // cada minuto (la combinada y lo que se borra salen de aquí).
   useEffect(() => {
@@ -899,14 +1033,15 @@ function ResumenPestana({ coordinadores, tabs, upd, comun, irA, refrescar }) {
   }, [refrescar]);
   const conf = tabs.resumen?.doc || {};
   const excluidos = new Set(conf.excluidos || []);
+  // Quien no ha tocado su pestaña esta semana entra con lo de su semana anterior.
   const filas = coordinadores.map((c) => {
-    const d = tabs[c.id]?.doc;
+    const previa = !tabs[c.id] && previas[c.id] ? previas[c.id] : null;
+    const d = tabs[c.id]?.doc || previa?.doc;
     const k = d ? cifras(d) : null;
-    return { c, d, k, t: tabs[c.id], incluido: !!(d && d.proyectos.length) && !excluidos.has(c.id) };
+    return { c, d, k, t: tabs[c.id], previa, incluido: !!(d && d.proyectos.length) && !excluidos.has(c.id) };
   });
   const incluidos = filas.filter((f) => f.incluido);
-  const fechaDefecto = incluidos.map((f) => f.d.fechaReunion || "").sort().pop() || comun.fechaPorDefecto;
-  const conf2 = { fechaReunion: conf.fechaReunion || fechaDefecto, trimestreGantt: conf.trimestreGantt || "" };
+  const conf2 = { fechaReunion: comun.semana, trimestreGantt: conf.trimestreGantt || "" };
   const combinada = useMemo(
     () => combinarDocs(incluidos.map((f) => ({ id: f.c.id, doc: f.d })), conf2),
     [tabs, conf2.fechaReunion, conf2.trimestreGantt, conf.excluidos], // eslint-disable-line react-hooks/exhaustive-deps
@@ -927,7 +1062,7 @@ function ResumenPestana({ coordinadores, tabs, upd, comun, irA, refrescar }) {
 
       <Presentacion
         datos={combinada} quien="" autor="" {...comun.backend}
-        borrar={incluidos.map((f) => ({ quien: f.c.id, fecha: f.d.fechaReunion })).filter((x) => x.fecha)}
+        borrar={incluidos.map((f) => ({ quien: f.c.id, fecha: comun.semana }))}
       >
         <CamposReunion datos={conf2} set={(cambios) => upd((d) => Object.assign(d, conf2, cambios))} />
       </Presentacion>
@@ -939,11 +1074,11 @@ function ResumenPestana({ coordinadores, tabs, upd, comun, irA, refrescar }) {
               <th className="px-3 py-2.5">Incluir</th><th className="px-3 py-2.5">Coordinador</th>
               <th className="px-3 py-2.5 text-right">Proyectos</th><th className="px-3 py-2.5 text-right">En riesgo</th>
               <th className="px-3 py-2.5 text-right">Incid. / bloq.</th><th className="px-3 py-2.5 text-right">Traspasos</th>
-              <th className="px-3 py-2.5">Reunión</th><th className="px-3 py-2.5">Última edición</th>
+              <th className="px-3 py-2.5">Datos</th><th className="px-3 py-2.5">Última edición</th>
             </tr>
           </thead>
           <tbody>
-            {filas.map(({ c, d, k, t, incluido }) => (
+            {filas.map(({ c, d, k, t, previa, incluido }) => (
               <tr key={c.id} className="border-t border-white/10">
                 <td className="px-3 py-2">
                   <input
@@ -963,7 +1098,7 @@ function ResumenPestana({ coordinadores, tabs, upd, comun, irA, refrescar }) {
                     <td className="px-3 py-2 text-right tabular-nums">{k.riesgo}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{k.incidencias + k.tareasAbiertas} / {k.bloqueadas}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{k.traspasos}</td>
-                    <td className="px-3 py-2 text-sand/70">{d.fechaReunion ? fechaCortaEs(d.fechaReunion) : "—"}</td>
+                    <td className="px-3 py-2 text-sand/70">{previa ? <span title="Sin cambios esta semana: entra lo de su semana anterior">de la semana del {fechaCortaEs(previa.semana)}</span> : "esta semana"}</td>
                     <td className="px-3 py-2 text-sand/60">{t?.actualizado ? `${fechaHora(t.actualizado)}${t.por ? ` · ${t.por}` : ""}` : "—"}</td>
                   </>
                 ) : (
@@ -990,15 +1125,49 @@ function ResumenPestana({ coordinadores, tabs, upd, comun, irA, refrescar }) {
 
 // ── Página ──────────────────────────────────────────────────────────────────
 const fechaCortaEs = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
-/** Lunes de esta semana: fecha por defecto de una pestaña nueva. */
-const lunesActual = () => { const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return toISO(d); };
+/** Lunes de la semana de una fecha ISO (hoy si no hay). */
+const lunesDe = (iso) => {
+  const d = iso ? new Date(`${iso}T12:00:00`) : new Date();
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return toISO(d);
+};
+const masSemanas = (iso, n) => { const d = new Date(`${iso}T12:00:00`); d.setDate(d.getDate() + 7 * n); return toISO(d); };
+
+/* Semana de la reunión (las reuniones son cada 2 semanas): flechas de semana
+   en semana, salto a una fecha y lista de las semanas que ya tienen datos. */
+function SelectorSemana({ semana, setSemana, semanas, bloqueado }) {
+  const hoy = lunesDe();
+  const lista = [...new Set([...semanas.map((x) => x.semana), hoy, semana])].sort().reverse();
+  const btn = `${FIELD} px-2.5 py-2 text-xs font-bold hover:border-white/30 disabled:opacity-40`;
+  return (
+    <section className={`${GLASS} mb-4 flex flex-wrap items-end gap-3 p-4`} aria-label="Semana">
+      <Campo etiqueta="Semana de la reunión (lunes)">
+        <div className="flex items-center gap-1.5">
+          <button type="button" className={btn} disabled={bloqueado} onClick={() => setSemana(masSemanas(semana, -1))} aria-label="Semana anterior">◀</button>
+          <select value={semana} disabled={bloqueado} onChange={(e) => setSemana(e.target.value)} className={`${FIELD} block`}>
+            {lista.map((s) => {
+              const n = semanas.find((x) => x.semana === s)?.ids.length || 0;
+              return <option key={s} value={s}>Semana del lunes {fechaCortaEs(s)}{s === hoy ? " (esta)" : ""}{n ? ` · ${n} con datos` : ""}</option>;
+            })}
+          </select>
+          <button type="button" className={btn} disabled={bloqueado} onClick={() => setSemana(masSemanas(semana, 1))} aria-label="Semana siguiente">▶</button>
+          <input type="date" disabled={bloqueado} value="" title="Ir a la semana de una fecha" aria-label="Ir a la semana de una fecha"
+            onChange={(e) => e.target.value && setSemana(lunesDe(e.target.value))} className={`${FIELD} block w-[2.6rem] cursor-pointer text-transparent`} />
+        </div>
+      </Campo>
+      <p className="pb-2 text-sm text-sand/60">Semana del {fechaLarga(semana)}</p>
+      {bloqueado && <p className="pb-2 text-[11.5px] text-sand/45">Guardando cambios… (espera para cambiar de semana)</p>}
+    </section>
+  );
+}
 
 export default function SeguimientoRoute() {
   const { getUrl } = useLinks();
   const { email } = useAuth();
   const backendUrl = getUrl("seguimientoBackend");
   const trUrl = getUrl("timereportBackend");
-  const { estado, coordinadores, tabs, cargar, refrescar, editar, guardar } = useSeguimiento(backendUrl, email);
+  const [semana, setSemana] = useState(() => lunesDe());
+  const { estado, coordinadores, tabs, previas, semanas, sucio, cargar, refrescar, editar, guardar, llamar } = useSeguimiento(backendUrl, email, semana);
   const [activa, setActiva] = useState(null);
 
   const yo = useMemo(
@@ -1010,20 +1179,8 @@ export default function SeguimientoRoute() {
     setActiva(yo ? yo.id : "resumen");
   }, [activa, coordinadores, yo]);
 
-  // Fuentes de «Copiar de…»: el borrador que se usaba antes en este navegador,
-  // las demás pestañas y el ejemplo del 28/09/2026.
-  const fuentes = useMemo(() => {
-    const out = [];
-    const viejo = leerBorrador();
-    if (viejo) out.push({ id: "borrador", label: `Borrador anterior de este navegador (${viejo.proyectos.length} proyectos)`, doc: viejo });
-    for (const c of coordinadores)
-      if (c.id !== activa && tabs[c.id]?.doc?.proyectos?.length) out.push({ id: c.id, label: `Pestaña de ${c.nombre}`, doc: tabs[c.id].doc });
-    out.push({ id: "ejemplo", label: "Ejemplo del 28/09/2026", doc: EJEMPLO });
-    return out;
-  }, [coordinadores, tabs, activa]);
-
   const comun = {
-    fechaPorDefecto: lunesActual(),
+    semana, semanas, coordinadores, llamar,
     backend: { backendUrl, trUrl, email },
     guardar,
     recargar: () => { if (confirm("¿Recargar los datos guardados? Se descartan los cambios sin guardar de esta página.")) { try { Object.keys(localStorage).filter((k) => k.startsWith("rdr_seguimiento_pendiente_")).forEach((k) => localStorage.removeItem(k)); } catch { /* */ } cargar(); } },
@@ -1043,7 +1200,8 @@ export default function SeguimientoRoute() {
             <IconList size={34} className="text-purple" /> Seguimiento
           </h1>
           <p className="mt-3 max-w-3xl text-pretty text-sm text-sand/65">
-            Cada coordinador tiene su pestaña con sus proyectos, incidencias y traspasos, y genera su presentación .pptx (plantilla BBVA × NFQ) en la carpeta de Drive de la reunión.
+            Por semana de reunión, cada coordinador tiene su pestaña con sus proyectos, incidencias y traspasos, y genera su presentación .pptx (plantilla BBVA × NFQ) en la carpeta de Drive.
+            Una semana nueva arranca con lo de la anterior; con «Copiar de…» se puede traer cualquier semana o una presentación antigua de Drive.
             En <b>Resumen</b> se combinan las de todos. Todo se guarda solo y lo ve el resto de coordinación.
           </p>
         </header>
@@ -1059,10 +1217,11 @@ export default function SeguimientoRoute() {
           </section>
         ) : (
           <>
+            <SelectorSemana semana={semana} setSemana={setSemana} semanas={semanas} bloqueado={sucio} />
             <div className="mb-5 flex flex-wrap gap-2" role="tablist" aria-label="Pestañas">
               {coordinadores.map((c) => {
                 const t = tabs[c.id];
-                const n = t?.doc?.proyectos?.length || 0;
+                const n = (t?.doc || previas[c.id]?.doc)?.proyectos?.length || 0;
                 return (
                   <Chip key={c.id} on={activa === c.id} onClick={() => setActiva(c.id)}>
                     {c.nombre}{yo?.id === c.id ? " (tú)" : ""} · {n}{t && t.ver > t.verGuardada ? " •" : ""}
@@ -1074,17 +1233,17 @@ export default function SeguimientoRoute() {
 
             {activa === "resumen" ? (
               <ResumenPestana
-                coordinadores={coordinadores} tabs={tabs} comun={comun} irA={setActiva} refrescar={refrescar}
+                coordinadores={coordinadores} tabs={tabs} previas={previas} comun={comun} irA={setActiva} refrescar={refrescar}
                 upd={(fn) => editar("resumen", fn, () => ({}))}
               />
             ) : activa ? (
               <EditorPestana
-                key={activa} id={activa}
+                key={`${activa}_${semana}`} id={activa}
                 nombre={coordinadores.find((c) => c.id === activa)?.nombre || ""}
                 esMia={yo?.id === activa}
-                t={tabs[activa]}
-                upd={(fn) => editar(activa, fn, () => docVacio(comun.fechaPorDefecto))}
-                guardar={guardar} recargar={comun.recargar} fuentes={fuentes} comun={comun}
+                t={tabs[activa]} previa={previas[activa]}
+                upd={(fn) => editar(activa, fn, () => (previas[activa] ? { ...clonar(previas[activa].doc), fechaReunion: semana } : docVacio(semana)))}
+                guardar={guardar} recargar={comun.recargar} comun={comun}
               />
             ) : null}
           </>
