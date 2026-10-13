@@ -47,6 +47,8 @@
  *    estado  { fecha:'2026-09-28', quien? }  -> { existe, nombre, ruta, url?, modificado?, carpetaUrl? }
  *    subir   { fecha, email, base64, quien? } -> { accion:'creada'|'actualizada', nombre, ruta, url, carpetaUrl, modificado }
  *            quien = id del coordinador (su presentación) o vacío (la combinada).
+ *            Con la combinada, borrar:[{ quien, fecha }] -> las presentaciones
+ *            independientes que incluye van a la papelera (+ borradas:[nombres]).
  * ============================================================================
  */
 
@@ -90,6 +92,8 @@ function _serve(p) {
       case 'subir':
         _exigirCoordinador(p.email);
         data = subir(p.fecha, p.base64, _quien(p.quien));
+        // Al combinar, las independientes que entran en la combinada sobran.
+        if (!p.quien && Array.isArray(p.borrar)) data.borradas = borrarIndependientes(p.borrar);
         break;
       case 'datos':
         _exigirCoordinador(p.email);
@@ -221,6 +225,27 @@ function subir(fechaIso, base64, quien) {
   } finally {
     lock.releaseLock();
   }
+}
+
+/** Manda a la papelera (recuperable 30 días) la presentación independiente de
+ *  cada { quien: id de coordinador, fecha } que exista. Devuelve los nombres. */
+function borrarIndependientes(lista) {
+  var borradas = [];
+  lista.forEach(function (x) {
+    if (!x || !x.quien) return; // nunca la combinada
+    var f = _fecha(x.fecha);
+    var carpeta = _carpetaMes(f, false);
+    if (!carpeta) return;
+    var nombre = _nombre(f, _quien(x.quien));
+    var it = carpeta.getFilesByName(nombre);
+    while (it.hasNext()) {
+      var fich = it.next();
+      if (fich.isTrashed()) continue;
+      fich.setTrashed(true);
+      borradas.push(nombre);
+    }
+  });
+  return borradas;
 }
 
 /* DriveApp no puede reemplazar el contenido binario de un fichero: se usa

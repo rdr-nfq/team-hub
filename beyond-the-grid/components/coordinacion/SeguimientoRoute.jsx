@@ -337,9 +337,10 @@ function useSeguimiento(backendUrl, email) {
     }));
   }, [backendUrl, email]);
 
-  const cargar = useCallback(async () => {
+  // silencioso: refresco en segundo plano (Resumen) sin pantalla de carga.
+  const cargar = useCallback(async (silencioso = false) => {
     if (!backendUrl || !email) return;
-    setEstado({ cargando: true, error: "" });
+    if (!silencioso) setEstado({ cargando: true, error: "" });
     try {
       const d = await llamar({ action: "datos" });
       const t = {};
@@ -358,10 +359,16 @@ function useSeguimiento(backendUrl, email) {
       setTabs(t);
       setEstado({ cargando: false, error: "" });
     } catch (e) {
-      setEstado({ cargando: false, error: String(e?.message || e) });
+      if (!silencioso) setEstado({ cargando: false, error: String(e?.message || e) });
     }
   }, [backendUrl, email, llamar]);
   useEffect(() => { cargar(); }, [cargar]);
+  const refrescar = useCallback(() => {
+    // Solo si no hay nada a medio guardar: si no, se esperaría al autoguardado.
+    const t = tabsRef.current;
+    if (Object.values(t).some((x) => x.ver > x.verGuardada || x.guardando)) return;
+    cargar(true);
+  }, [cargar]);
 
   const editar = useCallback((id, fn, base) => {
     setTabs((all) => {
@@ -410,7 +417,7 @@ function useSeguimiento(backendUrl, email) {
     return () => window.removeEventListener("beforeunload", fn);
   }, [tabs]);
 
-  return { estado, coordinadores, tabs, cargar, editar, guardar };
+  return { estado, coordinadores, tabs, cargar, refrescar, editar, guardar };
 }
 
 /** Estado de guardado de una pestaña (texto + acciones si hay conflicto/error). */
@@ -452,8 +459,10 @@ async function leerTimeReport(trUrl, datos) {
 }
 
 /* Botones «Guardar en Drive» / «Descargar .pptx» y estado del fichero en Drive.
-   quien: id del coordinador ("" = combinada); autor: su nombre. */
-function Presentacion({ datos, quien, autor, backendUrl, trUrl, email, children }) {
+   quien: id del coordinador ("" = combinada); autor: su nombre.
+   borrar (solo la combinada): [{ quien, fecha }] de las presentaciones
+   independientes que incluye; al guardarla en Drive van a la papelera. */
+function Presentacion({ datos, quien, autor, borrar, backendUrl, trUrl, email, children }) {
   const [gen, setGen] = useState({ fase: "idle" }); // idle | generando | subiendo | ok | drive | error
   const [drive, setDrive] = useState(null);
   const fecha = datos?.fechaReunion || "";
@@ -499,7 +508,7 @@ function Presentacion({ datos, quien, autor, backendUrl, trUrl, email, children 
       const d = await leerRespuesta(await fetch(backendUrl, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ action: "subir", fecha, email, base64, quien }),
+        body: JSON.stringify({ action: "subir", fecha, email, base64, quien, ...(borrar ? { borrar } : {}) }),
       }));
       setGen({ fase: "drive", avisoTR, ...d });
       setDrive({ existe: true, nombre: d.nombre, ruta: d.ruta, url: d.url, carpetaUrl: d.carpetaUrl, modificado: d.modificado });
@@ -541,7 +550,7 @@ function Presentacion({ datos, quien, autor, backendUrl, trUrl, email, children 
           >
             {gen.fase === "subiendo"
               ? <><span aria-hidden className="h-4 w-4 animate-spin rounded-full border-2 border-[#001391]/30 border-t-[#001391]" /> Guardando en Drive…</>
-              : <><IconFolder size={15} /> {drive?.existe ? "Actualizar en Drive" : "Guardar en Drive"}</>}
+              : <><IconFolder size={15} /> {borrar ? "Combinar y guardar en Drive" : drive?.existe ? "Actualizar en Drive" : "Guardar en Drive"}</>}
           </button>
           <button
             type="button" onClick={descargar} disabled={ocupado || !fecha || vacio}
@@ -576,6 +585,18 @@ function Presentacion({ datos, quien, autor, backendUrl, trUrl, email, children 
           <a href={gen.url} target="_blank" rel="noopener noreferrer" className="text-serene hover:underline">Abrir presentación</a>
           <span className="text-sand/30">·</span>
           <a href={gen.carpetaUrl} target="_blank" rel="noopener noreferrer" className="text-serene hover:underline">Abrir carpeta</a>
+        </p>
+      )}
+      {gen.fase === "drive" && borrar && (
+        <p className="mt-1.5 text-xs text-sand/60">
+          {gen.borradas?.length
+            ? <>Presentaciones independientes enviadas a la papelera de Drive: {gen.borradas.join(" · ")}.</>
+            : "No había presentaciones independientes que borrar."}
+        </p>
+      )}
+      {borrar && gen.fase !== "drive" && (
+        <p className="mt-2 text-[11.5px] text-sand/45">
+          Al combinar se mandan a la papelera de Drive las presentaciones independientes de las pestañas incluidas. Si alguien cambia su pestaña después, puede volver a generar la suya; la siguiente combinación la vuelve a borrar.
         </p>
       )}
       {gen.fase === "ok" && (
@@ -868,7 +889,14 @@ function EditorPestana({ id, nombre, esMia, t, upd, guardar, recargar, fuentes, 
 }
 
 // ── Resumen: presentación combinada ─────────────────────────────────────────
-function ResumenPestana({ coordinadores, tabs, upd, comun, irA }) {
+function ResumenPestana({ coordinadores, tabs, upd, comun, irA, refrescar }) {
+  // Lo que han guardado los demás desde que se abrió la página: al entrar y
+  // cada minuto (la combinada y lo que se borra salen de aquí).
+  useEffect(() => {
+    refrescar();
+    const h = setInterval(refrescar, 60000);
+    return () => clearInterval(h);
+  }, [refrescar]);
   const conf = tabs.resumen?.doc || {};
   const excluidos = new Set(conf.excluidos || []);
   const filas = coordinadores.map((c) => {
@@ -890,13 +918,17 @@ function ResumenPestana({ coordinadores, tabs, upd, comun, irA }) {
       <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
         <h2 className="font-display text-2xl font-bold text-sand">Resumen · presentación combinada</h2>
         <EstadoGuardado t={tabs.resumen} guardar={(f) => comun.guardar("resumen", f)} recargar={comun.recargar} />
+        <button type="button" onClick={refrescar} className={`${FIELD} ml-auto px-3 py-2 text-xs font-bold hover:border-white/30`}>Actualizar</button>
       </div>
       <p className="mb-4 max-w-3xl text-sm text-sand/60">
         Junta las pestañas marcadas en una sola presentación («Seguimiento RDR Global»): Gantt de todos, un bloque por proyecto, incidencias, traspasos y el Time Report del trimestre.
         Cada coordinador sigue pudiendo generar la suya desde su pestaña.
       </p>
 
-      <Presentacion datos={combinada} quien="" autor="" {...comun.backend}>
+      <Presentacion
+        datos={combinada} quien="" autor="" {...comun.backend}
+        borrar={incluidos.map((f) => ({ quien: f.c.id, fecha: f.d.fechaReunion })).filter((x) => x.fecha)}
+      >
         <CamposReunion datos={conf2} set={(cambios) => upd((d) => Object.assign(d, conf2, cambios))} />
       </Presentacion>
 
@@ -966,7 +998,7 @@ export default function SeguimientoRoute() {
   const { email } = useAuth();
   const backendUrl = getUrl("seguimientoBackend");
   const trUrl = getUrl("timereportBackend");
-  const { estado, coordinadores, tabs, cargar, editar, guardar } = useSeguimiento(backendUrl, email);
+  const { estado, coordinadores, tabs, cargar, refrescar, editar, guardar } = useSeguimiento(backendUrl, email);
   const [activa, setActiva] = useState(null);
 
   const yo = useMemo(
@@ -1023,7 +1055,7 @@ export default function SeguimientoRoute() {
         ) : estado.error ? (
           <section className={`${GLASS} p-5`}>
             <p className="flex items-center gap-2 text-sm font-bold text-mandarin"><IconAlert size={15} /> No se pudieron leer los datos de Seguimiento: {estado.error}</p>
-            <button type="button" onClick={cargar} className={`${FIELD} mt-3 px-3 py-2 text-xs font-bold`}>Reintentar</button>
+            <button type="button" onClick={() => cargar()} className={`${FIELD} mt-3 px-3 py-2 text-xs font-bold`}>Reintentar</button>
           </section>
         ) : (
           <>
@@ -1042,7 +1074,7 @@ export default function SeguimientoRoute() {
 
             {activa === "resumen" ? (
               <ResumenPestana
-                coordinadores={coordinadores} tabs={tabs} comun={comun} irA={setActiva}
+                coordinadores={coordinadores} tabs={tabs} comun={comun} irA={setActiva} refrescar={refrescar}
                 upd={(fn) => editar("resumen", fn, () => ({}))}
               />
             ) : activa ? (
