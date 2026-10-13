@@ -25,7 +25,7 @@ const assets = {
   nfqBlack: png("nfq-black.png"),
   nfqWhite: png("nfq-white.png"),
   icons: Object.fromEntries(
-    ["warning", "tasks", "database", "transfer", "calendar", "clock"].map((i) => [i, png(`icon-${i}.png`)]),
+    ["warning", "tasks", "block", "database", "transfer", "calendar", "clock"].map((i) => [i, png(`icon-${i}.png`)]),
   ),
 };
 

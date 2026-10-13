@@ -24,7 +24,7 @@
          asignacion: "Marta", avance: 95 | null, estado: "en_plazo"
        }]
      }],
-     incidencias: [{ id, tipo: "incidencia" | "tarea", estado, titulo,
+     incidencias: [{ id, tipo: "incidencia" | "tarea" | "bloqueada", estado, titulo,
                      detalle: ["…"], icono?: "warning" }],
      traspasos: [{ id, codigo: "2025-61", proyecto, interno, nfq,
                    pendiente: "Falta OK usuario", tipo: "ok_usuario" }]
@@ -73,13 +73,20 @@ export const ESTADOS = [
 export const ESTADO = Object.fromEntries(ESTADOS.map((e) => [e.id, e]));
 
 export const TIPOS_TRASPASO = [
-  { id: "ok_usuario", label: "falta el OK de usuario (pruebas)", nombre: "Canary", color: COLOR.canary },
-  { id: "implantacion", label: "falta la implantación", nombre: "Mandarin", color: COLOR.mandarin },
-  { id: "otro", label: "otros pendientes", nombre: "Serene", color: COLOR.serene },
+  { id: "ok_usuario", label: "falta el OK de usuario (pruebas)", color: COLOR.canary },
+  { id: "implantacion", label: "falta la implantación", color: COLOR.mandarin },
+  { id: "otro", label: "otros pendientes", color: COLOR.serene },
 ];
 export const TIPO_TRASPASO = Object.fromEntries(TIPOS_TRASPASO.map((t) => [t.id, t]));
 
-export const ICONOS = ["warning", "tasks", "database", "transfer", "calendar", "clock"];
+// Incidencias y tareas pendientes (bloque 03).
+export const TIPOS_INCIDENCIA = [
+  { id: "incidencia", label: "Incidencia", icono: "warning" },
+  { id: "tarea", label: "Tarea", icono: "tasks" },
+  { id: "bloqueada", label: "Tarea bloqueada", icono: "block" },
+];
+
+export const ICONOS = ["warning", "tasks", "block", "database", "transfer", "calendar", "clock"];
 
 // ── Fechas ──────────────────────────────────────────────────────────────────
 export const MESES = [
@@ -140,8 +147,11 @@ export const rutaDrive = (iso) => {
   const d = parseISO(iso);
   return d ? [String(d.getFullYear()), `${d.getMonth() + 1}. ${cap(MESES[d.getMonth()])}`] : [];
 };
-/** "Seguimiento RDR - 28/09/26 - Autogenerado.pptx" */
-export const nombreFichero = (iso) => `Seguimiento RDR - ${fechaCorta(iso)} - Autogenerado.pptx`;
+/** "Seguimiento RDR - 28/09/26 - Autogenerado.pptx" (la combinada) o
+    "Seguimiento RDR - 28/09/26 - Ángela Montero - Autogenerado.pptx" (la de un
+    coordinador). Mismo formato que _nombre() de Codigo_Seguimiento.gs. */
+export const nombreFichero = (iso, quien) =>
+  `Seguimiento RDR - ${fechaCorta(iso)}${quien ? ` - ${quien}` : ""} - Autogenerado.pptx`;
 
 // ── Derivados ───────────────────────────────────────────────────────────────
 export const etiquetaFase = (t) => {
@@ -228,6 +238,7 @@ export const cifras = (datos) => {
       : 0,
     incidencias: incidencias.filter((i) => i.tipo === "incidencia").length,
     tareasAbiertas: incidencias.filter((i) => i.tipo !== "incidencia").length,
+    bloqueadas: incidencias.filter((i) => i.tipo === "bloqueada").length,
     traspasos: (datos.traspasos || []).length,
   };
 };
@@ -317,3 +328,63 @@ export const etiquetaSemana = (d) => `${d.getDate()}/${n2(d.getMonth() + 1)}`;
 export const mesSemana = (d) => mesDeSemana(d).getMonth();
 export const nombreMes = (d) => MESES[mesDeSemana(d).getMonth()].toUpperCase();
 export { addDays };
+
+// ── Pestañas por coordinador ────────────────────────────────────────────────
+/** Documento vacío de una pestaña. */
+export const docVacio = (fechaReunion = "") => ({ fechaReunion, trimestreGantt: "", proyectos: [], incidencias: [], traspasos: [] });
+
+/** Junta las pestañas elegidas en un solo documento (presentación combinada).
+    Los ids se prefijan con la pestaña: dos pestañas pueden repetir id. */
+export const combinarDocs = (docs, { fechaReunion, trimestreGantt: trim } = {}) => {
+  const out = docVacio(fechaReunion || "");
+  out.trimestreGantt = trim || "";
+  for (const { id, doc } of docs) {
+    if (!doc) continue;
+    const pre = (x) => ({ ...x, id: `${id}_${x.id}` });
+    out.proyectos.push(...(doc.proyectos || []).map(pre));
+    out.incidencias.push(...(doc.incidencias || []).map(pre));
+    out.traspasos.push(...(doc.traspasos || []).map(pre));
+  }
+  if (!out.fechaReunion) out.fechaReunion = docs.map((d) => d.doc?.fechaReunion || "").sort().pop() || "";
+  return out;
+};
+
+// ── Time Report del trimestre (última diapositiva) ──────────────────────────
+/** "2026-Q4" (Gantt) -> "2026Q4" (Time Report). */
+export const qTimeReport = (trimestre) => String(trimestre || "").replace("-", "");
+
+/* Quincena (1..6) del Q en la que cae una fecha; 0 antes del Q, 7 después. */
+const quincenaEnQ = (q, iso) => {
+  const m = /^(\d{4})Q([1-4])$/.exec(q);
+  const d = parseISO(iso);
+  if (!m || !d) return 0;
+  const i = (d.getFullYear() - Number(m[1])) * 12 + d.getMonth() - (Number(m[2]) - 1) * 3;
+  if (i < 0) return 0;
+  if (i > 2) return 7;
+  return i * 2 + (d.getDate() > 15 ? 2 : 1);
+};
+const NIVEL2_CORTO = (n2v) => String(n2v || "").replace(/\s*\(.*\)\s*$/, "") || "—";
+
+/** Filas del resumen del Time Report del Q a fecha de la reunión:
+    [{ nombre, codigo, estado, horas, imputadas, porImputar }]. El estado es el
+    Nivel 2 de la quincena de la reunión; "imputadas" = horas del reparto con
+    día <= fecha de la reunión. */
+export const resumenTimeReport = (snapshot, q, fechaISO) => {
+  const reparto = snapshot?.reparto || [];
+  const nq = Math.min(6, Math.max(1, quincenaEnQ(q, fechaISO) || 1));
+  return (snapshot?.proyectos || []).map((p) => {
+    let imputadas = 0;
+    for (const r of reparto)
+      if (r.proyectoId === p.id)
+        for (const [dia, h] of Object.entries(r.dias || {})) if (dia <= fechaISO) imputadas += Number(h) || 0;
+    const horas = Math.round(Number(p.horas) || 0);
+    return {
+      nombre: p.nombre || "",
+      codigo: [p.sdatool, p.feature].filter(Boolean).join(" · "),
+      estado: NIVEL2_CORTO((p.estados || {})[nq]),
+      horas,
+      imputadas: Math.round(imputadas),
+      porImputar: Math.max(0, horas - Math.round(imputadas)),
+    };
+  });
+};

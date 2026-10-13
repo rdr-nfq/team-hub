@@ -7,7 +7,12 @@
      01 Planificación del equipo  -> Gantt derivado de las tareas
      02 Seguimiento de proyectos  -> 1 slide por proyecto (pagina si no cabe)
      03 Incidencias y traspasos   -> tarjetas de incidencias/tareas + tabla
-     Cifras clave · Gracias · Anexo (proyectos con anexo: true, ocultos)
+     04 Time Report del trimestre -> proyectos del Q: estado, horas, por imputar
+     Gracias · Anexo (proyectos con anexo: true, ocultos)
+
+   opts.autor: nombre del coordinador (presentación de su pestaña); sin autor
+   es la combinada ("Seguimiento RDR Global"). opts.timeReport: { q, filas }
+   de resumenTimeReport() (sin él no hay bloque 04).
 
    Es código puro: no toca ni el DOM ni el sistema de ficheros. Recibe la
    clase PptxGenJS y los logos/iconos ya en base64 ("image/png;base64,…"),
@@ -15,7 +20,7 @@
    (scripts/seguimiento-ejemplos.mjs). */
 
 import {
-  COLOR as C, FASE, FASES_GANTT, EN_ESPERA, ESTADO, TIPO_TRASPASO, TIPOS_TRASPASO,
+  COLOR as C, FASE, FASES_GANTT, EN_ESPERA, ESTADO, TIPO_TRASPASO, TIPOS_TRASPASO, TIPOS_INCIDENCIA,
   fechaLarga, fechaTarea, etiquetaFase, colorFase, nombreCorto, resumenProyecto,
   gruposPorInterno, cifras, enumerar, numTexto, semanasGantt, trimestreGantt, tramosGantt, rangoGantt,
   etiquetaSemana, nombreMes, mesSemana, parseISO, addDays, completa,
@@ -28,9 +33,11 @@ const MX = 0.55; // margen lateral
 const CW = 12.23; // ancho de contenido
 const XR = MX + CW; // borde derecho del contenido
 
-const ICONO_TIPO = { incidencia: "warning", tarea: "tasks" };
+const ICONO_TIPO = Object.fromEntries(TIPOS_INCIDENCIA.map((t) => [t.id, t.icono]));
 
-export function generarPresentacion(PptxGenJS, datos, assets) {
+export function generarPresentacion(PptxGenJS, datos, assets, opts = {}) {
+  const autor = opts.autor || "";
+  const tr = opts.timeReport || null;
   const pres = new PptxGenJS();
   pres.layout = "LAYOUT_WIDE";
   pres.theme = { headFontFace: HEAD, bodyFontFace: BODY };
@@ -38,12 +45,12 @@ export function generarPresentacion(PptxGenJS, datos, assets) {
   pres.company = "NFQ Advisory Services";
   const fecha = datos.fechaReunion;
   const anio = (parseISO(fecha) || new Date()).getFullYear();
-  pres.title = `Seguimiento RDR · ${fechaLarga(fecha)}`;
+  pres.title = `Seguimiento RDR${autor ? ` · ${autor}` : ""} · ${fechaLarga(fecha)}`;
 
   const k = cifras(datos);
   const visibles = (datos.proyectos || []).filter((p) => !p.anexo);
   const anexos = (datos.proyectos || []).filter((p) => p.anexo);
-  const titulo = `Seguimiento RDR Global ${anio}`;
+  const titulo = autor ? `Seguimiento RDR · ${autor}` : `Seguimiento RDR Global ${anio}`;
 
   // ── Primitivas ────────────────────────────────────────────────────────────
   const S = pres.shapes;
@@ -121,9 +128,9 @@ export function generarPresentacion(PptxGenJS, datos, assets) {
     txt(s, `SEGUIMIENTO · ${fechaLarga(fecha).toUpperCase()}`, { x: MX, y: 1.95, w: 9.5, h: 0.3, size: 10.5, bold: true, color: C.mute, valign: "middle" });
     txt(s, [
       { text: "Seguimiento", options: { breakLine: true } },
-      { text: `RDR Global ${anio}` },
+      { text: autor ? `RDR · ${autor}` : `RDR Global ${anio}` },
     ], { x: MX, y: 2.3, w: 11, h: 1.53, size: 46, bold: true, head: true, color: C.sand, valign: "middle", lineSpacingMultiple: 0.95 });
-    txt(s, "Planificación del equipo, estado de los proyectos, incidencias y traspasos pendientes.", {
+    txt(s, `Planificación del equipo, estado de los proyectos, incidencias y traspasos pendientes${tr ? " y Time Report del trimestre" : ""}.`, {
       x: MX, y: 4.0, w: 9, h: 0.26, size: 11.5, color: C.muteLight, valign: "middle",
     });
     let x = MX;
@@ -152,20 +159,23 @@ export function generarPresentacion(PptxGenJS, datos, assets) {
     { n: "02", t: "Seguimiento de proyectos", color: C.lime,
       d: `Detalle de ${k.proyectos} proyectos: tareas, fechas límite, avance y estado.` },
     { n: "03", t: "Incidencias y traspasos", color: C.canary,
-      d: "Incidencias, tareas abiertas y traspasos pendientes de cerrar." },
+      d: "Incidencias, tareas abiertas o bloqueadas y traspasos pendientes de cerrar." },
+    ...(tr ? [{ n: "04", t: "Time Report del trimestre", color: C.aqua,
+      d: "Proyectos del trimestre: estado, horas totales y horas por imputar." }] : []),
   ];
   add((s, page, total) => {
     s.background = { color: C.midnight };
     marco(s, { oscuro: true, kicker: "Seguimiento RDR   Índice", pie: titulo, page, total });
     txt(s, "Índice", { x: MX, y: 1.3, w: 12.2, h: 0.62, size: 30, bold: true, head: true, color: C.sand, valign: "middle" });
+    const bw = (CW - (BLOQUES.length - 1) * 0.28) / BLOQUES.length;
     BLOQUES.forEach((b, i) => {
-      const x = MX + i * 4.17;
-      rect(s, x, 2.3, 3.89, 3.85, b.color, 0.12);
-      txt(s, `BLOQUE ${b.n}`, { x: x + 0.24, y: 2.56, w: 3.41, h: 0.26, size: 8.5, bold: true, valign: "middle" });
-      txt(s, b.t, { x: x + 0.24, y: 2.9, w: 3.41, h: 0.95, size: 15.5, bold: true, head: true });
-      txt(s, b.d, { x: x + 0.24, y: 3.92, w: 3.41, h: 1.95, size: 10.5 });
+      const x = MX + i * (bw + 0.28);
+      rect(s, x, 2.3, bw, 3.85, b.color, 0.12);
+      txt(s, `BLOQUE ${b.n}`, { x: x + 0.24, y: 2.56, w: bw - 0.48, h: 0.26, size: 8.5, bold: true, valign: "middle" });
+      txt(s, b.t, { x: x + 0.24, y: 2.9, w: bw - 0.48, h: 0.95, size: 15.5, bold: true, head: true });
+      txt(s, b.d, { x: x + 0.24, y: 3.92, w: bw - 0.48, h: 1.95, size: 10.5 });
     });
-    s.addNotes("Tres bloques: planificación del equipo, seguimiento de proyectos e incidencias y traspasos.");
+    s.addNotes(`Bloques: ${BLOQUES.map((b) => b.t.toLowerCase()).join(", ")}.`);
   });
 
   // ── Separadores ───────────────────────────────────────────────────────────
@@ -178,7 +188,7 @@ export function generarPresentacion(PptxGenJS, datos, assets) {
       txt(s, lineas.map((l, i) => ({ text: l, options: i < lineas.length - 1 ? { breakLine: true } : {} })), {
         x: MX, y: 3.27, w: 11.5, h: 1.44, size: 44, bold: true, head: true, color: oscuro ? C.sand : C.electric, valign: "middle", lineSpacingMultiple: 0.95,
       });
-      txt(s, sub, { x: MX, y: 4.89, w: 8.6, h: 0.5, size: 12.5, color: oscuro ? C.muteLight : C.electric });
+      if (sub) txt(s, sub, { x: MX, y: 4.89, w: 8.6, h: 0.5, size: 12.5, color: oscuro ? C.muteLight : C.electric });
       txt(s, pie, { x: MX, y: 7.06, w: 7.6, h: 0.26, size: 8, color: oscuro ? C.mute : C.gray5, valign: "middle" });
       img(s, oscuro ? assets.nfqWhite : assets.nfqBlack, 11.4, 7.11, 0.36, 0.17);
       txt(s, `p. ${String(page).padStart(2, "0")} / ${String(total).padStart(2, "0")}`, {
@@ -310,7 +320,6 @@ export function generarPresentacion(PptxGenJS, datos, assets) {
     bg: C.electric,
     kicker: "BLOQUE 02 · DETALLE POR RESPONSABLE",
     lineas: ["Seguimiento", "de proyectos"],
-    sub: `${k.proyectos} ${k.proyectos === 1 ? "proyecto" : "proyectos"} y ${k.tareas} tareas con fecha límite, avance y estado. ${k.hechas} ${k.hechas === 1 ? "tarea está" : "tareas están"} al 100 % y ${k.riesgo} en riesgo.`,
     pie: "02 · Seguimiento de proyectos",
     nota: `Bloque 2: ${k.proyectos} proyectos y ${k.tareas} tareas; ${k.hechas} al 100 % y ${k.riesgo} en riesgo.`,
   });
@@ -436,16 +445,20 @@ export function generarPresentacion(PptxGenJS, datos, assets) {
   const subIncidencias = () => {
     if (!incidencias.length) return "Sin incidencias ni tareas abiertas.";
     const inc = incidencias.filter((i) => i.tipo === "incidencia");
-    const tar = incidencias.filter((i) => i.tipo !== "incidencia");
+    const tar = incidencias.filter((i) => i.tipo !== "incidencia" && i.tipo !== "bloqueada");
+    const blq = incidencias.filter((i) => i.tipo === "bloqueada");
     const partes = [];
     if (inc.length)
-      partes.push(`${cap(numTexto(inc.length))} ${inc.length === 1 ? "incidencia" : "incidencias"} en ${enumerar([...new Set(inc.map((i) => i.titulo))])}`);
+      partes.push(`${numTexto(inc.length)} ${inc.length === 1 ? "incidencia" : "incidencias"} en ${enumerar([...new Set(inc.map((i) => i.titulo))])}`);
     if (tar.length)
-      partes.push(`${partes.length ? numTexto(tar.length) : cap(numTexto(tar.length))} ${tar.length === 1 ? "tarea abierta o pendiente" : "tareas abiertas o pendientes"}`);
-    return partes.join(" y ") + ".";
+      partes.push(`${numTexto(tar.length)} ${tar.length === 1 ? "tarea abierta o pendiente" : "tareas abiertas o pendientes"}`);
+    if (blq.length)
+      partes.push(`${numTexto(blq.length)} ${blq.length === 1 ? "tarea bloqueada" : "tareas bloqueadas"}`);
+    return cap(enumerar(partes)) + ".";
   };
   const etiquetaInc = (i) => {
     if (i.tipo === "incidencia") return ["INCIDENCIA", C.mandarin];
+    if (i.tipo === "bloqueada") return ["TAREA BLOQUEADA", C.purple];
     const e = ESTADO[i.estado] || ESTADO.en_plazo;
     return [`TAREA · ${e.label.toUpperCase()}`, e.color];
   };
@@ -464,7 +477,7 @@ export function generarPresentacion(PptxGenJS, datos, assets) {
       if (!items.length) {
         tarjeta(s, MX, 1.97, CW, 1.2);
         img(s, assets.icons.tasks, 0.79, 2.36, 0.42, 0.42);
-        txt(s, "Sin incidencias ni tareas abiertas a fecha de la reunión.", { x: 1.4, y: 2.36, w: 10, h: 0.42, size: 13.5, bold: true, head: true, valign: "middle" });
+        txt(s, "Sin incidencias ni tareas abiertas o bloqueadas a fecha de la reunión.", { x: 1.4, y: 2.36, w: 10, h: 0.42, size: 13.5, bold: true, head: true, valign: "middle" });
         return;
       }
       const compacto = items.length > 3;
@@ -541,45 +554,85 @@ export function generarPresentacion(PptxGenJS, datos, assets) {
         txt(s, tr.pendiente || "", { x: 10.07, y: y + 0.05, w: 2.47, h: 0.4, size: 9.5 });
         if (i < items.length - 1) linea(s, 0.72, y + TR_PITCH - 0.1, 11.9, 0, C.gray2);
       });
+      // Leyenda del código: muestra de color + qué falta (sin nombres de colores).
       const usados = TIPOS_TRASPASO.filter((t) => traspasos.some((x) => (x.tipo || "otro") === t.id));
-      if (usados.length)
-        txt(s, `Color del código: ${usados.map((t) => `${t.nombre}, ${t.label}`).join("; ")}.`, {
-          x: MX, y: 1.97 + 0.5 + filas * TR_PITCH + 0.2, w: 12.2, h: 0.3, size: 9.5, color: C.gray5, valign: "middle",
-        });
+      let lx = MX;
+      const ly = 1.97 + 0.5 + filas * TR_PITCH + 0.22;
+      for (const t of usados) {
+        const label = cap(t.label);
+        rect(s, lx, ly + 0.06, 0.34, 0.17, t.color, 0.085);
+        txt(s, label, { x: lx + 0.44, y: ly, w: 0.2 + label.length * 0.06, h: 0.3, size: 9.5, color: C.gray5, valign: "middle" });
+        lx += 0.44 + 0.2 + label.length * 0.06 + 0.3;
+      }
       s.addNotes(items.length
         ? `Traspasos: ${items.map((t) => `${t.proyecto} ${t.codigo} (${t.interno} → ${t.nfq}, ${String(t.pendiente || "").toLowerCase()})`).join("; ")}.`
         : "Sin traspasos pendientes.");
     }),
   );
 
-  // ── Cifras clave ──────────────────────────────────────────────────────────
-  add((s, page, total) => {
-    s.background = { color: C.electric };
-    marco(s, { oscuro: true, kicker: "Seguimiento RDR   Cifras clave", pie: "Resumen · Cifras clave", page, total });
-    txt(s, "Cifras clave", { x: MX, y: 1.08, w: 12.2, h: 0.49, size: 26, bold: true, head: true, color: C.sand, valign: "middle" });
-    const lista = (xs, max = 3) => (xs.length > max ? `${xs.slice(0, max).join(", ")}…` : enumerar(xs));
-    const datosCifras = [
-      [k.proyectos, `${k.proyectos === 1 ? "proyecto" : "proyectos"} en seguimiento con ${numTexto(k.internos, false)} ${k.internos === 1 ? "responsable interno" : "responsables internos"}`],
-      [k.tareas, "tareas con fecha límite y avance"],
-      [k.hechas, "tareas completadas al 100 %"],
-      [k.riesgo, k.riesgo ? `${k.riesgo === 1 ? "tarea" : "tareas"} en riesgo: ${lista(k.riesgoProyectos)}` : "tareas en riesgo"],
-      [k.implantaciones, k.implantaciones ? `${k.implantaciones === 1 ? "implantación" : "implantaciones"} en los próximos 30 días: ${lista(k.implantacionesProyectos)}` : "implantaciones en los próximos 30 días"],
-      [k.incidencias, `${k.incidencias === 1 ? "incidencia abierta" : "incidencias abiertas"}`],
-      [k.tareasAbiertas, `${k.tareasAbiertas === 1 ? "tarea abierta o pendiente" : "tareas abiertas o pendientes"} de coordinación`],
-      [k.traspasos, `${k.traspasos === 1 ? "traspaso pendiente" : "traspasos pendientes"} de OK de usuario o de implantación`],
-      [`${k.avanceMedio} %`, "avance medio de las tareas en seguimiento"],
-      [k.vencidas, k.vencidas ? `${k.vencidas === 1 ? "tarea" : "tareas"} con la fecha límite superada sin cerrar: ${lista(k.vencidasProyectos)}` : "tareas con la fecha límite superada sin cerrar"],
-    ];
-    datosCifras.forEach(([n, d], i) => {
-      const bw = (CW - 4 * 0.24) / 5;
-      const x = MX + (i % 5) * (bw + 0.24);
-      const y = 1.97 + Math.floor(i / 5) * 2.3;
-      rect(s, x, y, bw, 2.0, C.electric, 0.1, { line: { color: C.serene, width: 0.75, transparency: 40 } });
-      txt(s, String(n), { x: x + 0.2, y: y + 0.24, w: 1.9, h: 0.42, size: 20, bold: true, head: true, color: C.serene, valign: "middle" });
-      txt(s, d, { x: x + 0.2, y: y + 0.8, w: bw - 0.4, h: 1.1, size: 9, color: C.sand });
-    });
-    s.addNotes(`Resumen: ${k.proyectos} proyectos, ${k.tareas} tareas, ${k.hechas} al 100 %, ${k.riesgo} en riesgo; ${k.incidencias} incidencias; ${k.traspasos} traspasos.`);
-  });
+  // ── 04 · Time Report del trimestre ────────────────────────────────────────
+  if (tr) {
+    const qm = /^(\d{4})Q([1-4])$/.exec(tr.q || "");
+    const qLabel = qm ? `Q${qm[2]} ${qm[1]}` : tr.q;
+    const filasTR = tr.filas || [];
+    // Sin proyectos en el Q: todo el equipo en Soporte a Usuarios.
+    const soloSoporte = !filasTR.length;
+    const TRC = [["PROYECTO", 0.79, 4.6], ["ESTADO", 5.6, 2.1], ["HORAS TOTALES", 7.85, 1.45], ["POR IMPUTAR", 9.45, 1.35], ["IMPUTADO", 10.95, 1.6]];
+    const POR_PAG = 8;
+    const PITCH = 0.5;
+    const pags = [];
+    for (let i = 0; i < Math.max(1, filasTR.length); i += POR_PAG) pags.push(filasTR.slice(i, i + POR_PAG));
+    const tot = filasTR.reduce((a, f) => ({ horas: a.horas + f.horas, imputadas: a.imputadas + f.imputadas, porImputar: a.porImputar + f.porImputar }), { horas: 0, imputadas: 0, porImputar: 0 });
+    const fmt = (n) => Number(n || 0).toLocaleString("es-ES");
+    const barra = (s, x, y, pct) => {
+      txt(s, `${pct} %`, { x, y, w: 0.5, h: 0.3, size: 9, bold: true, valign: "middle" });
+      rect(s, x + 0.55, y + 0.115, 1.0, 0.07, C.gray2, 0.035);
+      if (pct > 0) rect(s, x + 0.55, y + 0.115, Math.max(0.07, pct / 100), 0.07, C.electric, 0.035);
+    };
+    pags.forEach((items, pi) =>
+      add((s, page, total) => {
+        s.background = { color: C.sand };
+        marco(s, { kicker: "04 · Time Report del trimestre", pie: `04 · Time Report — ${qLabel}`, page, total });
+        cabecera(s, {
+          sobre: `${qLabel} · a ${fechaLarga(fecha)}`,
+          titulo: `Time Report del trimestre${pags.length > 1 ? ` (${pi + 1}/${pags.length})` : ""}`,
+          sub: soloSoporte
+            ? "Sin proyectos con código en el trimestre: el equipo se dedica a Soporte a Usuarios."
+            : `${filasTR.length} ${filasTR.length === 1 ? "proyecto" : "proyectos"} · ${fmt(tot.horas)} h en total · ${fmt(tot.porImputar)} h por imputar.`,
+        });
+        const ultima = pi === pags.length - 1;
+        const n = soloSoporte ? 1 : items.length + (ultima ? 1 : 0);
+        tarjeta(s, MX, 2.19, CW, 0.46 + n * PITCH + 0.1);
+        rect(s, MX, 2.19, CW, 0.36, C.gray2, 0.12);
+        rect(s, MX, 2.37, CW, 0.18, C.gray2);
+        for (const [label, x, w] of TRC) txt(s, label, { x, y: 2.19, w, h: 0.36, size: 7.5, bold: true, valign: "middle", align: x > 7 && x < 10.9 ? "right" : "left" });
+        let y = 2.65;
+        if (soloSoporte) {
+          txt(s, "Soporte a Usuarios", { x: 0.79, y, w: 4.6, h: 0.3, size: 10, bold: true, valign: "middle" });
+          txt(s, "100 % del equipo", { x: 5.6, y, w: 4.5, h: 0.3, size: 10, bold: true, valign: "middle" });
+        }
+        items.forEach((f, i) => {
+          txt(s, f.nombre, { x: 0.79, y: y - 0.03, w: 4.6, h: 0.22, size: 9.5, bold: true, valign: "middle" });
+          if (f.codigo) txt(s, f.codigo, { x: 0.79, y: y + 0.19, w: 4.6, h: 0.17, size: 7.5, color: C.gray5, valign: "middle" });
+          txt(s, f.estado, { x: 5.6, y, w: 2.1, h: 0.3, size: 9, valign: "middle" });
+          txt(s, fmt(f.horas), { x: 7.85, y, w: 1.45, h: 0.3, size: 9.5, bold: true, align: "right", valign: "middle" });
+          txt(s, fmt(f.porImputar), { x: 9.45, y, w: 1.35, h: 0.3, size: 9.5, bold: true, align: "right", valign: "middle" });
+          barra(s, 10.95, y, f.horas > 0 ? Math.min(100, Math.round((f.imputadas / f.horas) * 100)) : 0);
+          if (i < items.length - 1 || ultima) linea(s, 0.72, y + PITCH - 0.1, 11.9, 0, C.gray2);
+          y += PITCH;
+        });
+        if (!soloSoporte && ultima) {
+          txt(s, "TOTAL", { x: 0.79, y, w: 4.6, h: 0.3, size: 9, bold: true, valign: "middle" });
+          txt(s, fmt(tot.horas), { x: 7.85, y, w: 1.45, h: 0.3, size: 10, bold: true, align: "right", valign: "middle" });
+          txt(s, fmt(tot.porImputar), { x: 9.45, y, w: 1.35, h: 0.3, size: 10, bold: true, align: "right", valign: "middle" });
+          barra(s, 10.95, y, tot.horas > 0 ? Math.min(100, Math.round((tot.imputadas / tot.horas) * 100)) : 0);
+        }
+        s.addNotes(soloSoporte
+          ? `Time Report ${qLabel}: sin proyectos con código; Soporte a Usuarios, 100 % del equipo.`
+          : `Time Report ${qLabel}: ${items.map((f) => `${f.nombre} (${f.estado}, ${f.horas} h, ${f.porImputar} h por imputar)`).join("; ")}.`);
+      }),
+    );
+  }
 
   // ── Gracias ───────────────────────────────────────────────────────────────
   add((s) => {
