@@ -1,6 +1,6 @@
 {
   "_comment": "Hub RDR · FUENTE ÚNICA de enlaces. Si un link cambia, edítalo SOLO aquí y haz commit: las páginas lo recogen al cargar (no hay que tocar ningún .html). Las claves *Backend son las URLs /exec de los Apps Script (cambian en cada despliegue). Los valores con {COD} son plantillas: la web sustituye {COD} por el código real.",
-  "_updated": "2026-06-19",
+  "_updated": "2026-10-13",
   "portalBBVACIB": {
     "url": "https://sites.google.com/bbva.com/portal-nfq-bbva-cib/",
     "note": "Portal interno del equipo NFQ-BBVA CIB"
@@ -55,12 +55,12 @@
     "note": "Backend Apps Script de /retro (retrospectivas). Código: AÚN NO está en apps-script/ (pendiente de incorporar). Cambia en cada despliegue."
   },
   "vacacionesBackend": {
-    "url": "https://script.google.com/macros/s/AKfycbyFJX5Cqjf5F0jAhUNv46kGpXbENlFo9_TpMNAGSE62XbTgjFPUEK_U-mR4x6wb9ZhYvw/exec",
+    "url": "https://script.google.com/macros/s/AKfycbztOFtA5gL6jx_vGYKv4Y9VjA0AV9sYgKVkj2N2UOUfAwMps-FuB_bmcdFfViz5HJu-/exec",
     "note": "Mismo backend que vacacionesV2Backend (apps-script/vacaciones/): lo sigue leyendo el Time Report (?modo=publico, festivos). El antiguo era apps-script/vacaciones-antiguo/."
   },
   "vacacionesV2Backend": {
-    "url": "https://script.google.com/macros/s/AKfycbyFJX5Cqjf5F0jAhUNv46kGpXbENlFo9_TpMNAGSE62XbTgjFPUEK_U-mR4x6wb9ZhYvw/exec",
-    "note": "Backend del sistema NUEVO de vacaciones (/vacaciones y /vacaciones-gestion): un solo Apps Script ligado al Excel «Vacaciones RDR» (apps-script/vacaciones/). Mientras esté sin URL, /vacaciones sigue con el backend antiguo (vacacionesBackend)."
+    "url": "https://script.google.com/macros/s/AKfycbztOFtA5gL6jx_vGYKv4Y9VjA0AV9sYgKVkj2N2UOUfAwMps-FuB_bmcdFfViz5HJu-/exec",
+    "note": "Backend del sistema NUEVO de vacaciones (/vacaciones y /vacaciones-gestion): un solo Apps Script independiente que abre el Excel «Vacaciones RDR» por su id (apps-script/vacaciones/). Mientras esté sin URL, /vacaciones sigue con el backend antiguo (vacacionesBackend)."
   },
   "controlBackend": {
     "url": "https://script.google.com/macros/s/AKfycbzMyQ98NgYaHwvvxhaPQBsQVrf2SuqQXMlo7xgPBNeg1o5TU-631ZD2l5cQ0tuKEr4AGQ/exec",
