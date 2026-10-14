@@ -12,14 +12,14 @@ import { IconArrow, IconLock } from "../icons";
 
 /* Capa intermedia «elige equipo» (HUB Formativo, Welcome Packs…): una
    tarjeta por equipo. Lo que aún no existe sale bloqueado con «En progreso».
-   opciones: [{ equipo, label, desc, href? }]  (sin href = en progreso) */
+   opciones: [{ equipo, label, desc, href? }]  (sin href = en progreso)
+   color: el de la SECCIÓN del hub a la que pertenece (Formación = Serene). */
 
-function Tarjeta({ op, delay, mio }) {
+function Tarjeta({ op, delay, mio, color }) {
   const reduce = useReducedMotion();
   const tilt = useTilt(reduce);
   const mapAccent = useAccentMap();
   const eq = EQUIPO[op.equipo];
-  const color = eq?.color || PALETTE.serene;
   const Icon = op.icon;
   const bloqueado = !op.href;
   const cls = "rdr-rise rdr-tilt group relative flex min-h-[220px] flex-col justify-between gap-4 overflow-hidden rounded-2xl border p-6 backdrop-blur-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene focus-visible:ring-offset-2 focus-visible:ring-offset-midnight";
@@ -61,14 +61,14 @@ function Tarjeta({ op, delay, mio }) {
   );
 }
 
-export default function SelectorEquipo({ kicker, titulo, intro, opciones }) {
+export default function SelectorEquipo({ kicker, titulo, intro, opciones, color = PALETTE.serene }) {
   const { equipos } = useAuth();
   return (
     <main className="relative min-h-dvh w-full">
       <div aria-hidden className="pointer-events-none fixed inset-[-3%] -z-10 overflow-hidden">
-        <span className="rdr-blob left-[-6%] top-[8%] h-80 w-80" style={{ background: PALETTE.lime }} />
+        <span className="rdr-blob left-[-6%] top-[8%] h-80 w-80" style={{ background: color }} />
         <span className="rdr-blob right-[2%] top-[20%] h-72 w-72" style={{ background: PALETTE.serene, animationDelay: "-4s" }} />
-        <span className="rdr-blob bottom-[-10%] left-[30%] h-96 w-96" style={{ background: PALETTE.aqua, animationDelay: "-8s" }} />
+        <span className="rdr-blob bottom-[-10%] left-[30%] h-96 w-96" style={{ background: PALETTE.royal, animationDelay: "-8s" }} />
       </div>
       <div className="mx-auto w-full max-w-6xl px-5 pb-24 pt-28 sm:px-6">
         <header className="mb-8">
@@ -77,7 +77,7 @@ export default function SelectorEquipo({ kicker, titulo, intro, opciones }) {
           {intro && <p className="mt-3 max-w-2xl text-pretty text-sm text-sand/65">{intro}</p>}
         </header>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          {opciones.map((op, i) => <Tarjeta key={op.equipo} op={op} delay={i * 70} mio={(equipos || []).includes(op.equipo)} />)}
+          {opciones.map((op, i) => <Tarjeta key={op.equipo} op={op} delay={i * 70} color={color} mio={(equipos || []).includes(op.equipo)} />)}
         </div>
       </div>
     </main>

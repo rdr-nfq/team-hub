@@ -23,6 +23,9 @@ const PLANTILLA_MIEMBRO = { id: "", nombre: "", email: "", emailBBVA: "", equipo
 
 const esBool = (campo, team) => campo !== "equipos" && (team.some((m) => typeof m[campo] === "boolean") || campo === "coordinador");
 
+// Gestión (Coordinación) va en morado, como su sección del hub.
+const COLOR_GESTION = PALETTE.purple;
+
 /* Equipos de la persona (RDR, Market Abuse, Comms Surveillance): uno o varios.
    Sin el campo en equipo.json cuenta como RDR. Decide qué columna de
    proyectos ve en el hub. */
@@ -41,7 +44,7 @@ function SelectorEquiposMiembro({ valor, onChange }) {
             }}
             title={on && valor.length === 1 ? "Tiene que estar al menos en un equipo" : undefined}
             className="rounded-lg border px-2.5 py-1.5 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene"
-            style={on ? { borderColor: rgba(e.color, 0.7), background: rgba(e.color, 0.18), color: mapAccent(e.color) } : { borderColor: "rgba(255,255,255,.15)", color: "rgba(247,248,248,.5)" }}
+            style={on ? { borderColor: rgba(COLOR_GESTION, 0.7), background: rgba(COLOR_GESTION, 0.18), color: mapAccent(COLOR_GESTION) } : { borderColor: "rgba(255,255,255,.15)", color: "rgba(247,248,248,.5)" }}
           >
             {on ? "✓ " : ""}{e.nombre}
           </button>
@@ -121,15 +124,15 @@ export default function EquipoGestionRoute() {
   return (
     <main className="relative min-h-dvh w-full">
       <div aria-hidden className="pointer-events-none fixed inset-[-3%] -z-10 overflow-hidden">
-        <span className="rdr-blob left-[-6%] top-[8%] h-80 w-80" style={{ background: PALETTE.mandarin }} />
+        <span className="rdr-blob left-[-6%] top-[8%] h-80 w-80" style={{ background: PALETTE.purple }} />
         <span className="rdr-blob bottom-[-10%] right-[-2%] h-96 w-96" style={{ background: PALETTE.royal }} />
       </div>
 
       <div className="mx-auto w-full max-w-6xl px-5 pb-24 pt-28 sm:px-6">
         <header className="mb-6">
-          <p className="font-sans text-xs font-bold uppercase tracking-[0.4em] text-mandarin/80">Coordinación</p>
+          <p className="font-sans text-xs font-bold uppercase tracking-[0.4em] text-purple/80">Coordinación</p>
           <h1 className="mt-2 flex items-center gap-3 font-display text-4xl font-bold leading-none tracking-tight text-sand sm:text-5xl">
-            <IconUsers size={34} className="text-mandarin" /> Gestión del equipo
+            <IconUsers size={34} className="text-purple" /> Gestión del equipo
           </h1>
           <p className="mt-3 max-w-2xl text-pretty text-sm text-sand/65">
             Edita equipo.json: datos, tracks, roles, altas y bajas. Al guardar se sube el cambio al
@@ -152,7 +155,7 @@ export default function EquipoGestionRoute() {
               <div className="flex flex-wrap gap-1" role="tablist" aria-label="Filtrar por equipo">
                 {[{ id: "", nombre: "Todos" }, ...EQUIPOS].map((e) => (
                   <button key={e.id || "todos"} type="button" role="tab" aria-selected={filtro === e.id} onClick={() => setFiltro(e.id)}
-                    className={`rounded-full border px-2.5 py-1 text-[11px] font-bold transition ${filtro === e.id ? "border-serene/70 bg-serene/15 text-serene" : "border-white/15 text-sand/60 hover:text-sand"}`}>
+                    className={`rounded-full border px-2.5 py-1 text-[11px] font-bold transition ${filtro === e.id ? "border-purple/70 bg-purple/15 text-purple" : "border-white/15 text-sand/60 hover:text-sand"}`}>
                     {e.nombre}{" "}
                     <span className="text-sand/45">{e.id ? team.filter((m) => equiposDe(m).includes(e.id)).length : team.length}</span>
                   </button>
@@ -161,7 +164,7 @@ export default function EquipoGestionRoute() {
               <button
                 type="button"
                 onClick={alta}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-[#FF7D69] px-3 py-2 text-xs font-bold text-[#001391] transition hover:brightness-95 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#9694FF] px-3 py-2 text-xs font-bold text-[#001391] transition hover:brightness-95 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene"
               >
                 <IconPlus size={13} /> Añadir compañero
               </button>
