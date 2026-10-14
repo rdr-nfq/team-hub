@@ -1197,7 +1197,7 @@ export default function SeguimientoRoute() {
         <header className="mb-6">
           <p className="font-sans text-xs font-bold uppercase tracking-[0.4em] text-purple/80">Coordinación</p>
           <h1 className="mt-2 flex items-center gap-3 font-display text-4xl font-bold leading-none tracking-tight text-sand sm:text-5xl">
-            <IconList size={34} className="text-purple" /> Seguimiento
+            <IconList size={34} className="text-purple" /> Seguimiento RDR
           </h1>
           <p className="mt-3 max-w-3xl text-pretty text-sm text-sand/65">
             Por semana de reunión, cada coordinador tiene su pestaña con sus proyectos, incidencias y traspasos, y genera su presentación .pptx (plantilla BBVA × NFQ) en la carpeta de Drive.

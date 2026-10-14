@@ -77,7 +77,7 @@ const COORD_SECTION = {
     { label: "Time Report", desc: "Proyectos y reparto de horas", icon: IconClock, action: "route", target: "/timereport-gestion" },
     { label: "Guardias", desc: "Solicitudes del equipo", icon: IconShield, action: "route", target: "/guardias-gestion" },
     { label: "Vacaciones", desc: "Solicitudes, saldos y festivos", icon: IconCalendar, action: "route", target: "/vacaciones-gestion" },
-    { label: "Seguimiento", desc: "Presentación de seguimiento (.pptx)", icon: IconCalendar, action: "route", target: "/seguimiento" },
+    { label: "Seguimiento RDR", desc: "Presentación de seguimiento (.pptx)", icon: IconCalendar, action: "route", target: "/seguimiento" },
     { label: "Gestión de equipo", desc: "Miembros, roles y tracks", icon: IconShield, action: "route", target: "/equipo-gestion" },
     // oculto: true -> no sale en el hub, pero la página y su código siguen
     // intactos (para recuperarla basta con quitar la marca).
