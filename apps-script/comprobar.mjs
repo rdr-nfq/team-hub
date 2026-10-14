@@ -9,7 +9,9 @@
 //   3. (Solo aviso, no falla) Nombres globales repetidos ENTRE proyectos: es
 //      lo que hay que resolver para juntarlos todos en un único proyecto de
 //      Apps Script (objetivo a largo plazo: más fácil de traspasar).
-//      vacaciones-antiguo/ no cuenta: se retira.
+//      vacaciones-antiguo/ no cuenta: se retira. Correo.gs tampoco: es común.
+//
+//   4. Correo.gs (envío común) tiene que ser IDÉNTICO en todas las carpetas.
 //
 //   node apps-script/comprobar.mjs
 
@@ -24,6 +26,7 @@ const RE_GLOBAL = /^(?:async\s+)?(function\*?|const|let|var|class)\s+([A-Za-z_$]
 let errores = 0;
 let total = 0;
 const entreProyectos = new Map(); // nombre -> Set(carpetas)
+const correos = new Map(); // carpeta -> contenido de Correo.gs
 for (const carpeta of readdirSync(raiz).sort()) {
   const dir = join(raiz, carpeta);
   if (!statSync(dir).isDirectory()) continue;
@@ -41,8 +44,9 @@ for (const carpeta of readdirSync(raiz).sort()) {
       console.error(`✗ ${rel}: ${e.message}\n    ${pos}`);
       continue;
     }
+    if (f === "Correo.gs") correos.set(carpeta, src);
     for (const [, , nombre] of src.matchAll(RE_GLOBAL)) {
-      if (carpeta !== "vacaciones-antiguo") {
+      if (carpeta !== "vacaciones-antiguo" && f !== "Correo.gs") {
         if (!entreProyectos.has(nombre)) entreProyectos.set(nombre, new Set());
         entreProyectos.get(nombre).add(carpeta);
       }
@@ -54,6 +58,14 @@ for (const carpeta of readdirSync(raiz).sort()) {
         globales.set(nombre, f);
       }
     }
+  }
+}
+
+const [modelo, ...otras] = [...correos];
+for (const [carpeta, src] of otras) {
+  if (src !== modelo[1]) {
+    errores++;
+    console.error(`✗ ${carpeta}/Correo.gs no es igual que ${modelo[0]}/Correo.gs: copia la versión buena en todas las carpetas`);
   }
 }
 

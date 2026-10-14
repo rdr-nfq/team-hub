@@ -156,6 +156,7 @@ const PALETA_PERSONAS = ['#85C8FF', '#88E783', '#FFB56B', '#9694FF', '#8BE1E9', 
 function autorizar() {
   _ss().getName();
   MailApp.getRemainingDailyQuota();
+  GmailApp.getAliases(); // remitente del grupo (Correo.gs)
   UrlFetchApp.fetch(V_CONFIG.EQUIPO_JSON_URL, { muteHttpExceptions: true });
   if (V_CONFIG.CALENDARIO_ID) CalendarApp.getCalendarById(V_CONFIG.CALENDARIO_ID);
   ScriptApp.getProjectTriggers(); // permiso para instalar los disparadores
@@ -1555,7 +1556,9 @@ function _correoNuevaSolicitud(s, saldoTras) {
     + '</table>';
   const html = _marco(c.emoji + ' ' + c.titulo, cuerpo, url, '✅ Revisar y aprobar →', '#88E783');
   const texto = s.persona + ' pide ' + c.frase + '.\nRevisar: ' + url;
-  MailApp.sendEmail(coords.join(','), asunto, texto, { htmlBody: html, name: V_CONFIG.REMITE, replyTo: s.email });
+  // Uno por coordinador (Correo.gs); basta con que le llegue a alguno.
+  const r = _correoEnviar(coords, asunto, texto, html, { nombre: V_CONFIG.REMITE, replyTo: s.email });
+  if (!r.enviados.length) throw new Error('no se pudo avisar a coordinación: ' + r.fallidos.join(' | '));
 }
 
 function _correoResolucion(s, decision, motivo, quien) {
@@ -1572,10 +1575,9 @@ function _correoResolucion(s, decision, motivo, quien) {
     + (motivo ? '<p style="margin:0 0 16px;font-size:14px;">💬 ' + _esc(motivo) + '</p>' : '');
   const html = _marco((ok ? '✅ ' : '❌ ') + c.titulo + (ok ? ' aprobad' : ' rechazad') + c.a, cuerpo, V_CONFIG.WEB_URL, '📅 Ver el calendario →', ok ? '#88E783' : '#85C8FF');
   const texto = 'Tu petición de ' + c.frase + ' está ' + (ok ? 'APROBADA' : 'RECHAZADA') + '.' + (motivo ? '\n' + motivo : '') + '\n' + V_CONFIG.WEB_URL;
-  const opts = { htmlBody: html, name: V_CONFIG.REMITE };
   const coords = _coordinadores();
-  if (coords.length) opts.replyTo = coords.join(',');
-  MailApp.sendEmail(s.email, asunto, texto, opts);
+  const r = _correoEnviar(s.email, asunto, texto, html, { nombre: V_CONFIG.REMITE, replyTo: coords.join(',') });
+  if (!r.enviados.length) throw new Error(r.fallidos.join(' | '));
 }
 
 // ── Diagnóstico (ejecutar desde el editor) ──────────────────────────────────
@@ -1593,5 +1595,5 @@ function diagnosticar() {
   });
   Logger.log('Solicitudes pendientes: ' + _leerSolicitudes(ss).filter(function (s) { return s.estado === 'PENDIENTE'; }).length);
   Logger.log('Coordinadores (equipo.json): ' + _coordinadores().join(', '));
-  Logger.log('Cuota de correo restante hoy: ' + MailApp.getRemainingDailyQuota());
+  Logger.log('Cuota de correo restante hoy: ' + MailApp.getRemainingDailyQuota() + ' · remitente: ' + (_correoRemitente() || 'la cuenta del script'));
 }

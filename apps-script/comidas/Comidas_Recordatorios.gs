@@ -1,8 +1,8 @@
 /* ===========================================================================
    Comidas RDR · Recordatorios por email (Apps Script)
 
-   Avisa a quien AÚN NO ha votado, con el enlace a la web. Se manda UN SOLO
-   correo a todos los pendientes (en copia oculta), no uno por persona.
+   Avisa a quien AÚN NO ha votado, con el enlace a la web. Un correo
+   INDIVIDUAL a cada pendiente, desde el grupo de Google (Correo.gs).
 
    Cuándo, y solo si ese jueves es de oficina ('N' en la pestaña "Semana"):
      · Lun 12 y 17 · Mar 12 y 17
@@ -13,41 +13,15 @@
      crearTriggers()             una vez, para programar los avisos
      enviarRecordatorioPrueba()  envía a PRUEBA_TO el correo que saldría hoy
      diagnosticarComidas()       qué haría el próximo disparo, sin enviar nada
-     probarEntrega('x@nfq.es')   manda las variantes de envío para ver cuál llega
-     diagnosticarRemitente()     remitentes que puede usar el script
+     probarRemitente()           (Correo.gs) remitente en uso + prueba con emojis
      revisarRebotes()            avisos de no entrega recientes
 
-   EMOJIS: se envía con MailApp, no con GmailApp. GmailApp.sendEmail rompe los
-   emojis de 4 bytes (🍽️, 🗳️, 🏆…) en el ASUNTO: llegaban como "������".
-   MailApp codifica bien el asunto (UTF-8). Solo el modo 'alias' sigue usando
-   GmailApp, porque MailApp no admite `from`.
+   Envío, remitente y emojis del asunto: ver Correo.gs.
    =========================================================================== */
 
 const WEB_URL   = 'https://rdr-nfq.github.io/team-hub/comidas/'; // enlace del botón del correo
 const REMITE    = 'Comidas RDR';
 const PRUEBA_TO = 'pablo.llorente@nfq.es';
-
-/* Remitente y forma de envío.
-
-   Sale desde la cuenta que ejecuta el script, con el equipo en copia oculta.
-   No se usa noreply@nfq.es porque esa dirección no existe en el directorio y
-   Workspace no la entrega a buzones del propio dominio: los avisos de pases
-   sí llegan con noReply:true porque van a un buzón de fuera (bbva.com). Está
-   comprobado con probarEntrega(): mismo código, misma cuenta y mismo
-   destinatario, solo llega el correo enviado desde la cuenta.
-
-     MODO_ENVIO = 'cuenta-bcc'   (actual) desde la cuenta, equipo en copia oculta
-                  'alias'        desde ALIAS_REMITENTE, si es alias verificado
-                  'noreply-para' desde noreply@, destinatarios en el PARA
-                  'noreply-bcc'  desde noreply@, equipo en copia oculta
-
-   Para volver a noreply@ hay que darlo de alta antes (ver COMO_ARREGLAR_NOREPLY
-   al final del fichero); después basta con cambiar esta constante. */
-const MODO_ENVIO = 'cuenta-bcc';
-
-// Remitente para MODO_ENVIO = 'alias'. diagnosticarRemitente() lista los alias
-// verificados que hay disponibles en la cuenta.
-const ALIAS_REMITENTE = 'comidas@nfq.es';
 
 // Dirección a la que van las respuestas al correo.
 const RESPONDER_A = 'pablo.llorente@nfq.es';
@@ -88,12 +62,18 @@ function enviarRecordatorio() {
   if (!emails.length) { Logger.log(fecha + ': no queda nadie por votar.'); return; }
 
   const asunto = asunto_(fecha, esFinal);
-  // Un único envío para todos los pendientes.
-  enviarMail_(emails, asunto, cuerpo_(pendientes, fecha, esFinal, lider_(ss, fecha)));
-  Logger.log(fecha + ': 1 correo a ' + emails.length + ' pendientes → ' + emails.join(', '));
+  const lider = lider_(ss, fecha);
+  // Uno por persona, saludándola por su nombre.
+  const r = { enviados: [], fallidos: [] };
+  pendientes.filter(p => p.email).forEach(p => {
+    const x = enviarMail_(p.email, asunto, cuerpo_(pendientes, fecha, esFinal, lider, p.nombre));
+    r.enviados = r.enviados.concat(x.enviados); r.fallidos = r.fallidos.concat(x.fallidos);
+  });
+  Logger.log(fecha + ': ' + r.enviados.length + ' de ' + emails.length + ' pendientes avisados → ' + r.enviados.join(', ')
+    + (r.fallidos.length ? ' · FALLAN: ' + r.fallidos.join(' | ') : ''));
 }
 
-/** Asunto del recordatorio (con emojis: van bien porque se envía con MailApp). */
+/** Asunto del recordatorio (los emojis llegan bien: ver Correo.gs). */
 function asunto_(fecha, esFinal) {
   return esFinal
     ? '⏰🍽️ Última llamada · la reserva del jueves ' + fecha + ' se hace en 30 min'
@@ -108,7 +88,7 @@ function proximoJueves_(tz, isoDow) {
 }
 
 // ── Envío ─────────────────────────────────────────────────────────────────
-//    UN solo correo para todos los pendientes, con el patrón de MODO_ENVIO.
+//    Correo.gs manda uno por destinatario, desde el grupo, con reintento.
 //    El cuerpo lleva su versión en texto plano además del HTML: los mensajes
 //    con un texto de verdad puntúan mejor en los filtros antispam.
 
@@ -123,63 +103,8 @@ function quitarTags_(html) {
     .trim();
 }
 
-/** Envía UN correo al grupo con el patrón que indique MODO_ENVIO. Si falla
- *  (una dirección que ya no existe puede tumbar el mensaje entero), reintenta
- *  uno a uno: así lo recibe todo el mundo menos quien tenga la dirección mala,
- *  que queda anotada en el registro para darla de baja. */
-function enviarGrupo_(emails, subject, htmlBody) {
-  if (!emails.length) return { enviados: 0, fallidos: [] };
-  const yo = Session.getEffectiveUser().getEmail();
-  const texto = quitarTags_(htmlBody);
-  // 'noreply-para' y 'alias' ponen a los destinatarios en el PARA; los modos
-  // '-bcc' mandan a la propia cuenta y dejan al equipo en copia oculta.
-  const enPara = MODO_ENVIO === 'noreply-para' || MODO_ENVIO === 'alias';
-  const enviar = (destinos) => {
-    const o = { htmlBody: htmlBody, name: REMITE };
-    if (MODO_ENVIO === 'alias') { o.from = ALIAS_REMITENTE; o.replyTo = RESPONDER_A; }
-    else if (MODO_ENVIO === 'cuenta-bcc') o.replyTo = RESPONDER_A;
-    else o.noReply = true;
-    if (enPara) return mandar_(destinos.join(','), subject, texto, o);
-    // Copia oculta con UN único destinatario visible. Ese PARA recibe el
-    // correo siempre, así que tiene que ser alguien que de verdad falte por
-    // votar: la propia cuenta solo si está entre los pendientes; si ya ha
-    // votado, va en el PARA el primer pendiente y el resto en copia oculta
-    // (antes el PARA era siempre la cuenta, y le llegaba aunque hubiera votado).
-    const yoPendiente = destinos.some(d => mismoEmail_(d, yo));
-    const para = yoPendiente ? yo : destinos[0];
-    const resto = destinos.filter(d => !mismoEmail_(d, para));
-    if (resto.length) o.bcc = resto.join(',');
-    return mandar_(para, subject, texto, o);
-  };
-  try {
-    enviar(emails);
-    return { enviados: emails.length, fallidos: [] };
-  } catch (e) {
-    Logger.log('Envío conjunto fallido (' + e + '). Se reintenta dirección a dirección.');
-    const fallidos = [];
-    let ok = 0;
-    emails.forEach(em => {
-      try { enviar([em]); ok++; }
-      catch (e2) { fallidos.push(em + ' (' + e2 + ')'); }
-    });
-    return { enviados: ok, fallidos: fallidos };
-  }
-}
-
-/** MailApp (asunto con emojis bien codificados); GmailApp solo si hace falta
- *  `from` (modo 'alias'), que MailApp no admite. */
-function mandar_(to, subject, texto, o) {
-  if (o.from) return GmailApp.sendEmail(to, subject, texto, o);
-  return MailApp.sendEmail(to, subject, texto, o);
-}
-
-/** Envía el recordatorio a todos los pendientes. */
 function enviarMail_(destinatarios, subject, htmlBody) {
-  const lista = [].concat(destinatarios).filter(Boolean);
-  const r = enviarGrupo_(lista, subject, htmlBody);
-  Logger.log('Enviado (' + MODO_ENVIO + '): ' + r.enviados + ' destinatarios'
-    + (r.fallidos.length ? ' · DIRECCIONES QUE FALLAN: ' + r.fallidos.join(' | ') : ''));
-  return r;
+  return _correoEnviar(destinatarios, subject, quitarTags_(htmlBody), htmlBody, { nombre: REMITE, replyTo: RESPONDER_A });
 }
 
 // ── Datos ─────────────────────────────────────────────────────────────────
@@ -258,7 +183,7 @@ function listaNombres_(pendientes) {
 }
 
 // ── Plantilla de email ────────────────────────────────────────────────────
-function cuerpo_(pendientes, fecha, esFinal, lider) {
+function cuerpo_(pendientes, fecha, esFinal, lider, nombre) {
   const faltan = pendientes.length && pendientes[0].nombre !== 'equipo'
     ? '<p style="margin:0 0 18px;font-size:13px;color:#5C5C5C;">⏳ Faltáis por votar: ' + listaNombres_(pendientes) + '.</p>'
     : '';
@@ -274,7 +199,7 @@ function cuerpo_(pendientes, fecha, esFinal, lider) {
     +   '<div style="font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#85C8FF;">Comidas RDR · BBVA × NFQ</div>'
     +   '<div style="font-size:22px;font-weight:bold;margin-top:4px;">' + (esFinal ? '⏰ Última llamada' : '🍽️ ¿Dónde comemos el jueves?') + '</div></div>'
     + '<div style="border:1px solid #E2E6EA;border-top:0;border-radius:0 0 14px 14px;padding:22px 24px;">'
-    +   '<p style="margin:0 0 14px;font-size:15px;">👋 Hola <strong>equipo</strong>,</p>'
+    +   '<p style="margin:0 0 14px;font-size:15px;">👋 Hola <strong>' + (nombre ? String(nombre).split(' ')[0] : 'equipo') + '</strong>,</p>'
     +   '<p style="margin:0 0 18px;font-size:15px;line-height:1.55;">' + intro + '</p>' + faltan + lin
     +   '<a href="' + WEB_URL + '" style="display:inline-block;background:' + btn + ';color:#001391;font-weight:bold;text-decoration:none;padding:12px 26px;border-radius:999px;font-size:15px;">🗳️ Votar ahora →</a>'
     +   '<p style="margin:18px 0 0;font-size:12px;color:#8a8a8a;">Si el botón no va: <a href="' + WEB_URL + '" style="color:#001391;">' + WEB_URL + '</a></p></div></div>';
@@ -291,7 +216,7 @@ function enviarRecordatorioPrueba() {
   const pendientes = noVotantes_(ss, fecha);
   enviarMail_(PRUEBA_TO, '[PRUEBA] ' + asunto_(fecha, false),
     cuerpo_(pendientes.length ? pendientes : [{ nombre: 'equipo' }], fecha, false, lider_(ss, fecha)));
-  Logger.log('Prueba enviada a ' + PRUEBA_TO + ' (modo ' + MODO_ENVIO + ').');
+  Logger.log('Prueba enviada a ' + PRUEBA_TO + ' (remitente: ' + (_correoRemitente() || 'la cuenta del script') + ').');
 }
 
 // ── Diagnóstico: qué haría el próximo disparo, sin enviar nada ────────────
@@ -314,61 +239,7 @@ function diagnosticarComidas() {
   const huerfanos = Object.keys(voto).filter(k => !delEquipo[k]).map(k => voto[k]);
   Logger.log('Ya han respondido (' + Object.keys(voto).length + '): ' + Object.keys(voto).map(k => voto[k]).join(', '));
   if (huerfanos.length) Logger.log('⚠ Votos con un nombre que no está en equipo.json (no cuentan como respondido): ' + huerfanos.join(', '));
-  const yo = Session.getEffectiveUser().getEmail();
-  if (MODO_ENVIO === 'cuenta-bcc' && pendientes.length) {
-    const emails = pendientes.map(p => p.email).filter(Boolean);
-    Logger.log('Destinatario visible (PARA): ' + (emails.some(e => mismoEmail_(e, yo)) ? yo : emails[0]) + ' · el resto en copia oculta');
-  }
-  const remitente = MODO_ENVIO === 'cuenta-bcc' ? yo
-    : MODO_ENVIO === 'alias' ? ALIAS_REMITENTE
-    : 'noreply@' + (yo.split('@')[1] || '?');
-  Logger.log('Modo de envío: ' + MODO_ENVIO + ' · remitente: ' + remitente
-    + ' · destinatarios en ' + (MODO_ENVIO === 'noreply-bcc' || MODO_ENVIO === 'cuenta-bcc' ? 'copia oculta' : 'el PARA'));
-  Logger.log('Cuota de correo restante hoy: ' + MailApp.getRemainingDailyQuota());
-}
-
-/* ── Comprobar la entrega ──────────────────────────────────────────────────
-   Manda a UNA dirección las cuatro variantes de envío, cada una con su asunto
-   y su resultado en el registro. Sirve para saber qué remitente entrega de
-   verdad — por ejemplo, después de dar de alta noreply@nfq.es:
-     [A] desde la cuenta, en copia oculta        (el modo actual)
-     [B] desde noreply@, en copia oculta
-     [C] desde noreply@, en el PARA
-     [D] desde ALIAS_REMITENTE, si es alias verificado de la cuenta
-   Pregunta cuáles han llegado, mirando también en spam. */
-function probarEntrega(direccion) {
-  const to = direccion || PRUEBA_TO;
-  const yo = Session.getEffectiveUser().getEmail();
-  const html = '<p style="font-family:Arial,sans-serif">Prueba de entrega de los recordatorios de Comidas RDR. '
-    + 'Si recibes este correo, avisa indicando cuál de las variantes te ha llegado (mira también en spam).</p>';
-  const texto = quitarTags_(html);
-  const intento = (etiqueta, fn) => {
-    try { fn(); Logger.log(etiqueta + ': enviado sin error'); }
-    catch (e) { Logger.log(etiqueta + ': ERROR → ' + e); }
-  };
-  intento('[A] desde la cuenta, copia oculta', () =>
-    GmailApp.sendEmail(yo, '[A] Prueba comidas · desde la cuenta', texto, { htmlBody: html, name: REMITE, bcc: to, replyTo: RESPONDER_A }));
-  intento('[B] desde noreply, copia oculta', () =>
-    GmailApp.sendEmail(yo, '[B] Prueba comidas · desde noreply', texto, { htmlBody: html, name: REMITE, bcc: to, noReply: true }));
-  intento('[C] desde noreply, en el PARA', () =>
-    GmailApp.sendEmail(to, '[C] Prueba comidas · noreply directo', texto, { htmlBody: html, name: REMITE, noReply: true }));
-  if (GmailApp.getAliases().indexOf(ALIAS_REMITENTE) >= 0) {
-    intento('[D] desde el alias ' + ALIAS_REMITENTE, () =>
-      GmailApp.sendEmail(to, '[D] Prueba comidas · desde ' + ALIAS_REMITENTE, texto, { htmlBody: html, name: REMITE, from: ALIAS_REMITENTE, replyTo: RESPONDER_A }));
-  } else {
-    Logger.log('[D] omitida: ' + ALIAS_REMITENTE + ' no es alias de ' + yo + ' (ver diagnosticarRemitente).');
-  }
-  Logger.log('Pruebas mandadas a ' + to + '. Pregunta cuáles han llegado, incluida la carpeta de spam.');
-}
-
-/** Qué remitentes puede usar de verdad este script. */
-function diagnosticarRemitente() {
-  const yo = Session.getEffectiveUser().getEmail();
-  const alias = GmailApp.getAliases();
-  Logger.log('Cuenta que ejecuta el script: ' + yo);
-  Logger.log('Con noReply:true el remitente sería: noreply@' + (yo.split('@')[1] || '?'));
-  Logger.log('Alias verificados disponibles (' + alias.length + '): ' + (alias.join(', ') || 'ninguno'));
-  Logger.log('¿' + ALIAS_REMITENTE + ' utilizable como remitente?: ' + (alias.indexOf(ALIAS_REMITENTE) >= 0));
+  Logger.log('Remitente: ' + (_correoRemitente() || 'la cuenta del script') + ' · un correo por pendiente');
   Logger.log('Cuota de correo restante hoy: ' + MailApp.getRemainingDailyQuota());
 }
 
@@ -385,21 +256,3 @@ function revisarRebotes() {
       + ' · ' + h.getFirstMessageSubject() + '\n   ' + m.getPlainBody().slice(0, 300).replace(/\s+/g, ' '));
   });
 }
-
-/* ── COMO_ARREGLAR_NOREPLY ─────────────────────────────────────────────────
-   Para poder enviar desde una dirección de no-respuesta hace falta que exista,
-   y eso se hace en la Consola de administración (admin.google.com):
-
-   1. Dar de alta noreply@nfq.es en Directorio → Usuarios (o Grupos). Al
-      existir deja de ser un remitente interno "inventado", la protección
-      antisuplantación no lo retiene y ya se puede usar MODO_ENVIO =
-      'noreply-para'.
-
-   2. O crear comidas@nfq.es y verificarlo en Gmail → Ver todos los ajustes →
-      Cuentas → "Enviar como" de la cuenta que ejecuta el script. Entonces
-      vale MODO_ENVIO = 'alias'. Hoy no hay ningún alias verificado, por eso
-      probarEntrega() omite esa variante.
-
-   Para ver qué pasa con un envío concreto: Informes → Búsqueda del registro de
-   correo, buscando por remitente. Dice si se entregó, si quedó en cuarentena o
-   si se rechazó y por qué. */

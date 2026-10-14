@@ -12,7 +12,7 @@ pegan en el editor; el principal se llama siempre `Codigo_<Proyecto>.gs`.
 
 | Carpeta | Ficheros | Tipo de proyecto | Páginas web | Clave `links.json` | Puesta en marcha (una vez) |
 |---|---|---|---|---|---|
-| `comidas/` | `Codigo_Comidas.gs`, `Comidas_Recordatorios.gs` | Ligado al Google Sheet de comidas | `/comidas` | `comidasBackend` | `crearTriggers()` (recordatorios) |
+| `comidas/` | `Codigo_Comidas.gs`, `Comidas_Recordatorios.gs`, `Correo.gs` | Ligado al Google Sheet de comidas | `/comidas` | `comidasBackend` | `crearTriggers()` (recordatorios) |
 | `control/` | `Codigo_Control.gs`, `appsscript.json`, `README.md` | Ligado al Sheet «Control - RDR BBVA» (o independiente con `SPREADSHEET_ID`) | `/simulador`, `/capacidad` | `controlBackend` | Ver `control/README.md` (token y permisos) |
 | `equipo/` | `Codigo_Equipo.gs` | Independiente | `/equipo-gestion` | `equipoBackend` | Propiedades: `GITHUB_TOKEN`, `CLAVE_EQUIPO` |
 | `guardias/` | `Codigo_Guardias.gs` | Independiente (crea su propio Sheet) | `/guardias`, `/guardias-gestion` | `guardiasBackend` | `autorizar()` |
@@ -20,7 +20,7 @@ pegan en el editor; el principal se llama siempre `Codigo_<Proyecto>.gs`.
 | `pases/` | `Codigo_Pases.gs`, `Avisos_Pases.gs` | Ligado al Sheet de Pases (`pasesSheet`) | `/pases` | `pasesBackend` | `instalarTriggerAvisos()` |
 | `seguimiento/` | `Codigo_Seguimiento.gs` | Independiente (datos por semana y coordinador en `<raíz>/_datos_web/`; lee los .pptx antiguos de la carpeta para copiarlos) | `/seguimiento` | `seguimientoBackend` | `autorizar()` |
 | `timereport/` | `Codigo_TimeReport.gs` | Independiente (crea su propio Sheet) | `/timereport`, `/timereport-gestion` | `timereportBackend` | Propiedad `EVIDENCIAS_FOLDER_ID`, `autorizar()`, `crearTriggerRecordatorioTR()` |
-| `vacaciones/` | `Codigo_Vacaciones.gs`, `Migracion_2026.gs` | Independiente; abre el Excel «Vacaciones RDR» por su id (`V_CONFIG.EXCEL_ID`) (el único: por año `Vacas_<año>`, `Festivos_<año>` —grupos y festivos— y `Solicitudes_<año>`) | `/vacaciones` (equipo), `/vacaciones-gestion` (coordinación) | `vacacionesV2Backend` (y `vacacionesBackend` para el Time Report, `?modo=publico`) | `autorizar()`, `instalarDisparadoresVacaciones()` y `empezarDeCero()` (migración completa; revisar la pestaña `Migracion_2026`). Opcional: `instalarPrecalentado()`. Desde el editor: `aplicarFormatoVacas`, `verMesActual`, `ocultarMesesPasados`, `mostrarTodosLosMeses` |
+| `vacaciones/` | `Codigo_Vacaciones.gs`, `Migracion_2026.gs`, `Correo.gs` | Independiente; abre el Excel «Vacaciones RDR» por su id (`V_CONFIG.EXCEL_ID`) (el único: por año `Vacas_<año>`, `Festivos_<año>` —grupos y festivos— y `Solicitudes_<año>`) | `/vacaciones` (equipo), `/vacaciones-gestion` (coordinación) | `vacacionesV2Backend` (y `vacacionesBackend` para el Time Report, `?modo=publico`) | `autorizar()`, `instalarDisparadoresVacaciones()` y `empezarDeCero()` (migración completa; revisar la pestaña `Migracion_2026`). Opcional: `instalarPrecalentado()`. Desde el editor: `aplicarFormatoVacas`, `verMesActual`, `ocultarMesesPasados`, `mostrarTodosLosMeses` |
 | `vacaciones-antiguo/` | `Codigo_Vacaciones.gs`, `Index.html`, `Formulario.gs`, `Migracion.gs` | Sistema ANTERIOR (Excel auxiliar + Google Form + panel de responsables). Se retira cuando el nuevo esté desplegado | `/vacaciones` mientras `vacacionesV2Backend` esté vacío | `vacacionesBackend` | — |
 
 **Pendientes de incorporar** (en uso, pero su código solo está en
@@ -28,16 +28,23 @@ script.google.com): `formacionesBackend` (`/formacion/equipo`) y
 `retroBackend` (`/retro`). Cuando se toquen, copiar aquí su código en
 `formaciones/` y `retro/`.
 
-**En espera — remitente común de los correos.** Hoy cada script envía a su
-manera y casi todos desde la cuenta personal de quien lo despliega. Plan
-acordado, pendiente de que IT cree el grupo (p. ej. `rdr-hub@nfq.es`):
-añadirlo como alias «Enviar como» en la cuenta que ejecuta los scripts y
-unificar el envío en un módulo común `_comun/Correo.gs`: remitente del grupo
-en un solo sitio, **un correo individual por persona** (sin copias ocultas,
-personalizado y solo a quien le falta algo: evidencias del TR, comidas…),
-reintento por persona, asunto con emojis vía API de Gmail y plantilla de
-marca. Los avisos personales (vacaciones, pases) salen con el mismo
-remitente. A medio plazo, cuenta dedicada con un único proyecto de envío.
+**Remitente común de los correos (`Correo.gs`).** Vacaciones y comidas ya
+envían con él; el resto de proyectos lo irán usando. Es el MISMO fichero en
+cada carpeta (`comprobar.mjs` falla si las copias no son idénticas):
+
+- **Un correo individual por persona** (sin copias ocultas), con reintento por
+  persona; las direcciones que siguen fallando quedan en el registro.
+- Remitente: el grupo de `CORREO_REMITENTE` (constante al principio del
+  fichero, o la propiedad del script del mismo nombre, que manda). Tiene que
+  ser alias «Enviar como» de la cuenta que ejecuta el script: Gmail → Ver
+  todos los ajustes → Cuentas → «Enviar correo como» → Añadir otra dirección
+  → la del grupo, «Tratar como alias»; el código de verificación llega al
+  grupo. Si no lo es, sale desde la cuenta, como antes: nunca se pierde un aviso.
+- Asunto con emojis: servicio avanzado **Gmail API** (editor → Servicios + →
+  Gmail API, identificador `Gmail`). Sin él sale igual desde el grupo, pero
+  con el asunto sin emojis.
+- `probarRemitente()` dice qué remitente se usa y manda una prueba a quien lo
+  ejecuta.
 
 ## Flujo para cambiar un backend
 
