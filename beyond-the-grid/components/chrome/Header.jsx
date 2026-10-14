@@ -16,8 +16,10 @@ export default function Header() {
   const pathname = usePathname();
   // Subtítulo por sección (la coincidencia más específica primero).
   const SUBTITLES = [
+    ["/formaciones", "HUB Formativo · elige equipo"],
     ["/formacion/equipo", "Formaciones del equipo"],
-    ["/formacion", "Ruta formativa · niveles 00–06"],
+    ["/formacion", "Formaciones RDR · niveles 00–06"],
+    ["/welcome-packs", "Welcome Packs · elige equipo"],
     ["/comidas", "Comidas del equipo"],
     ["/vacaciones-gestion", "Vacaciones · Coordinación"],
     ["/vacaciones", "Vacaciones del equipo"],
@@ -38,7 +40,7 @@ export default function Header() {
   const p = pathname || "/";
   const match = SUBTITLES.find(([base]) => p.startsWith(base));
   const backHref = match ? "/" : null;
-  const subtitle = match ? match[1] : "Hub de documentación · BBVA × NFQ";
+  const subtitle = match ? match[1] : "RDR · Market Abuse · Comms Surveillance · BBVA × NFQ";
 
   return (
     // Barra sólida con blur: el contenido pasa POR DEBAJO al hacer scroll,
@@ -59,10 +61,10 @@ export default function Header() {
           </Link>
         )}
         {/* Marca compacta en móviles muy estrechos (<460px), donde el título completo se oculta */}
-        <span className="font-display text-lg font-bold leading-none text-sand min-[460px]:hidden">RDR</span>
+        <span className="font-display text-lg font-bold leading-none text-sand min-[460px]:hidden">RD&amp;S Hub</span>
         <div className="hidden min-w-0 min-[460px]:block">
-          <h1 className="truncate font-display text-xl font-bold leading-tight tracking-tight text-sand sm:text-2xl md:text-3xl">
-            RDR Knowledge
+          <h1 className="truncate font-display text-lg font-bold leading-tight tracking-tight text-sand sm:text-2xl lg:text-3xl">
+            Reference Data &amp; Surveillance Hub
           </h1>
           <p className="mt-0.5 truncate text-xs text-serene/80 sm:text-sm">{subtitle}</p>
         </div>

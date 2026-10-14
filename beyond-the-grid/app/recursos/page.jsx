@@ -1,7 +1,7 @@
 import RecursosHub from "@/components/recursos/RecursosHub";
 
 export const metadata = {
-  title: "Recursos · RDR Knowledge",
+  title: "Recursos · RD&S Hub",
   description: "Biblioteca de recursos de referencia del equipo RDR.",
 };
 

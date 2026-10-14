@@ -16,9 +16,9 @@ const lato = Lato({
 });
 
 export const metadata = {
-  title: "RDR Knowledge · BBVA × NFQ",
+  title: "Reference Data & Surveillance Hub · BBVA × NFQ",
   description:
-    "Hub de documentación, formación y proyectos del Repositorio de Datos de Referencia.",
+    "Hub de documentación, formación y proyectos de los equipos RDR, Market Abuse y Comms Surveillance.",
 };
 
 export default function RootLayout({ children }) {

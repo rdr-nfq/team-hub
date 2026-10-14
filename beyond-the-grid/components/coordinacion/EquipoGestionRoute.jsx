@@ -5,6 +5,9 @@ import { PALETTE } from "@/lib/palette";
 import { useLinks } from "@/lib/links";
 import { GLASS, FIELD, TEXT } from "./ui";
 import { IconUsers, IconAlert, IconPlus, IconX, IconExternal } from "./icons";
+import { rgba } from "@/lib/ui";
+import { useAccentMap } from "@/lib/theme";
+import { EQUIPOS, equiposDe } from "@/lib/equipos";
 
 /* Gestión del equipo · Coordinación.
    Edita TODO equipo.json: cualquier campo de cada miembro (incluidos los que
@@ -15,10 +18,38 @@ import { IconUsers, IconAlert, IconPlus, IconX, IconExternal } from "./icons";
 
 const CLAVE_KEY = "rdr_equipo_clave";
 // Orden preferente de campos; cualquier otro campo del JSON se añade detrás.
-const CAMPOS_BASE = ["id", "nombre", "email", "emailBBVA", "track", "coordinador"];
-const PLANTILLA_MIEMBRO = { id: "", nombre: "", email: "", emailBBVA: "", track: "funcional", coordinador: false };
+const CAMPOS_BASE = ["id", "nombre", "email", "emailBBVA", "equipos", "track", "coordinador"];
+const PLANTILLA_MIEMBRO = { id: "", nombre: "", email: "", emailBBVA: "", equipos: ["rdr"], track: "funcional", coordinador: false };
 
-const esBool = (campo, team) => team.some((m) => typeof m[campo] === "boolean") || campo === "coordinador";
+const esBool = (campo, team) => campo !== "equipos" && (team.some((m) => typeof m[campo] === "boolean") || campo === "coordinador");
+
+/* Equipos de la persona (RDR, Market Abuse, Comms Surveillance): uno o varios.
+   Sin el campo en equipo.json cuenta como RDR. Decide qué columna de
+   proyectos ve en el hub. */
+function SelectorEquiposMiembro({ valor, onChange }) {
+  const mapAccent = useAccentMap();
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {EQUIPOS.map((e) => {
+        const on = valor.includes(e.id);
+        return (
+          <button
+            key={e.id} type="button" aria-pressed={on}
+            onClick={() => {
+              const n = on ? valor.filter((x) => x !== e.id) : [...valor, e.id];
+              if (n.length) onChange(EQUIPOS.map((x) => x.id).filter((id) => n.includes(id)));
+            }}
+            title={on && valor.length === 1 ? "Tiene que estar al menos en un equipo" : undefined}
+            className="rounded-lg border px-2.5 py-1.5 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene"
+            style={on ? { borderColor: rgba(e.color, 0.7), background: rgba(e.color, 0.18), color: mapAccent(e.color) } : { borderColor: "rgba(255,255,255,.15)", color: "rgba(247,248,248,.5)" }}
+          >
+            {on ? "✓ " : ""}{e.nombre}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function EquipoGestionRoute() {
   const { getUrl } = useLinks();
@@ -30,6 +61,7 @@ export default function EquipoGestionRoute() {
   const [estado, setEstado] = useState({ fase: "form" }); // form | enviando | ok | error
   const [confirmarBaja, setConfirmarBaja] = useState(null); // índice pendiente de confirmar
   const [cargaErr, setCargaErr] = useState(false);
+  const [filtro, setFiltro] = useState(""); // "" = todos los equipos
 
   useEffect(() => {
     try { setClave(localStorage.getItem(CLAVE_KEY) || ""); } catch {}
@@ -84,7 +116,7 @@ export default function EquipoGestionRoute() {
   };
 
   const etiqueta = (c) =>
-    ({ id: "ID", nombre: "Nombre", email: "Email NFQ/NTER", emailBBVA: "Email BBVA", track: "Track", coordinador: "Coordinador" }[c] || c);
+    ({ id: "ID", nombre: "Nombre", email: "Email NFQ/NTER", emailBBVA: "Email BBVA", equipos: "Equipos", track: "Track", coordinador: "Coordinador" }[c] || c);
 
   return (
     <main className="relative min-h-dvh w-full">
@@ -117,6 +149,15 @@ export default function EquipoGestionRoute() {
           <>
             {/* Barra de acciones */}
             <div className="sticky top-16 z-10 mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-[#070E46]/90 p-3 backdrop-blur">
+              <div className="flex flex-wrap gap-1" role="tablist" aria-label="Filtrar por equipo">
+                {[{ id: "", nombre: "Todos" }, ...EQUIPOS].map((e) => (
+                  <button key={e.id || "todos"} type="button" role="tab" aria-selected={filtro === e.id} onClick={() => setFiltro(e.id)}
+                    className={`rounded-full border px-2.5 py-1 text-[11px] font-bold transition ${filtro === e.id ? "border-serene/70 bg-serene/15 text-serene" : "border-white/15 text-sand/60 hover:text-sand"}`}>
+                    {e.nombre}{" "}
+                    <span className="text-sand/45">{e.id ? team.filter((m) => equiposDe(m).includes(e.id)).length : team.length}</span>
+                  </button>
+                ))}
+              </div>
               <button
                 type="button"
                 onClick={alta}
@@ -172,7 +213,7 @@ export default function EquipoGestionRoute() {
 
             {/* Miembros */}
             <ul className="grid gap-3 lg:grid-cols-2">
-              {team.map((m, i) => (
+              {team.map((m, i) => (filtro && !equiposDe(m).includes(filtro) ? null : (
                 <li key={i} className={`${GLASS} p-4`}>
                   <div className="mb-3 flex items-start justify-between gap-2">
                     <p className="min-w-0 truncate font-display text-base font-bold text-sand">
@@ -199,7 +240,13 @@ export default function EquipoGestionRoute() {
                     )}
                   </div>
                   <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-                    {campos.map((c) => (
+                    {campos.map((c) => c === "equipos" ? (
+                      // div, no label: un label haría que pinchar el título activara el primer botón.
+                      <div key={c} className="col-span-2" role="group" aria-label={`Equipos de ${m.nombre || "este miembro"}`}>
+                        <span className="text-[9.5px] font-bold uppercase tracking-wide text-sand/45">{etiqueta(c)}</span>
+                        <SelectorEquiposMiembro valor={equiposDe(m)} onChange={(v) => upd(i, "equipos", v)} />
+                      </div>
+                    ) : (
                       <label key={c} className={c === "email" || c === "emailBBVA" ? "col-span-2 block" : "block"}>
                         <span className="text-[9.5px] font-bold uppercase tracking-wide text-sand/45">{etiqueta(c)}</span>
                         {esBool(c, team) ? (
@@ -231,10 +278,10 @@ export default function EquipoGestionRoute() {
                     ))}
                   </div>
                 </li>
-              ))}
+              )))}
             </ul>
             <p className="mt-4 text-[11px] text-sand/45">
-              {team.length} miembros · {coordinadores} con rol de coordinador · los campos nuevos que aparezcan en
+              {team.length} miembros ({EQUIPOS.map((e) => `${team.filter((m) => equiposDe(m).includes(e.id)).length} ${e.nombre}`).join(" · ")}) · {coordinadores} con rol de coordinador · los campos nuevos que aparezcan en
               equipo.json se editan aquí automáticamente.
             </p>
           </>

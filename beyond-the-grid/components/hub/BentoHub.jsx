@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "next-view-transitions";
 import { useReducedMotion } from "framer-motion";
 import { useTilt } from "@/hooks/useTilt";
@@ -10,10 +10,11 @@ import { useAuth } from "../chrome/AuthGate";
 import { rgba } from "@/lib/ui";
 import { PALETTE } from "@/lib/palette";
 import { useAccentMap } from "@/lib/theme";
+import { EQUIPO } from "@/lib/equipos";
 import {
   IconBook, IconLink, IconUtensils, IconCalendar, IconRefresh, IconClock,
   IconRocket, IconCode, IconFolder, IconShield, IconArrow, IconExternal,
-  IconCopy, IconGrad, IconOrbit,
+  IconCopy, IconGrad, IconOrbit, IconLock,
 } from "../icons";
 
 // Estructura por TIPO. Cada sección = una columna. Acciones:
@@ -23,8 +24,8 @@ const SECTIONS = [
   {
     id: "form", n: "01", title: "Formación", color: PALETTE.serene,
     items: [
-      { kind: "feature", label: "HUB Formativo", desc: "Ruta por niveles 00–06", icon: IconGrad, action: "route", target: "/formacion" },
-      { label: "¿Qué es RDR?", desc: "Presentación de introducción", icon: IconBook, action: "route", target: "/que-es-rdr" },
+      { kind: "feature", label: "HUB Formativo", desc: "RDR · Market Abuse · Comms Surveillance", icon: IconGrad, action: "route", target: "/formaciones" },
+      { label: "Welcome Packs", desc: "¿Qué es RDR, Market Abuse y Comms Surveillance?", icon: IconBook, action: "route", target: "/welcome-packs" },
       { label: "Portal BBVA CIB", desc: "Portal corporativo del equipo", icon: IconLink, action: "copy", target: "portalBBVACIB" },
     ],
   },
@@ -38,19 +39,32 @@ const SECTIONS = [
       { label: "Guardias", desc: "Solicita y consulta tus guardias", icon: IconShield, action: "route", target: "/guardias" },
     ],
   },
-  {
-    id: "proy", n: "03", title: "Proyectos", color: PALETTE.lime,
-    items: [
-      { label: "Pases Calendados", desc: "Releases por entorno", icon: IconRocket, action: "route", target: "/pases" },
-      { label: "Recursos", desc: "Biblioteca de referencia RDR", icon: IconBook, action: "route", target: "/recursos" },
-      { label: "Planificación", desc: "Hoja de planificación", icon: IconCalendar, action: "open", target: "planificacionNFQ" },
-      { label: "Repositorio", desc: "Código y documentación", icon: IconFolder, actions: [
-        { label: "GitHub", action: "copy", target: "githubBBVA", icon: IconCode },
-        { label: "Drive", action: "copy", target: "driveBBVA", icon: IconFolder },
-      ] },
-    ],
-  },
 ];
+
+/* Columna 03: los proyectos del EQUIPO de quien entra (equipo.json →
+   "equipos", se edita en Gestión de equipo). Lo que aún no existe sale
+   bloqueado («En progreso»). */
+const PROYECTOS = {
+  rdr: [
+    { label: "Pases Calendados", desc: "Releases por entorno", icon: IconRocket, action: "route", target: "/pases" },
+    { label: "Recursos", desc: "Biblioteca de referencia RDR", icon: IconBook, action: "route", target: "/recursos" },
+    { label: "Planificación", desc: "Hoja de planificación", icon: IconCalendar, action: "open", target: "planificacionNFQ" },
+    { label: "Repositorio", desc: "Código y documentación", icon: IconFolder, actions: [
+      { label: "GitHub", action: "copy", target: "githubBBVA", icon: IconCode },
+      { label: "Drive", action: "copy", target: "driveBBVA", icon: IconFolder },
+    ] },
+  ],
+  "market-abuse": [
+    { label: "Proyectos", desc: "Proyectos y pases de Market Abuse", icon: IconRocket, enProgreso: true },
+    { label: "Recursos", desc: "Biblioteca de referencia de Market Abuse", icon: IconBook, enProgreso: true },
+  ],
+  "comms-surveillance": [
+    { label: "Proyectos", desc: "Proyectos y pases de Comms Surveillance", icon: IconRocket, enProgreso: true },
+    { label: "Recursos", desc: "Biblioteca de referencia de Comms Surveillance", icon: IconBook, enProgreso: true },
+  ],
+};
+const seccionEquipo = (id) => ({ id: "proy", n: "03", title: EQUIPO[id].nombre, color: EQUIPO[id].color, items: PROYECTOS[id] || [] });
+const CLAVE_EQUIPO_HUB = "rdr_hub_equipo";
 
 const COORD_SECTION = {
   id: "coord", n: "04", title: "Coordinación", color: PALETTE.purple,
@@ -148,6 +162,22 @@ function Card({ item, accent, delay }) {
   const cls = `${CARD} bg-white/[0.055] hover:bg-white/[0.1]`;
   const aria = item.label;
 
+  // Aún no existe: bloqueada, con «En progreso».
+  if (item.enProgreso) {
+    return (
+      <div aria-disabled="true" title="En progreso: todavía no está disponible" className={`${CARD} cursor-not-allowed bg-white/[0.03] opacity-60`} style={{ ...style, borderColor: rgba(accent, 0.25) }}>
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border" style={{ borderColor: rgba(accent, 0.25), background: rgba(accent, 0.08), color: mapAccent(accent) }}>
+          <IconLock size={20} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[15px] font-bold text-sand">{item.label}</span>
+          {item.desc && <span className="block truncate text-[13px] text-sand/70">{item.desc}</span>}
+        </span>
+        <span className="shrink-0 rounded-full border border-white/20 px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-wider text-sand/60">En progreso</span>
+      </div>
+    );
+  }
+
   // Multi-acción: título + pills (no es un único enlace).
   if (item.actions) {
     const { icon: Icon } = item;
@@ -205,7 +235,7 @@ function FeatureCard({ item, accent, delay }) {
   );
 }
 
-function TypeColumn({ sec, delay }) {
+function TypeColumn({ sec, delay, cabecera }) {
   const mapAccent = useAccentMap();
   return (
     <section aria-labelledby={`col-${sec.id}`} className="flex min-h-0 flex-col rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 backdrop-blur-sm" style={{ boxShadow: `inset 0 2px 0 ${rgba(sec.color, 0.7)}` }}>
@@ -213,6 +243,7 @@ function TypeColumn({ sec, delay }) {
         <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: sec.color }} />
         <span className="font-display text-xs font-bold tabular-nums" style={{ color: mapAccent(sec.color) }}>{sec.n}</span>
         <h2 id={`col-${sec.id}`} className="font-display text-sm font-bold uppercase tracking-[0.15em] text-sand">{sec.title}</h2>
+        {cabecera}
       </div>
       <div className="flex flex-1 flex-col gap-3 lg:min-h-0">
         {sec.items.map((item, i) =>
@@ -225,10 +256,41 @@ function TypeColumn({ sec, delay }) {
   );
 }
 
+/* Quien está en varios equipos elige cuál ver en la columna de proyectos. */
+function SelectorEquipos({ equipos, actual, onCambio }) {
+  const mapAccent = useAccentMap();
+  return (
+    <div className="ml-auto flex gap-1" role="tablist" aria-label="Equipo">
+      {equipos.map((id) => {
+        const on = id === actual;
+        const e = EQUIPO[id];
+        return (
+          <button key={id} type="button" role="tab" aria-selected={on} onClick={() => onCambio(id)} title={e.nombre}
+            className="rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene"
+            style={on ? { borderColor: rgba(e.color, 0.7), background: rgba(e.color, 0.16), color: mapAccent(e.color) } : { borderColor: "rgba(255,255,255,.15)" }}>
+            <span className={on ? "" : "text-sand/55"}>{e.corto}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function BentoHub() {
-  const { isCoordinador } = useAuth();
+  const { isCoordinador, equipos } = useAuth();
   const lite = useLowPower();
-  const sections = isCoordinador ? [...SECTIONS, COORD_SECTION] : SECTIONS;
+  const misEquipos = equipos && equipos.length ? equipos : ["rdr"];
+  const [equipo, setEquipo] = useState(misEquipos[0]);
+  useEffect(() => {
+    let guardado = null;
+    try { guardado = localStorage.getItem(CLAVE_EQUIPO_HUB); } catch {}
+    setEquipo(misEquipos.includes(guardado) ? guardado : misEquipos[0]);
+  }, [misEquipos.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+  const cambiarEquipo = (id) => { setEquipo(id); try { localStorage.setItem(CLAVE_EQUIPO_HUB, id); } catch {} };
+  const equipoActual = misEquipos.includes(equipo) ? equipo : misEquipos[0];
+  const proyectos = seccionEquipo(equipoActual);
+  const base = [...SECTIONS, proyectos];
+  const sections = isCoordinador ? [...base, COORD_SECTION] : base;
   const gridCols = sections.length >= 4 ? "lg:grid-cols-4" : "lg:grid-cols-3";
 
   return (
@@ -237,7 +299,12 @@ export default function BentoHub() {
       <div className="mx-auto flex w-full max-w-7xl flex-col px-5 pb-8 pt-24 sm:px-6 lg:h-full lg:pb-8">
         {/* Columnas por tipo (el título va en el header) */}
         <div className={`grid grid-cols-1 gap-4 sm:grid-cols-2 ${gridCols} lg:min-h-0 lg:flex-1`}>
-          {sections.map((sec, i) => <TypeColumn key={sec.id} sec={sec} delay={i * 60} />)}
+          {sections.map((sec, i) => (
+            <TypeColumn
+              key={sec.id} sec={sec} delay={i * 60}
+              cabecera={sec.id === "proy" && misEquipos.length > 1 ? <SelectorEquipos equipos={misEquipos} actual={equipoActual} onCambio={cambiarEquipo} /> : null}
+            />
+          ))}
         </div>
       </div>
     </main>

@@ -43,9 +43,9 @@ export default function LoadingScreen() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.08 }}
-            className="mt-3 font-display text-4xl font-bold tracking-tight text-[#F7F8F8] md:text-6xl"
+            className="mt-3 max-w-4xl text-balance font-display text-4xl font-bold tracking-tight text-[#F7F8F8] md:text-6xl"
           >
-            RDR Knowledge
+            Reference Data &amp; Surveillance Hub
           </motion.h1>
           <motion.div
             initial={{ scaleX: 0 }}

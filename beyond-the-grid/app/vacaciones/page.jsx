@@ -1,7 +1,7 @@
 import VacacionesSwitch from "@/components/vacaciones/VacacionesSwitch";
 
 export const metadata = {
-  title: "Vacaciones del equipo · RDR Knowledge",
+  title: "Vacaciones del equipo · RD&S Hub",
   description: "Calendario de ausencias del equipo RDR y solicitud de vacaciones.",
 };
 

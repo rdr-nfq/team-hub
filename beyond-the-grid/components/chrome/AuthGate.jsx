@@ -10,6 +10,7 @@ import {
 } from "react";
 import Script from "next/script";
 import { normEmail } from "@/lib/email";
+import { equiposDe, EQUIPO_DEFECTO } from "@/lib/equipos";
 
 /**
  * Puerta de acceso del hub con Google Identity Services (GIS).
@@ -28,7 +29,7 @@ const EQUIPO_URL = "/team-hub/equipo/equipo.json"; // absoluto: funciona desde /
 const GOOGLE_CLIENT_ID =
   "535974839401-54e3t5n61nbc0c31corcfr56gplj8svl.apps.googleusercontent.com";
 
-const AuthContext = createContext({ email: null, isCoordinador: false, logout: () => {} });
+const AuthContext = createContext({ email: null, isCoordinador: false, equipos: [EQUIPO_DEFECTO], logout: () => {} });
 export const useAuth = () => useContext(AuthContext);
 
 function decodeJwt(tok) {
@@ -47,6 +48,7 @@ export default function AuthGate({ children, onAuthed }) {
   const [authed, setAuthed] = useState(false);
   const [email, setEmail] = useState(null);
   const [isCoordinador, setCoord] = useState(false);
+  const [equipos, setEquipos] = useState([EQUIPO_DEFECTO]);
   const [msg, setMsg] = useState("");
   const [configErr, setConfigErr] = useState("");
   const [teamErr, setTeamErr] = useState("");
@@ -75,6 +77,7 @@ export default function AuthGate({ children, onAuthed }) {
       localStorage.setItem(AUTH_KEY, lower);
       setEmail(lower);
       setCoord(esCoordinador(lower));
+      setEquipos(equiposDe(team.current.find((p) => normEmail(p.email) === normEmail(lower))));
       setAuthed(true);
       onAuthed && onAuthed();
     },
@@ -112,7 +115,7 @@ export default function AuthGate({ children, onAuthed }) {
       } else {
         setMsg(
           data && data.email
-            ? `El correo ${data.email} no pertenece al equipo RDR. Usa tu cuenta @nfq.es, @nter.es o @nfq.mx del equipo.`
+            ? `El correo ${data.email} no pertenece a ningún equipo del hub. Usa tu cuenta @nfq.es, @nter.es o @nfq.mx del equipo.`
             : "No se pudo verificar el correo. Inténtalo de nuevo."
         );
         try {
@@ -175,7 +178,7 @@ export default function AuthGate({ children, onAuthed }) {
   }, [emailPermitido, entrar]);
 
   return (
-    <AuthContext.Provider value={{ email, isCoordinador, logout }}>
+    <AuthContext.Provider value={{ email, isCoordinador, equipos, logout }}>
       {/* Carga la librería de Google Identity Services */}
       <Script src="https://accounts.google.com/gsi/client" strategy="afterInteractive" />
 
@@ -186,10 +189,10 @@ export default function AuthGate({ children, onAuthed }) {
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-midnight/80 px-6 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-3xl border border-serene/20 bg-white/5 p-10 text-center backdrop-blur-xl">
             <p className="font-sans text-xs uppercase tracking-[0.3em] text-serene">
-              RDR Knowledge · BBVA × NFQ
+              Reference Data &amp; Surveillance Hub · BBVA × NFQ
             </p>
             <h1 className="mt-4 font-display text-3xl font-bold tracking-tight text-sand">
-              Acceso del equipo RDR
+              Acceso al hub
             </h1>
             <p className="mt-3 text-pretty text-sm text-sand/70">
               Inicia sesión con tu cuenta de Google del equipo para entrar al hub.
