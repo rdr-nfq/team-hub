@@ -178,6 +178,26 @@ function DetalleSolicitud({ s, d, post, onResuelta }) {
   );
 }
 
+/* «Días del año» editable: se guarda al salir del campo o con Intro. */
+function DiasInput({ valor, deshabilitado, onGuardar }) {
+  const [v, setV] = useState(String(valor ?? ""));
+  useEffect(() => { setV(String(valor ?? "")); }, [valor]);
+  const guardar = () => {
+    const n = Number(String(v).replace(",", "."));
+    if (String(v).trim() === "" || !Number.isFinite(n) || n === Number(valor)) { setV(String(valor ?? "")); return; }
+    onGuardar(n);
+  };
+  return (
+    <input
+      type="number" min={0} max={99} step={0.5} value={v} disabled={deshabilitado}
+      onChange={(e) => setV(e.target.value)} onBlur={guardar}
+      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") { setV(String(valor ?? "")); e.currentTarget.blur(); } }}
+      title="Días de vacaciones de este año (por defecto 27). Se guarda al salir del campo."
+      className={`${FIELD} !py-1 w-16 text-right text-xs tabular-nums`}
+    />
+  );
+}
+
 /* ── Pestaña Personas ── */
 function Personas({ d, post, onCambio }) {
   const [guardando, setGuardando] = useState("");
@@ -188,10 +208,20 @@ function Personas({ d, post, onCambio }) {
     try { await post("asignarGrupo", { anio: d.year, persona, grupo }); onCambio(); } catch (e) { setError(String(e.message || e)); }
     setGuardando("");
   };
+  const cambiarDias = async (persona, dias) => {
+    setGuardando(persona); setError("");
+    try { await post("ajustarDias", { anio: d.year, persona, dias }); onCambio(); } catch (e) { setError(String(e.message || e)); }
+    setGuardando("");
+  };
+  const enDirecto = (d.anios || []).includes(d.year - 1);
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[12.5px] text-sand/60">Solo descuenta VA. «Quedarían» descuenta además lo pendiente de aprobar. Los días se editan en el Excel (pestaña Vacas_{d.year}).</p>
+        <p className="text-[12.5px] text-sand/60">
+          Solo descuenta VA. «Quedarían» descuenta además lo pendiente de aprobar. «Del año» se puede cambiar aquí (por defecto 27).
+          {enDirecto && <> «Año ant.» va <b className="text-sand/85">en directo</b>: es lo que le queda a cada uno en {d.year - 1} y baja a medida que coge días allí.</>}
+          {" "}Los días sueltos se editan en el Excel (pestaña Vacas_{d.year}).
+        </p>
       </div>
       {error && <p className="rounded-lg border border-mandarin/50 bg-mandarin/10 px-3 py-2 text-xs font-bold text-mandarin">{error}</p>}
       <div className={`${GLASS} overflow-x-auto`}>
@@ -213,8 +243,12 @@ function Personas({ d, post, onCambio }) {
                     {d.grupos.map((g) => <option key={g.grupo} value={g.grupo}>{g.grupo}</option>)}
                   </select>
                 </td>
-                <td className="px-2 py-2 text-right tabular-nums text-sand/75">{p.anteriores}</td>
-                <td className="px-2 py-2 text-right tabular-nums text-sand/75">{p.dias}</td>
+                <td className={`px-2 py-2 text-right tabular-nums ${p.anteriores < 0 ? "text-mandarin" : "text-sand/75"}`} title={enDirecto ? `En directo: lo que le queda en ${d.year - 1}` : undefined}>
+                  {p.anteriores}{enDirecto && <span aria-hidden className="ml-1 text-[10px] text-serene">↻</span>}
+                </td>
+                <td className="px-2 py-1.5 text-right">
+                  <DiasInput valor={p.dias} deshabilitado={guardando === p.nombre} onGuardar={(n) => cambiarDias(p.nombre, n)} />
+                </td>
                 <td className="px-2 py-2 text-right tabular-nums text-sand/75">{p.total}</td>
                 <td className="px-2 py-2 text-right tabular-nums text-sand/75">{p.va}</td>
                 <td className={`px-2 py-2 text-right font-bold tabular-nums ${p.quedan < 0 ? "text-mandarin" : "text-sand"}`}>{p.quedan}</td>

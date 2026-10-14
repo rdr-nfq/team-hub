@@ -88,6 +88,7 @@
  *        guardarGrupo  { grupo, pais, anterior? }   (crear o renombrar)            (coord.)
  *        borrarGrupo   { grupo }                                                   (coord.)
  *        asignarGrupo  { anio, persona, grupo }                                    (coord.)
+ *        ajustarDias   { anio, persona, dias }   ("Días del año", columna F)       (coord.)
  *        solicitarCampana { campana, semanas:[lunes…], comentario }   (formulario de Navidad/Verano…)
  *                      una solicitud NUEVA por bloque de semanas seguidas (partida por año)
  *        guardarCampana { campana:{ id?, nombre, emoji, activa, semanas, tipo,
@@ -107,7 +108,10 @@ const V_CONFIG = {
   // Calendario compartido donde se crea un evento al aprobar (vacío = no se crea).
   CALENDARIO_ID: 'c_7f897d2240e831b1b87e40c7018e7c9d300b59f1b57146aade363d870536c314@group.calendar.google.com',
   REMITE: 'Vacaciones RDR',
-  TIPOS_SOLICITABLES: ['VA', 'FO', 'ES']
+  TIPOS_SOLICITABLES: ['VA', 'FO', 'ES'],
+  // Días de vacaciones de un año por defecto al crear el año siguiente
+  // (coordinación los cambia a mano por persona en la web: Personas).
+  DIAS_ANIO: 27
 };
 
 // Una pestaña de cada por año: Vacas_2026, Festivos_2026, Solicitudes_2026.
@@ -196,6 +200,7 @@ function _servir(p) {
       case 'borrarGrupo': _exigirCoord(p.email); data = borrarGrupo(p); break;
       case 'asignarGrupo': _exigirCoord(p.email); data = asignarGrupo(p); break;
       case 'crearAnio': _exigirCoord(p.email); data = crearAnio(p); break;
+      case 'ajustarDias': _exigirCoord(p.email); data = ajustarDias(p); break;
       default: throw new Error('Acción desconocida: ' + p.action);
     }
     if (p.action !== 'ping' && p.action !== 'datos') _invalidar();
@@ -1070,6 +1075,20 @@ function borrarGrupo(p) {
   return { grupo: grupo };
 }
 
+/** Días de vacaciones del año de una persona (columna F, "Días del año"). */
+function ajustarDias(p) {
+  const ss = _ss();
+  const anio = Number(p.anio);
+  const grid = _leerAnio(ss, anio);
+  if (!grid) throw new Error('No existe ' + _nombreHoja(anio) + '.');
+  const persona = _personaPorNombre(grid, String(p.persona || ''));
+  if (!persona) throw new Error('No existe ' + p.persona + ' en ' + _nombreHoja(anio) + '.');
+  const dias = Number(String(p.dias).replace(',', '.'));
+  if (!isFinite(dias) || dias < 0 || dias > 99 || Math.round(dias * 2) !== dias * 2) throw new Error('Días no válidos: usa un número entre 0 y 99 (admite medios días, p. ej. 27,5).');
+  grid.sh.getRange(persona.fila, G.DIAS).setValue(dias);
+  return { persona: persona.nombre, anio: anio, dias: dias };
+}
+
 function asignarGrupo(p) {
   const ss = _ss();
   const anio = Number(p.anio);
@@ -1191,7 +1210,8 @@ function solicitarCampana(p) {
 }
 
 /** Crea Vacas_<anio> a partir del año anterior: personas activas, grupo,
- *  días del año, y como "Días año anterior" lo que les quedaba.
+ *  V_CONFIG.DIAS_ANIO días del año, y como "Días año anterior" lo que les
+ *  queda allí, en directo (fórmula que sigue a Vacas_<anio-1>).
  *  Con p.rehacer y el año ya creado: lo vuelve a crear DESDE CERO (los días
  *  apuntados en Vacas_<anio> se pierden; los festivos y grupos de
  *  Festivos_<anio> se conservan y las solicitudes se guardan como copia). */
@@ -1216,7 +1236,9 @@ function crearAnio(p) {
     }
   }
   const filas = prev.personas.filter(function (x) { return x.activo; }).map(function (x) {
-    return { nombre: x.nombre, email: x.email, grupo: x.grupo, activo: true, anteriores: Math.max(0, x.quedan), dias: x.dias, codigos: {} };
+    // Días del año: los de por defecto (se ajustan a mano en la web). Año
+    // anterior: lo que le queda; _formatearRejilla lo deja EN DIRECTO (fórmula).
+    return { nombre: x.nombre, email: x.email, grupo: x.grupo, activo: true, anteriores: x.quedan, dias: V_CONFIG.DIAS_ANIO, codigos: {} };
   });
   // Festivos_<anio> con los mismos grupos (los festivos del año nuevo se
   // añaden desde la web o en la pestaña; si ya hay alguno, se marcan FE).
@@ -1267,6 +1289,39 @@ function _crearRejilla(ss, anio, filas) {
   return sh;
 }
 
+/* «Días año anterior» EN DIRECTO: si existe Vacas_<año-1>, la columna E de
+   cada persona que también está allí es una fórmula con lo que le QUEDA en
+   ese año. Así, cada día que se coge en 2026 baja lo que pasa a 2027, tanto
+   en el Excel como en la web. Quien no estaba el año anterior conserva el
+   valor escrito a mano. Si queda en negativo (se pasó), también se arrastra. */
+function _anterioresEnDirecto(ss, sh, anio, nombres) {
+  const prev = ss.getSheetByName(_nombreHoja(anio - 1));
+  if (!prev || prev.getLastRow() < G.FILA_1) return 0;
+  const enPrev = {};
+  prev.getRange(G.FILA_1, G.PERSONA, prev.getLastRow() - G.FILA_1 + 1, 1).getValues()
+    .forEach(function (r) { const n = String(r[0] || '').trim(); if (n) enPrev[n] = true; });
+  const ref = "'" + _nombreHoja(anio - 1) + "'!";
+  const q = _colLetra(G.QUEDAN), pc = _colLetra(G.PERSONA);
+  const formula = function (f, sep) {
+    return '=IFERROR(INDEX(' + ref + '$' + q + ':$' + q + sep + 'MATCH($' + pc + f + sep + ref + '$' + pc + ':$' + pc + sep + '0))' + sep + '0)';
+  };
+  let sep = ',', n = 0;
+  nombres.forEach(function (r, k) {
+    const nombre = String(r[0] || '').trim();
+    if (!nombre || !enPrev[nombre]) return;
+    const f = G.FILA_1 + k;
+    const celda = sh.getRange(f, G.ANTERIORES);
+    celda.setFormula(formula(f, sep));
+    if (n === 0) {
+      // Por si el Excel exigiera ";" (no debería con setFormula): se comprueba en la primera.
+      SpreadsheetApp.flush();
+      if (/^#(ERROR|NAME|NOMBRE)/i.test(String(celda.getDisplayValue()))) { sep = ';'; celda.setFormula(formula(f, sep)); }
+    }
+    n++;
+  });
+  return n;
+}
+
 /* Fórmulas y formato de Vacas_<año>. No toca los datos: se puede volver a
    ejecutar sobre una pestaña existente (aplicarFormatoVacas). */
 function _formatearRejilla(ss, sh, anio) {
@@ -1293,6 +1348,7 @@ function _formatearRejilla(ss, sh, anio) {
       : ['', '', '']);
   }
   sh.getRange(G.FILA_1, G.TOTAL, filasFmt, 3).setFormulas(formulas);
+  _anterioresEnDirecto(ss, sh, anio, nombres);
 
   // Sin cuadrícula; todo el texto en Electric Blue.
   sh.setHiddenGridlines(true);
