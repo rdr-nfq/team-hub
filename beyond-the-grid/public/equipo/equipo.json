@@ -62,7 +62,11 @@
       "email": "pablo.llorente@nfq.es",
       "emailBBVA": "pablo.llorentec.contractor@bbva.com",
       "track": "funcional",
-      "coordinador": true
+      "coordinador": true,
+      "equipos": [
+        "rdr",
+        "comms-surveillance"
+      ]
     },
     {
       "id": "T057120",
@@ -70,7 +74,11 @@
       "email": "victor.gallego@nfq.es",
       "emailBBVA": "victor.gallego.yan.contractor@bbva.com",
       "track": "funcional",
-      "coordinador": false
+      "coordinador": false,
+      "equipos": [
+        "rdr",
+        "comms-surveillance"
+      ]
     },
     {
       "id": "T057121",
