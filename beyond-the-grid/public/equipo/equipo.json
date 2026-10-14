@@ -14,7 +14,11 @@
       "email": "jose.rodriguez@nter.es",
       "emailBBVA": "joseluis.rodriguez.paez.contractor@bbva.com",
       "track": "tecnico",
-      "coordinador": false
+      "coordinador": false,
+      "equipos": [
+        "rdr",
+        "market-abuse"
+      ]
     },
     {
       "id": "XE95681",
@@ -30,7 +34,11 @@
       "email": "jesus.tejada@nfq.es",
       "emailBBVA": "jesus.tejada.andres.contractor@bbva.com",
       "track": "funcional",
-      "coordinador": true
+      "coordinador": true,
+      "equipos": [
+        "rdr",
+        "market-abuse"
+      ]
     },
     {
       "id": "T040429",
@@ -142,7 +150,10 @@
       "email": "victor.molina@nter.es",
       "emailBBVA": "victor.molina.ruiz.contractor@bbva.com",
       "track": "tecnico",
-      "coordinador": false
+      "coordinador": false,
+      "equipos": [
+        "market-abuse"
+      ]
     },
     {
       "id": "T071810",
@@ -150,7 +161,10 @@
       "email": "carlos.lozano@nter.es",
       "emailBBVA": "carlos.lozano.lorenzo.contractor@bbva.com",
       "track": "tecnico",
-      "coordinador": false
+      "coordinador": false,
+      "equipos": [
+        "market-abuse"
+      ]
     },
     {
       "id": "T074204",
@@ -166,13 +180,16 @@
       "email": "natalia.jimenez@nfq.es",
       "emailBBVA": "",
       "track": "funcional",
-      "coordinador": false
+      "coordinador": false,
+      "equipos": [
+        "market-abuse"
+      ]
     },
     {
-      "id": "",
+      "id": "T075671",
       "nombre": "Carmen Casado",
       "email": "carmen.casado@nfq.es",
-      "emailBBVA": "",
+      "emailBBVA": "carmen.casado.nieto.contractor@bbva.com",
       "track": "funcional",
       "coordinador": false
     }
