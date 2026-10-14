@@ -211,6 +211,14 @@ export default function EquipoGestionRoute() {
             {estado.fase === "error" && (
               <p className="mb-3 rounded-lg border border-mandarin/50 bg-mandarin/10 px-3 py-2 text-xs font-bold text-mandarin">
                 No se pudo guardar: {estado.error}
+                {/(401|Bad credentials)/i.test(estado.error) && (
+                  <span className="mt-1.5 block font-normal text-sand/80">
+                    La clave de GitHub del backend (propiedad <b>GITHUB_TOKEN</b> del Apps Script de equipo) ha caducado o se ha revocado.
+                    Genera una nueva en GitHub (Settings → Developer settings → Fine-grained tokens, propietario <b>rdr-nfq</b>, solo el repositorio
+                    team-hub, permiso <b>Contents: Read and write</b>), pégala en Propiedades del script y vuelve a pulsar «Guardar cambios»:
+                    tus cambios siguen aquí mientras no cierres la página.
+                  </span>
+                )}
               </p>
             )}
 
