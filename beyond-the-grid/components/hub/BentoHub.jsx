@@ -59,8 +59,10 @@ const PROYECTOS = {
     { label: "Recursos", desc: "Biblioteca de referencia de Market Abuse", icon: IconBook, enProgreso: true },
   ],
   "comms-surveillance": [
-    { label: "Proyectos", desc: "Proyectos y pases de Comms Surveillance", icon: IconRocket, enProgreso: true },
-    { label: "Recursos", desc: "Biblioteca de referencia de Comms Surveillance", icon: IconBook, enProgreso: true },
+    { label: "Planificación", desc: "Planificación del equipo", icon: IconCalendar, enProgreso: true },
+    { label: "Repositorio", desc: "Documentación del equipo", icon: IconFolder, actions: [
+      { label: "Drive", action: "copy", target: "driveCommsSurveillance", icon: IconFolder },
+    ] },
   ],
 };
 const seccionEquipo = (id) => ({ id: "proy", n: "03", title: EQUIPO[id].nombre, color: EQUIPO[id].color, items: PROYECTOS[id] || [] });
@@ -169,11 +171,11 @@ function Card({ item, accent, delay }) {
         <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border" style={{ borderColor: rgba(accent, 0.25), background: rgba(accent, 0.08), color: mapAccent(accent) }}>
           <IconLock size={20} />
         </span>
-        <span className="min-w-0 flex-1">
+        <span className="min-w-0 flex-1" title={item.desc}>
           <span className="block truncate text-[15px] font-bold text-sand">{item.label}</span>
-          {item.desc && <span className="block truncate text-[13px] text-sand/70">{item.desc}</span>}
+          {/* La etiqueta va debajo del título: a la derecha lo cortaba con 4 columnas. */}
+          <span className="mt-1 inline-block rounded-full border border-white/20 px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-wider text-sand/60">En progreso</span>
         </span>
-        <span className="shrink-0 rounded-full border border-white/20 px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-wider text-sand/60">En progreso</span>
       </div>
     );
   }
