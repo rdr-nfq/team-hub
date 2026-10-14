@@ -67,7 +67,7 @@ export default function SelectorEquipo({ kicker, titulo, intro, opciones }) {
     <main className="relative min-h-dvh w-full">
       <div aria-hidden className="pointer-events-none fixed inset-[-3%] -z-10 overflow-hidden">
         <span className="rdr-blob left-[-6%] top-[8%] h-80 w-80" style={{ background: PALETTE.lime }} />
-        <span className="rdr-blob right-[2%] top-[20%] h-72 w-72" style={{ background: PALETTE.mandarin, animationDelay: "-4s" }} />
+        <span className="rdr-blob right-[2%] top-[20%] h-72 w-72" style={{ background: PALETTE.serene, animationDelay: "-4s" }} />
         <span className="rdr-blob bottom-[-10%] left-[30%] h-96 w-96" style={{ background: PALETTE.aqua, animationDelay: "-8s" }} />
       </div>
       <div className="mx-auto w-full max-w-6xl px-5 pb-24 pt-28 sm:px-6">
