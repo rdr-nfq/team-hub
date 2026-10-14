@@ -33,7 +33,7 @@
 
 // Grupo desde el que salen los correos. Vacío = desde la cuenta del script.
 // La propiedad del script CORREO_REMITENTE, si existe, tiene prioridad.
-const CORREO_REMITENTE = '';
+const CORREO_REMITENTE = 'rdr.surveillance@nfq.es';
 
 let _CORREO_ALIAS = null; // alias verificados de la cuenta (una consulta por ejecución)
 
