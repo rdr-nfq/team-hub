@@ -39,7 +39,7 @@
     "expires": "2026-08-26"
   },
   "hubBackend": {
-    "url": "PEGAR_AQUI_URL_EXEC_DEL_PROYECTO_UNICO",
+    "url": "https://script.google.com/macros/s/AKfycbya91Z6WEf-tHyDLYS3A_JXtarOdz8eD5E_ZB1wEzJY6KH1cSz_GX-JFeG02LwLIaonNg/exec",
     "note": "Proyecto ÚNICO de Apps Script (apps-script/, todas las carpetas). Las claves *Backend con \"app\" usan esta URL + ?app=<app>; mientras aquí no haya URL, cada una usa su \"url\" antigua. Cambia solo si se crea una implementación nueva (con «Nueva versión» no cambia)."
   },
   "comidasBackend": {
