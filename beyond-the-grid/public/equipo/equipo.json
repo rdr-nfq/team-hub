@@ -6,12 +6,7 @@
       "email": "angela.montero@nfq.es",
       "emailBBVA": "angela.montero.contractor@bbva.com",
       "track": "funcional",
-      "coordinador": true,
-      "equipos": [
-        "rdr",
-        "market-abuse",
-        "comms-surveillance"
-      ]
+      "coordinador": true
     },
     {
       "id": "XE48467",
@@ -187,7 +182,7 @@
       "coordinador": false
     },
     {
-      "id": "",
+      "id": "T074424",
       "nombre": "Natalia Jimenez",
       "email": "natalia.jimenez@nfq.es",
       "emailBBVA": "",
