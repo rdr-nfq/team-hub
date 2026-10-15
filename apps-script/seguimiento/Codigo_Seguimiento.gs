@@ -73,12 +73,12 @@ var S_CONFIG = {
   MAX_BYTES: 40 * 1024 * 1024
 };
 
-var MESES_ES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+var MESES_ES_SEGUIMIENTO = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
 /* EJECUTAR UNA VEZ A MANO tras pegar código nuevo: pide todos los permisos
    (Drive, API de Drive vía UrlFetch y lectura de equipo.json). */
-function autorizar() {
+function autorizarSeguimiento() {
   DriveApp.getFolderById(S_CONFIG.CARPETA_RAIZ_ID).getName();
   UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
     headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
@@ -88,16 +88,16 @@ function autorizar() {
   Logger.log('Permisos concedidos: todo listo.');
 }
 
-function doGet(e) { return _serve((e && e.parameter) || {}); }
-function doPost(e) {
+function doGetSeguimiento(e) { return _serveSeguimiento((e && e.parameter) || {}); }
+function doPostSeguimiento(e) {
   var p = {};
   try { p = JSON.parse((e && e.postData && e.postData.contents) || '{}'); } catch (_) {}
   var q = (e && e.parameter) || {};
   for (var k in q) if (p[k] === undefined) p[k] = q[k];
-  return _serve(p);
+  return _serveSeguimiento(p);
 }
 
-function _serve(p) {
+function _serveSeguimiento(p) {
   try {
     var data;
     switch (p.action) {
@@ -111,7 +111,7 @@ function _serve(p) {
         break;
       case 'datos':
         _exigirCoordinador(p.email);
-        data = datos(p.semana);
+        data = datosSeguimiento(p.semana);
         break;
       case 'semana':
         _exigirCoordinador(p.email);
@@ -130,14 +130,14 @@ function _serve(p) {
         break;
       default: throw new Error('Acción desconocida: ' + p.action);
     }
-    return _json({ ok: true, data: data });
+    return _jsonSeguimiento({ ok: true, data: data });
   } catch (err) {
     console.error(err);
-    return _json({ ok: false, error: String((err && err.message) || err) });
+    return _jsonSeguimiento({ ok: false, error: String((err && err.message) || err) });
   }
 }
 
-function _json(obj) {
+function _jsonSeguimiento(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -159,11 +159,11 @@ function _nombre(f, quien) {
 function _quien(id) {
   id = String(id || '').trim();
   if (!id) return '';
-  var c = _coordinadores().filter(function (m) { return m.id === id; })[0];
+  var c = _coordinadoresSeguimiento().filter(function (m) { return m.id === id; })[0];
   if (!c) throw new Error('Coordinador desconocido: ' + id);
   return c.nombre;
 }
-function _ruta(f) { return [String(f.anio), f.mes + '. ' + MESES_ES[f.mes - 1]]; }
+function _ruta(f) { return [String(f.anio), f.mes + '. ' + MESES_ES_SEGUIMIENTO[f.mes - 1]]; }
 
 /** Carpeta de año/mes bajo la raíz. crear=false -> null si falta alguna. */
 function _carpetaMes(f, crear) {
@@ -342,9 +342,9 @@ function _indice(carpeta) {
   return out;
 }
 
-function datos(semana) {
+function datosSeguimiento(semana) {
   semana = _lunes(semana || _hoy());
-  var coord = _coordinadores();
+  var coord = _coordinadoresSeguimiento();
   var idx = _indice(_carpetaDatos());
   var pestanas = {}, previas = {};
   coord.map(function (c) { return c.id; }).concat(['resumen']).forEach(function (id) {
@@ -386,7 +386,7 @@ function leerSemana(id, semana) {
 function guardar(id, semana, doc, rev, quien, forzar) {
   id = String(id || '').trim();
   semana = _lunes(semana);
-  var ids = _coordinadores().map(function (c) { return c.id; }).concat(['resumen']);
+  var ids = _coordinadoresSeguimiento().map(function (c) { return c.id; }).concat(['resumen']);
   if (ids.indexOf(id) < 0) throw new Error('Pestaña desconocida: ' + id);
   if (!doc || typeof doc !== 'object') throw new Error('No llegan los datos de la pestaña.');
   if (id !== 'resumen' && !Array.isArray(doc.proyectos)) throw new Error('Los datos no tienen la lista de proyectos.');
@@ -416,7 +416,7 @@ function guardar(id, semana, doc, rev, quien, forzar) {
 /** .pptx de las carpetas de año (y mes) que no son autogenerados (caché 10 min). */
 function historico() {
   var cache = CacheService.getScriptCache();
-  var c = cache.get('historico');
+  var c = cache.get('seg:historico');
   if (c) return JSON.parse(c);
   var out = [];
   var buscar = function (carpeta, prof) {
@@ -439,7 +439,7 @@ function historico() {
   };
   buscar(DriveApp.getFolderById(S_CONFIG.CARPETA_RAIZ_ID), 0);
   out.sort(function (a, b) { return a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0; });
-  try { cache.put('historico', JSON.stringify(out), 600); } catch (e) {}
+  try { cache.put('seg:historico', JSON.stringify(out), 600); } catch (e) {}
   return out;
 }
 
@@ -519,14 +519,14 @@ function _parseSlide(xml) {
 
 // ── Permisos: solo coordinación ─────────────────────────────────────────────
 /** Coordinadores de equipo.json (caché 5 min). */
-function _coordinadores() {
+function _coordinadoresSeguimiento() {
   var cache = CacheService.getScriptCache();
-  var txt = cache.get('equipo');
+  var txt = cache.get('seg:equipo');
   if (!txt) {
     var resp = UrlFetchApp.fetch(S_CONFIG.EQUIPO_JSON_URL, { muteHttpExceptions: true, followRedirects: true });
     if (resp.getResponseCode() !== 200) throw new Error('HTTP ' + resp.getResponseCode() + ' al leer equipo.json');
     txt = resp.getContentText();
-    try { cache.put('equipo', txt, 300); } catch (e) {}
+    try { cache.put('seg:equipo', txt, 300); } catch (e) {}
   }
   return (JSON.parse(txt).team || []).filter(function (m) { return m && m.coordinador === true && m.id; });
 }
@@ -535,7 +535,7 @@ function _coordinadores() {
 function _exigirCoordinador(email) {
   var e = String(email || '').trim().toLowerCase();
   if (!e) throw new Error('Falta el email de quien usa Seguimiento.');
-  var c = _coordinadores().filter(function (m) {
+  var c = _coordinadoresSeguimiento().filter(function (m) {
     return [m.email, m.emailBBVA].some(function (x) { return String(x || '').trim().toLowerCase() === e; });
   })[0];
   if (!c) throw new Error('Solo coordinación puede usar Seguimiento (' + e + ').');

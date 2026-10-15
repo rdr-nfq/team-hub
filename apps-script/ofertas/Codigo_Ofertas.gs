@@ -30,7 +30,7 @@
  * ============================================================================
  */
 
-var CONFIG = {
+var CONFIG_OFERTAS = {
   PLANTILLAS: {
     'bbva-sa': {
       nombre: 'Oferta BBVA SA',
@@ -62,19 +62,19 @@ var CONFIG = {
  * llamar a UrlFetchApp.fetch". En el editor: seleccionar "autorizar" en el
  * desplegable de funciones -> Ejecutar -> aceptar permisos.
  */
-function autorizar() {
+function autorizarOfertas() {
   UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
     headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
     muteHttpExceptions: true
   });
-  DriveApp.getFolderById(CONFIG.CARPETA_ID).getName();
+  DriveApp.getFolderById(CONFIG_OFERTAS.CARPETA_ID).getName();
   Logger.log('Permisos concedidos: todo listo.');
 }
 
-function doGet(e)  { return _serve(e); }
-function doPost(e) { return _serve(e); }
+function doGetOfertas(e)  { return _serveOfertas(e); }
+function doPostOfertas(e) { return _serveOfertas(e); }
 
-function _serve(e) {
+function _serveOfertas(e) {
   try {
     var p = {};
     if (e && e.parameter) for (var k in e.parameter) p[k] = e.parameter[k];
@@ -85,19 +85,19 @@ function _serve(e) {
     var action = p.action || 'ping';
     var data;
     switch (action) {
-      case 'ping': data = { ok: true, plantillas: Object.keys(CONFIG.PLANTILLAS) }; break;
+      case 'ping': data = { ok: true, plantillas: Object.keys(CONFIG_OFERTAS.PLANTILLAS) }; break;
       case 'firmantes': data = { latam: firmantesLatam() }; break;
       case 'guardarFirmante': data = { latam: guardarFirmante(p.firmante) }; break;
       case 'generarOferta': data = generarOferta(p.plantilla, p.datos); break;
       default: throw new Error('Acción desconocida: ' + action);
     }
-    return _json({ ok: true, action: action, data: data });
+    return _jsonOfertas({ ok: true, action: action, data: data });
   } catch (err) {
-    return _json({ ok: false, error: String(err && err.message ? err.message : err) });
+    return _jsonOfertas({ ok: false, error: String(err && err.message ? err.message : err) });
   }
 }
 
-function _json(obj) {
+function _jsonOfertas(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
 }
@@ -114,7 +114,7 @@ function firmantesLatam() {
     extra = JSON.parse(PropertiesService.getScriptProperties().getProperty(_PROP_FIRMANTES) || '[]');
   } catch (e) {}
   var vistos = {}, out = [];
-  CONFIG.FIRMANTES_LATAM.concat(extra).forEach(function (f) {
+  CONFIG_OFERTAS.FIRMANTES_LATAM.concat(extra).forEach(function (f) {
     var v = String(f || '').trim();
     var k = v.toUpperCase();
     if (!v || vistos[k]) return;
@@ -164,7 +164,7 @@ function _copiarComoNativo(fileId, nombre, mimeType, carpetaId) {
 }
 
 /** Sub-carpeta por nombre, creándola si no existe. */
-function _subcarpeta(padre, nombre) {
+function _subcarpetaOfertas(padre, nombre) {
   var it = padre.getFoldersByName(nombre);
   return it.hasNext() ? it.next() : padre.createFolder(nombre);
 }
@@ -176,7 +176,7 @@ function _subcarpeta(padre, nombre) {
  * vacíos (en LATAM, los del bloque de IVA) borran su marcador.
  */
 function generarOferta(plantilla, datos) {
-  var tpl = CONFIG.PLANTILLAS[plantilla || 'bbva-sa'];
+  var tpl = CONFIG_OFERTAS.PLANTILLAS[plantilla || 'bbva-sa'];
   if (!tpl) throw new Error('Plantilla desconocida: ' + plantilla);
   if (!datos || !datos.dato1) throw new Error('Faltan los datos de la oferta.');
 
@@ -188,8 +188,8 @@ function generarOferta(plantilla, datos) {
   var hoy = new Date();
   var anyo = m ? m[2] : String(hoy.getFullYear());
   var qn = 'Q' + (m ? Math.floor((Number(m[1]) - 1) / 3) + 1 : Math.floor(hoy.getMonth() / 3) + 1);
-  var raiz = DriveApp.getFolderById(CONFIG.CARPETA_ID);
-  var carpeta = _subcarpeta(_subcarpeta(_subcarpeta(raiz, anyo), qn), base);
+  var raiz = DriveApp.getFolderById(CONFIG_OFERTAS.CARPETA_ID);
+  var carpeta = _subcarpetaOfertas(_subcarpetaOfertas(_subcarpetaOfertas(raiz, anyo), qn), base);
 
   // ── Google Doc (copia con conversión a Doc nativo) ──
   var docId = _copiarComoNativo(tpl.doc, base, 'application/vnd.google-apps.document', carpeta.getId());

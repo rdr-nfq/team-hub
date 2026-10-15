@@ -1,6 +1,6 @@
 {
   "_comment": "Hub RDR · FUENTE ÚNICA de enlaces. Si un link cambia, edítalo SOLO aquí y haz commit: las páginas lo recogen al cargar (no hay que tocar ningún .html). Las claves *Backend son las URLs /exec de los Apps Script (cambian en cada despliegue). Los valores con {COD} son plantillas: la web sustituye {COD} por el código real.",
-  "_updated": "2026-10-13",
+  "_updated": "2026-10-15",
   "portalBBVACIB": {
     "url": "https://sites.google.com/bbva.com/portal-nfq-bbva-cib/",
     "note": "Portal interno del equipo NFQ-BBVA CIB"
@@ -38,9 +38,14 @@
     "note": "Time Report de NFQ — cambia cada 3 meses, recordar actualizar",
     "expires": "2026-08-26"
   },
+  "hubBackend": {
+    "url": "PEGAR_AQUI_URL_EXEC_DEL_PROYECTO_UNICO",
+    "note": "Proyecto ÚNICO de Apps Script (apps-script/, todas las carpetas). Las claves *Backend con \"app\" usan esta URL + ?app=<app>; mientras aquí no haya URL, cada una usa su \"url\" antigua. Cambia solo si se crea una implementación nueva (con «Nueva versión» no cambia)."
+  },
   "comidasBackend": {
+    "app": "comidas",
     "url": "https://script.google.com/macros/s/AKfycby9X7g3kH3jgr1FeLdUDDjjEx2h-fFpQ33aWKQ0X0dLeQuAhMUcx8ApcqZoC1__j801/exec",
-    "note": "Backend Apps Script de /comidas (restaurantes, semanas y votos). Código: apps-script/comidas/ (ligado al Google Sheet de comidas). Cambia en cada despliegue."
+    "note": "App \"comidas\" del proyecto único (hubBackend). La \"url\" es la del proyecto antiguo, solo como respaldo hasta configurar hubBackend. Backend Apps Script de /comidas (restaurantes, semanas y votos). Código: apps-script/comidas/ (ligado al Google Sheet de comidas). Cambia en cada despliegue."
   },
   "formacionesBackend": {
     "url": "https://script.google.com/macros/s/AKfycbzAKr3NyT7Ppyip9Jh6c2adjXHbhXcxpZD8UawtBUcTuH0cnLtKjGN7VFgyhf_ACR_C/exec",
@@ -51,44 +56,53 @@
     "note": "Google Sheets que hay detrás de Pases Calendados (el libro al que está ligado apps-script/pases/Codigo_Pases.gs). Botón 'Abrir Sheets' de /pases."
   },
   "pasesBackend": {
+    "app": "pases",
     "url": "https://script.google.com/macros/s/AKfycbwZ5Sx4TlJnJ4I1sFntjG9dNyfSFeqRu29vNEKowD1wysLjmVT9fr0m9hNvQZOqE7C9hA/exec",
-    "note": "Backend Apps Script de /pases (pases, proyectos, componentes). Código: apps-script/pases/ (ligado al Sheet de pasesSheet). Cambia en cada despliegue."
+    "note": "App \"pases\" del proyecto único (hubBackend). La \"url\" es la del proyecto antiguo, solo como respaldo hasta configurar hubBackend. Backend Apps Script de /pases (pases, proyectos, componentes). Código: apps-script/pases/ (ligado al Sheet de pasesSheet). Cambia en cada despliegue."
   },
   "retroBackend": {
     "url": "https://script.google.com/macros/s/AKfycbx1sGjHUH9LPw1qF4nOBPOCcP1T9eW-zbMg8FQznqTWOd4yipqpke_8ynNxdu4Gsza2/exec",
     "note": "Backend Apps Script de /retro (retrospectivas). Código: AÚN NO está en apps-script/ (pendiente de incorporar). Cambia en cada despliegue."
   },
   "vacacionesBackend": {
+    "app": "vacaciones",
     "url": "https://script.google.com/macros/s/AKfycbztOFtA5gL6jx_vGYKv4Y9VjA0AV9sYgKVkj2N2UOUfAwMps-FuB_bmcdFfViz5HJu-/exec",
-    "note": "Mismo backend que vacacionesV2Backend (apps-script/vacaciones/): lo sigue leyendo el Time Report (?modo=publico, festivos). El antiguo era apps-script/vacaciones-antiguo/."
+    "note": "App \"vacaciones\" del proyecto único (hubBackend). La \"url\" es la del proyecto antiguo, solo como respaldo hasta configurar hubBackend. Mismo backend que vacacionesV2Backend (apps-script/vacaciones/): lo sigue leyendo el Time Report (?modo=publico, festivos). El antiguo era apps-script/vacaciones-antiguo/."
   },
   "vacacionesV2Backend": {
+    "app": "vacaciones",
     "url": "https://script.google.com/macros/s/AKfycbztOFtA5gL6jx_vGYKv4Y9VjA0AV9sYgKVkj2N2UOUfAwMps-FuB_bmcdFfViz5HJu-/exec",
-    "note": "Backend del sistema NUEVO de vacaciones (/vacaciones y /vacaciones-gestion): un solo Apps Script independiente que abre el Excel «Vacaciones RDR» por su id (apps-script/vacaciones/). Mientras esté sin URL, /vacaciones sigue con el backend antiguo (vacacionesBackend)."
+    "note": "App \"vacaciones\" del proyecto único (hubBackend). La \"url\" es la del proyecto antiguo, solo como respaldo hasta configurar hubBackend. Backend del sistema NUEVO de vacaciones (/vacaciones y /vacaciones-gestion): un solo Apps Script independiente que abre el Excel «Vacaciones RDR» por su id (apps-script/vacaciones/). Mientras esté sin URL, /vacaciones sigue con el backend antiguo (vacacionesBackend)."
   },
   "controlBackend": {
+    "app": "control",
     "url": "https://script.google.com/macros/s/AKfycbzMyQ98NgYaHwvvxhaPQBsQVrf2SuqQXMlo7xgPBNeg1o5TU-631ZD2l5cQ0tuKEr4AGQ/exec",
-    "note": "Backend Apps Script de /simulador y /capacidad (dominio nfq.es). Código: apps-script/control/. Cambia en cada despliegue."
+    "note": "App \"control\" del proyecto único (hubBackend). La \"url\" es la del proyecto antiguo, solo como respaldo hasta configurar hubBackend. Backend Apps Script de /simulador y /capacidad (dominio nfq.es). Código: apps-script/control/. Cambia en cada despliegue."
   },
   "ofertasBackend": {
+    "app": "ofertas",
     "url": "https://script.google.com/macros/s/AKfycbzF8pA46uBh-O7xcAYUJsY9LqW0VPcLSjYFo13Q24vx3iaGZAAb_yQ18hLlEBfVe6iE/exec",
-    "note": "Backend Apps Script del generador de ofertas (/ofertas). Desplegar apps-script/ofertas/Codigo_Ofertas.gs como aplicación web (Ejecutar como Yo, acceso Cualquier persona) y pegar aquí la URL /exec."
+    "note": "App \"ofertas\" del proyecto único (hubBackend). La \"url\" es la del proyecto antiguo, solo como respaldo hasta configurar hubBackend. Backend Apps Script del generador de ofertas (/ofertas). Desplegar apps-script/ofertas/Codigo_Ofertas.gs como aplicación web (Ejecutar como Yo, acceso Cualquier persona) y pegar aquí la URL /exec."
   },
   "seguimientoBackend": {
+    "app": "seguimiento",
     "url": "https://script.google.com/macros/s/AKfycbxrJBoUtmOFavy9hwHK8rIXBZFr8ACsYeHvrN17C8lKTR3weFdVX_YrxnwG8huLTroC8g/exec",
-    "note": "Backend Apps Script de /seguimiento: guarda la presentación en Drive (Presentación seguimiento BBVA/AAAA/M. Mes/), actualizándola si ya existe. Desplegar apps-script/seguimiento/Codigo_Seguimiento.gs como aplicación web (Ejecutar como Yo, Cualquier persona), ejecutar autorizar() una vez y pegar aquí la URL /exec."
+    "note": "App \"seguimiento\" del proyecto único (hubBackend). La \"url\" es la del proyecto antiguo, solo como respaldo hasta configurar hubBackend. Backend Apps Script de /seguimiento: guarda la presentación en Drive (Presentación seguimiento BBVA/AAAA/M. Mes/), actualizándola si ya existe. Desplegar apps-script/seguimiento/Codigo_Seguimiento.gs como aplicación web (Ejecutar como Yo, Cualquier persona), ejecutar autorizar() una vez y pegar aquí la URL /exec."
   },
   "timereportBackend": {
+    "app": "timereport",
     "url": "https://script.google.com/macros/s/AKfycbwb8bJedskF2tmsusz4PdXNhtNu1V9dUxhq0QOM9n3Hc3abjolN1UO7F3pydzzp-8sy/exec",
-    "note": "Backend Apps Script del Time Report web (/timereport y /timereport-gestion): proyectos, reparto, imputación, evidencias en Drive y recordatorio por email. Desplegar apps-script/timereport/Codigo_TimeReport.gs como aplicación web (Ejecutar como Yo, Cualquier persona), con EVIDENCIAS_FOLDER_ID en Propiedades del script, ejecutar autorizar() y crearTriggerRecordatorioTR() una vez, y pegar aquí la URL /exec."
+    "note": "App \"timereport\" del proyecto único (hubBackend). La \"url\" es la del proyecto antiguo, solo como respaldo hasta configurar hubBackend. Backend Apps Script del Time Report web (/timereport y /timereport-gestion): proyectos, reparto, imputación, evidencias en Drive y recordatorio por email. Desplegar apps-script/timereport/Codigo_TimeReport.gs como aplicación web (Ejecutar como Yo, Cualquier persona), con EVIDENCIAS_FOLDER_ID en Propiedades del script, ejecutar autorizar() y crearTriggerRecordatorioTR() una vez, y pegar aquí la URL /exec."
   },
   "guardiasBackend": {
+    "app": "guardias",
     "url": "https://script.google.com/macros/s/AKfycbxZtZ6yHiTRQ-GbDyzZv8i7u9Z3Z4nM3TszfVrq9ddFSnBn3d6jL5p8-eOSMT6DWFokVg/exec",
-    "note": "Backend Apps Script de Guardias (/guardias y /guardias-gestion): alta y resolución de guardias, con aviso por email a coordinación al solicitar y al solicitante al resolver. Código: apps-script/guardias/Codigo_Guardias.gs. Cambia en cada despliegue nuevo del proyecto."
+    "note": "App \"guardias\" del proyecto único (hubBackend). La \"url\" es la del proyecto antiguo, solo como respaldo hasta configurar hubBackend. Backend Apps Script de Guardias (/guardias y /guardias-gestion): alta y resolución de guardias, con aviso por email a coordinación al solicitar y al solicitante al resolver. Código: apps-script/guardias/Codigo_Guardias.gs. Cambia en cada despliegue nuevo del proyecto."
   },
   "equipoBackend": {
+    "app": "equipo",
     "url": "https://script.google.com/macros/s/AKfycbwuMCo7nocD2bik28Yot-bTzepFuq1k8hy9PWmGTpos3BsTgb0-Llvbn6_lQVz5ptBDng/exec",
-    "note": "Backend Apps Script de gestión del equipo (/equipo-gestion): commitea equipo.json a GitHub. Desplegar apps-script/equipo/Codigo_Equipo.gs (con GITHUB_TOKEN y CLAVE_EQUIPO en Propiedades del script) y pegar aquí la URL /exec."
+    "note": "App \"equipo\" del proyecto único (hubBackend). La \"url\" es la del proyecto antiguo, solo como respaldo hasta configurar hubBackend. Backend Apps Script de gestión del equipo (/equipo-gestion): commitea equipo.json a GitHub. Desplegar apps-script/equipo/Codigo_Equipo.gs (con GITHUB_TOKEN y CLAVE_EQUIPO en Propiedades del script) y pegar aquí la URL /exec."
   },
   "jiraBrowse": {
     "url": "https://cibproducts.grupobbva.com/JIRA/browse/{COD}",

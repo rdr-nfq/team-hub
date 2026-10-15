@@ -25,16 +25,16 @@
  * ============================================================================
  */
 
-var CONFIG = {
+var CONFIG_EQUIPO = {
   REPO: 'rdr-nfq/team-hub',
   RUTA: 'beyond-the-grid/public/equipo/equipo.json',
   BRANCH: 'main'
 };
 
-function doGet(e)  { return _serve(e); }
-function doPost(e) { return _serve(e); }
+function doGetEquipo(e)  { return _serveEquipo(e); }
+function doPostEquipo(e) { return _serveEquipo(e); }
 
-function _serve(e) {
+function _serveEquipo(e) {
   try {
     var p = {};
     if (e && e.parameter) for (var k in e.parameter) p[k] = e.parameter[k];
@@ -54,13 +54,13 @@ function _serve(e) {
         break;
       default: throw new Error('Acción desconocida: ' + action);
     }
-    return _json({ ok: true, action: action, data: data });
+    return _jsonEquipo({ ok: true, action: action, data: data });
   } catch (err) {
-    return _json({ ok: false, error: String(err && err.message ? err.message : err) });
+    return _jsonEquipo({ ok: false, error: String(err && err.message ? err.message : err) });
   }
 }
 
-function _json(obj) {
+function _jsonEquipo(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
 }
@@ -97,7 +97,7 @@ function guardarEquipo(clave, team) {
   var hayCoordinador = team.some(function (m) { return !!m.coordinador; });
   if (!hayCoordinador) throw new Error('Debe quedar al menos una persona con rol de coordinador.');
 
-  var api = 'https://api.github.com/repos/' + CONFIG.REPO + '/contents/' + CONFIG.RUTA;
+  var api = 'https://api.github.com/repos/' + CONFIG_EQUIPO.REPO + '/contents/' + CONFIG_EQUIPO.RUTA;
   var headers = {
     Authorization: 'Bearer ' + token,
     Accept: 'application/vnd.github+json'
@@ -105,7 +105,7 @@ function guardarEquipo(clave, team) {
 
   // 1. SHA y contenido actuales (se preservan las claves de nivel superior
   //    distintas de "team" que pudiera haber en el fichero).
-  var resGet = UrlFetchApp.fetch(api + '?ref=' + CONFIG.BRANCH, { headers: headers, muteHttpExceptions: true });
+  var resGet = UrlFetchApp.fetch(api + '?ref=' + CONFIG_EQUIPO.BRANCH, { headers: headers, muteHttpExceptions: true });
   if (resGet.getResponseCode() !== 200)
     throw new Error('GitHub (leer ' + resGet.getResponseCode() + '): ' + resGet.getContentText().slice(0, 180));
   var actual = JSON.parse(resGet.getContentText());
@@ -125,7 +125,7 @@ function guardarEquipo(clave, team) {
       message: 'Equipo: actualización desde la web (' + team.length + ' miembros)',
       content: Utilities.base64Encode(nuevo, Utilities.Charset.UTF_8),
       sha: actual.sha,
-      branch: CONFIG.BRANCH
+      branch: CONFIG_EQUIPO.BRANCH
     }),
     muteHttpExceptions: true
   });

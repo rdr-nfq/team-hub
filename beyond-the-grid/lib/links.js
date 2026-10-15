@@ -49,10 +49,16 @@ export function LinksProvider({ children }) {
   const getUrl = useCallback(
     (key) => {
       if (!links) return null;
+      const valida = (u) => (u && u.indexOf("PEGAR_AQUI") === -1 ? u : null);
       const entry = links[key];
-      const url = entry && (typeof entry === "string" ? entry : entry.url);
-      if (!url || url.indexOf("PEGAR_AQUI") !== -1) return null;
-      return url;
+      // Backends del proyecto único de Apps Script: { app: "vacaciones" } +
+      // la URL /exec en "hubBackend" -> <hub>?app=vacaciones. Mientras
+      // hubBackend no tenga URL, se usa la "url" propia de la clave.
+      if (entry && typeof entry === "object" && entry.app) {
+        const hub = links.hubBackend && valida(typeof links.hubBackend === "string" ? links.hubBackend : links.hubBackend.url);
+        if (hub) return hub + (hub.indexOf("?") < 0 ? "?" : "&") + "app=" + encodeURIComponent(entry.app);
+      }
+      return valida(entry && (typeof entry === "string" ? entry : entry.url));
     },
     [links]
   );

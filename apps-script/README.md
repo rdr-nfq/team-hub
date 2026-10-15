@@ -1,74 +1,126 @@
-# Apps Script — backends de la web RDR
+# Apps Script — backend único de la web
 
 Aquí vive **todo el código Apps Script** que usa la web (`beyond-the-grid/`).
 El repositorio es la **fuente de verdad**: el editor de script.google.com es
 solo el sitio donde se despliega.
 
-## Estructura
+## Un solo proyecto
 
-Una carpeta por **proyecto** de Apps Script (= una URL `/exec` en
-`beyond-the-grid/public/links/links.json`). Dentro, los ficheros tal cual se
-pegan en el editor; el principal se llama siempre `Codigo_<Proyecto>.gs`.
+Todas las carpetas forman **un único proyecto** de Apps Script con **una sola
+implementación** (una URL `/exec`). La web llama a esa URL con `?app=<app>` y
+`_comun/Hub.gs` lo reparte al backend que toca. En `links.json` solo hay que
+mantener `hubBackend`; cada clave `*Backend` lleva su `"app"` y la web compone
+la URL (`lib/links.js`).
 
-| Carpeta | Ficheros | Tipo de proyecto | Páginas web | Clave `links.json` | Puesta en marcha (una vez) |
-|---|---|---|---|---|---|
-| `comidas/` | `Codigo_Comidas.gs`, `Comidas_Recordatorios.gs`, `Correo.gs` | Ligado al Google Sheet de comidas | `/comidas` | `comidasBackend` | `crearTriggers()` (recordatorios) |
-| `control/` | `Codigo_Control.gs`, `appsscript.json`, `README.md` | Ligado al Sheet «Control - RDR BBVA» (o independiente con `SPREADSHEET_ID`) | `/simulador`, `/capacidad` | `controlBackend` | Ver `control/README.md` (token y permisos) |
-| `equipo/` | `Codigo_Equipo.gs` | Independiente | `/equipo-gestion` | `equipoBackend` | Propiedades: `GITHUB_TOKEN`, `CLAVE_EQUIPO` |
-| `guardias/` | `Codigo_Guardias.gs` | Independiente (crea su propio Sheet) | `/guardias`, `/guardias-gestion` | `guardiasBackend` | `autorizar()` |
-| `ofertas/` | `Codigo_Ofertas.gs` | Independiente | `/ofertas` | `ofertasBackend` | `autorizar()` |
-| `pases/` | `Codigo_Pases.gs`, `Avisos_Pases.gs` | Ligado al Sheet de Pases (`pasesSheet`) | `/pases` | `pasesBackend` | `instalarTriggerAvisos()` |
-| `seguimiento/` | `Codigo_Seguimiento.gs` | Independiente (datos por semana y coordinador en `<raíz>/_datos_web/`; lee los .pptx antiguos de la carpeta para copiarlos) | `/seguimiento` | `seguimientoBackend` | `autorizar()` |
-| `timereport/` | `Codigo_TimeReport.gs` | Independiente (crea su propio Sheet) | `/timereport`, `/timereport-gestion` | `timereportBackend` | Propiedad `EVIDENCIAS_FOLDER_ID`, `autorizar()`, `crearTriggerRecordatorioTR()` |
-| `vacaciones/` | `Codigo_Vacaciones.gs`, `Migracion_2026.gs`, `Correo.gs` | Independiente; abre el Excel «Vacaciones RDR» por su id (`V_CONFIG.EXCEL_ID`) (el único: por año `Vacas_<año>`, `Festivos_<año>` —grupos y festivos— y `Solicitudes_<año>`) | `/vacaciones` (equipo), `/vacaciones-gestion` (coordinación) | `vacacionesV2Backend` (y `vacacionesBackend` para el Time Report, `?modo=publico`) | `autorizar()`, `instalarDisparadoresVacaciones()` y `empezarDeCero()` (migración completa; revisar la pestaña `Migracion_2026`). Opcional: `instalarPrecalentado()`. Desde el editor: `aplicarFormatoVacas`, `verMesActual`, `ocultarMesesPasados`, `mostrarTodosLosMeses`; `revisarMezclas2026` / `repararMezclas2026` (arreglo de personas que la migración juntó en una fila). Altas: se hacen en Gestión de equipo; al guardar, la web llama a `sincronizarEquipo` y quien falte se añade a Vacas_<año> (y al siguiente si existe). También desde Vacaciones → Personas → «Sincronizar con Gestión de equipo» |
-| `vacaciones-antiguo/` | `Codigo_Vacaciones.gs`, `Index.html`, `Formulario.gs`, `Migracion.gs` | Sistema ANTERIOR (Excel auxiliar + Google Form + panel de responsables). Se retira cuando el nuevo esté desplegado | `/vacaciones` mientras `vacacionesV2Backend` esté vacío | `vacacionesBackend` | — |
+| Carpeta | Ficheros | `?app=` | Páginas web | Clave(s) `links.json` |
+|---|---|---|---|---|
+| `_comun/` | `Hub.gs` (reparto, ids de las hojas, `autorizar`, `instalarDisparadores`, `diagnosticarHub`), `Correo.gs` (envío de correos) | — | — | `hubBackend` |
+| `comidas/` | `Codigo_Comidas.gs`, `Comidas_Recordatorios.gs` | `comidas` | `/comidas` | `comidasBackend` |
+| `control/` | `Codigo_Control.gs` (ver `control/README.md`) | `control` | `/simulador`, `/capacidad` | `controlBackend` |
+| `equipo/` | `Codigo_Equipo.gs` | `equipo` | `/equipo-gestion` | `equipoBackend` |
+| `guardias/` | `Codigo_Guardias.gs` | `guardias` | `/guardias`, `/guardias-gestion` | `guardiasBackend` |
+| `ofertas/` | `Codigo_Ofertas.gs` | `ofertas` | `/ofertas` | `ofertasBackend` |
+| `pases/` | `Codigo_Pases.gs`, `Avisos_Pases.gs` | `pases` | `/pases` | `pasesBackend` |
+| `seguimiento/` | `Codigo_Seguimiento.gs` | `seguimiento` | `/seguimiento` | `seguimientoBackend` |
+| `timereport/` | `Codigo_TimeReport.gs` | `timereport` | `/timereport`, `/timereport-gestion` | `timereportBackend` |
+| `vacaciones/` | `Codigo_Vacaciones.gs`, `Migracion_2026.gs` | `vacaciones` | `/vacaciones`, `/vacaciones-gestion` | `vacacionesV2Backend`, `vacacionesBackend` |
 
-**Pendientes de incorporar** (en uso, pero su código solo está en
-script.google.com): `formacionesBackend` (`/formacion/equipo`) y
-`retroBackend` (`/retro`). Cuando se toquen, copiar aquí su código en
-`formaciones/` y `retro/`.
+`appsscript.json` es el manifiesto del proyecto (zona horaria, V8, web app
+«Ejecutar como: yo» · «Cualquier usuario», servicio avanzado Gmail).
 
-**Remitente común de los correos (`Correo.gs`).** Vacaciones y comidas ya
-envían con él; el resto de proyectos lo irán usando. Es el MISMO fichero en
-cada carpeta (`comprobar.mjs` falla si las copias no son idénticas):
+**Fuera del proyecto** (su código solo está en script.google.com):
+`formacionesBackend` (`/formacion/equipo`) y `retroBackend` (`/retro`). Para
+juntarlos, copiar aquí su código en `formaciones/` y `retro/` y añadirlos al
+reparto de `Hub.gs`.
 
-- **Un correo individual por persona** (sin copias ocultas), con reintento por
-  persona; las direcciones que siguen fallando quedan en el registro.
-- Remitente: el grupo de `CORREO_REMITENTE` (constante al principio del
-  fichero, o la propiedad del script del mismo nombre, que manda). Tiene que
-  ser alias «Enviar como» de la cuenta que ejecuta el script: Gmail → Ver
-  todos los ajustes → Cuentas → «Enviar correo como» → Añadir otra dirección
-  → la del grupo, «Tratar como alias»; el código de verificación llega al
-  grupo. Si no lo es, sale desde la cuenta, como antes: nunca se pierde un aviso.
-- Asunto con emojis: servicio avanzado **Gmail API** (editor → Servicios + →
-  Gmail API, identificador `Gmail`). Sin él sale igual desde el grupo, pero
-  con el asunto sin emojis.
-- `probarRemitente()` dice qué remitente se usa y manda una prueba a quien lo
-  ejecuta.
+### Hojas de cálculo
+
+Ningún backend va ligado a su hoja: cada uno la abre por id. Los ids están en
+`HUB_HOJAS` (`_comun/Hub.gs`) y se pueden cambiar sin tocar el código con la
+propiedad del script `<CLAVE>_SPREADSHEET_ID`:
+
+| Clave | Hoja |
+|---|---|
+| `COMIDAS` | Comidas_RDR |
+| `CONTROL` | Control - RDR BBVA |
+| `PASES` | Pases_Calendados_NFQ |
+| `GUARDIAS` | RDR Guardias (datos) |
+| `TIMEREPORT` | RDR TimeReport Web (datos) |
+| (vacaciones) | «Vacaciones RDR», en `V_CONFIG.EXCEL_ID` |
+
+Seguimiento, ofertas y timereport (evidencias) trabajan con carpetas de Drive
+(ids en su `CONFIG` o en `links.json`).
+
+### Propiedades del script
+
+| Propiedad | App | |
+|---|---|---|
+| `GITHUB_TOKEN`, `CLAVE_EQUIPO` | equipo | **Obligatorias** para guardar en Gestión de equipo (token fine-grained de rdr-nfq/team-hub, Contents: Read and write) |
+| `vac:campanas` | vacaciones | Formularios de Navidad/Verano (los gestiona la web; se copian del proyecto antiguo) |
+| `FIRMANTES_LATAM` | ofertas | Firmantes añadidos desde la web |
+| `EVIDENCIAS_FOLDER_ID` | timereport | Opcional (último recurso; normalmente sale de `links.json`) |
+| `CONTROL_API_TOKEN` | control | Opcional: sin ella, las escrituras genéricas al Excel de control quedan deshabilitadas |
+| `MODO_DEBUG` | pases | Opcional |
+| `CORREO_REMITENTE` | todas | Opcional: cambia el remitente de `Correo.gs` |
+| `<CLAVE>_SPREADSHEET_ID` | todas | Opcional: cambia la hoja de una app |
+
+### Disparadores
+
+`instalarDisparadores()` (se puede repetir: no duplica) crea todos:
+recordatorios de comidas (`enviarRecordatorio`), recordatorio de evidencias
+del Time Report (`enviarRecordatorioTR`), avisos de pases
+(`revisarAvisosProgramados`), y en vacaciones la invalidación de caché al
+editar el Excel (`vacacionesAlCambiarExcel`) y la caché precalentada
+(`precalentarCache`).
+
+## Puesta en marcha desde cero
+
+1. **Proyecto nuevo** en script.google.com (independiente, no desde una hoja).
+2. **Configuración del proyecto** → marcar «Mostrar el archivo de manifiesto
+   appsscript.json» y pegar `appsscript.json`.
+3. **Pegar todos los `.gs`**: un fichero del editor por cada `.gs` de cada
+   carpeta (14), con el mismo nombre. El orden da igual.
+4. **Propiedades del script** (Configuración del proyecto): copiar desde los
+   proyectos antiguos `GITHUB_TOKEN`, `CLAVE_EQUIPO`, `vac:campanas` y
+   `FIRMANTES_LATAM` (y las opcionales que se usen).
+5. Ejecutar **`autorizar()`** (acepta los permisos) y luego
+   **`instalarDisparadores()`**. `diagnosticarHub()` resume lo configurado.
+6. **Implementar → Nueva implementación → Aplicación web** («Ejecutar como:
+   yo», «Quién tiene acceso: cualquier usuario»). Pegar la URL `/exec` en
+   `links.json` → `hubBackend.url` y subirlo a `main`.
+7. **Apagar los proyectos antiguos**: borrar sus **activadores** (si no,
+   los recordatorios y avisos saldrían dos veces) y archivar sus
+   implementaciones.
+8. Alias «Enviar como» del grupo y correos: ver `_comun/Correo.gs`.
 
 ## Flujo para cambiar un backend
 
-1. Editar el fichero **aquí**, en su carpeta, y subirlo a `main` como el resto
-   del código (ver `CLAUDE.md` §9).
-2. Pegar su contenido en el fichero correspondiente del proyecto de
-   script.google.com. El nombre en el editor da igual (p. ej. allí
-   `Codigo_Vacaciones.gs` puede seguir llamándose `Code.gs`), salvo los
-   `.html`: `Index.html` debe llamarse `Index`.
-3. Si el cambio pide permisos nuevos, ejecutar `autorizar()` (o la función
-   que diga la cabecera del fichero).
-4. **Implementar → Gestionar implementaciones → editar → Nueva versión.**
-   Así la URL `/exec` no cambia. Si se crea una implementación nueva, la URL
-   cambia y hay que actualizarla en `links.json`.
-5. En la web, si algo responde HTML en vez de JSON: Ctrl+F5 (caché).
+1. Editar el fichero **aquí** y subirlo a `main` (ver `CLAUDE.md` §9).
+2. Antes de subir: `node apps-script/comprobar.mjs` (sintaxis, nombres
+   globales repetidos en todo el proyecto, ficheros repetidos, reparto y
+   disparadores que apuntan a funciones que existen).
+3. Pegar el fichero en el proyecto único de script.google.com.
+4. Si pide permisos nuevos: `autorizar()`.
+5. **Implementar → Gestionar implementaciones → editar → Nueva versión.**
+   Así la URL `/exec` no cambia. Si se crea una implementación nueva, cambiar
+   `hubBackend` en `links.json`.
+6. En la web, si algo responde HTML en vez de JSON: Ctrl+F5 (caché).
 
 ## Convenciones
 
-- Cada fichero empieza con una cabecera que explica qué hace, cómo se despliega
-  y su API (acciones, parámetros y respuesta).
-- Lecturas por `GET ?action=…`; escrituras por `POST` con
+- **Todos los ficheros comparten el ámbito global.** Un nombre global nuevo
+  no puede repetirse en otra carpeta (`comprobar.mjs` lo para). Las funciones
+  internas llevan el nombre de su app cuando es genérico (`_serveGuardias`,
+  `_ssTR`, `doGetPases`…); vacaciones conserva los suyos.
+- Cada app tiene su `doGet<App>(e)` / `doPost<App>(e)`; el `doGet`/`doPost`
+  de verdad solo está en `Hub.gs`. Una app nueva = una carpeta + un `case` en
+  `_hubRepartir` + su clave en `links.json` con `"app"`.
+- Claves de caché (`CacheService`) y propiedades con prefijo de app cuando
+  sean genéricas (`seg:equipo`, `vac:campanas`): la caché es una sola.
+- Lecturas por `GET ?app=…&action=…`; escrituras por `POST` con
   `Content-Type: text/plain;charset=utf-8` y cuerpo JSON (sin preflight CORS).
-- Correo: **nunca** `noReply: true` hacia buzones del dominio (Workspace los
-  retiene en silencio); enviar desde la cuenta que ejecuta el script.
+- Correo: con `_correoEnviar` (`_comun/Correo.gs`). **Nunca** `noReply: true`
+  hacia buzones del dominio (Workspace los retiene en silencio).
 - **Nunca** `Session.getEffectiveUser()` en una web app pública: pide un permiso
   extra y la respuesta pasa a ser una página HTML de «Authorization required».
 - Los datos de equipo (emails, coordinadores) se leen de
@@ -77,8 +129,8 @@ cada carpeta (`comprobar.mjs` falla si las copias no son idénticas):
 
 ## Comprobación automática
 
-`.github/workflows/apps-script.yml` revisa la sintaxis de todos los `.gs` en
-cada push que toque `apps-script/`. En local:
+`.github/workflows/apps-script.yml` ejecuta `comprobar.mjs` en cada push que
+toque `apps-script/`. En local:
 
 ```bash
 node apps-script/comprobar.mjs

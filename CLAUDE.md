@@ -157,11 +157,12 @@ El layout concreto de cada slide, las proporciones dentro de la retícula 8px, e
 
 ## 8. Apps Script (backends de la web)
 
-Todo el código Apps Script vive en **`apps-script/`**, una carpeta por proyecto (`pases/`, `guardias/`, `timereport/`…), con el fichero principal `Codigo_<Proyecto>.gs`. El índice (qué carpeta va con qué página y qué clave de `links.json`, y cómo se despliega) está en `apps-script/README.md`.
+Todo el código Apps Script vive en **`apps-script/`** y es **un único proyecto** (una sola URL `/exec`, `hubBackend` en `links.json`): una carpeta por app (`pases/`, `guardias/`, `vacaciones/`…) más `_comun/` (`Hub.gs` reparte por `?app=`, `Correo.gs` envía los correos). El índice, las hojas, las propiedades y la puesta en marcha están en `apps-script/README.md`.
 
 - Un backend nuevo o un cambio en uno existente se hace **ahí**, nunca en `inbox/`/`outbox/` ni solo en script.google.com.
-- Antes de subir: `node apps-script/comprobar.mjs` (sintaxis + globales duplicados por proyecto; también lo pasa la Action `apps-script.yml`).
-- Tras el push, recordar al usuario que lo pegue en su proyecto y haga **Nueva versión** de la implementación existente (la URL `/exec` no cambia).
+- Todos los ficheros comparten el ámbito global: ningún nombre global puede repetirse entre carpetas.
+- Antes de subir: `node apps-script/comprobar.mjs` (sintaxis, globales repetidos en todo el proyecto, reparto y disparadores; también lo pasa la Action `apps-script.yml`).
+- Tras el push, recordar al usuario que pegue el fichero en el proyecto único y haga **Nueva versión** de la implementación existente (la URL `/exec` no cambia).
 
 ---
 

@@ -1,3 +1,9 @@
+> **Proyecto único (oct. 2026):** este backend vive ahora en el proyecto único
+> de `apps-script/` (`?app=control`). La hoja se abre por id (`HUB_HOJAS.CONTROL`
+> en `_comun/Hub.gs`) y el token de las escrituras genéricas es la propiedad
+> del script `CONTROL_API_TOKEN` (ya no `CONFIG.API_TOKEN`). Lo de abajo sobre
+> crear un proyecto propio y desplegarlo aparte queda como referencia.
+
 # Backend RDR BBVA — Google Apps Script
 
 API genérica y **dinámica** para leer y modificar **cualquier dato modificable** del

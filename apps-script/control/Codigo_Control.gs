@@ -21,14 +21,10 @@
 /* ===========================================================================
  * 1. CONFIGURACIÓN
  * =========================================================================== */
-var CONFIG = {
-  // ID del Google Sheet (la parte de la URL .../d/<ESTO>/edit).
-  // Déjalo vacío ('') si pegas este script COMO script ligado a la hoja.
-  SPREADSHEET_ID: '',
-
-  // Token simple de seguridad para la API web. CÁMBIALO.
-  // Toda llamada (salvo action=ping) debe enviar token=<este valor>.
-  API_TOKEN: 'CAMBIA_ESTE_TOKEN_LARGO_Y_SECRETO',
+var CONFIG_CONTROL = {
+  // La hoja («Control - RDR BBVA») se abre por id: _hubHoja('CONTROL') en
+  // _comun/Hub.gs. Token de las escrituras genéricas: propiedad del script
+  // CONTROL_API_TOKEN (sin ella, deshabilitadas). Nunca en el código.
 
   // Si true, no se sobreescriben celdas con fórmula salvo force:true.
   PROTECT_FORMULAS: true,
@@ -74,15 +70,13 @@ function _schema(name) { return SCHEMAS[name] || {}; }
 /* ===========================================================================
  * 3. UTILIDADES INTERNAS
  * =========================================================================== */
-function _ss() {
-  return CONFIG.SPREADSHEET_ID
-    ? SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID)
-    : SpreadsheetApp.getActiveSpreadsheet();
+function _ssControl() {
+  return _hubHoja('CONTROL');
 }
 
 function _sheet(name) {
   if (!name) throw new Error('Falta el nombre de pestaña (sheet).');
-  var sh = _ss().getSheetByName(name);
+  var sh = _ssControl().getSheetByName(name);
   if (!sh) throw new Error('No existe la pestaña: "' + name + '".');
   return sh;
 }
@@ -107,7 +101,7 @@ function _setOne(rng, value) {
   if (typeof value === 'string') {
     if (value === '') { rng.clearContent(); return; }
     if (value.charAt(0) === '=') { rng.setFormula(value); return; }     // fórmula explícita
-    if (CONFIG.AUTO_TYPE) {
+    if (CONFIG_CONTROL.AUTO_TYPE) {
       var d = _maybeDate(value);          if (d)               { rng.setValue(d);    return; }
       if (value === 'true')               { rng.setValue(true);  return; }
       if (value === 'false')              { rng.setValue(false); return; }
@@ -120,7 +114,7 @@ function _setOne(rng, value) {
 
 // Lanza error si el rango toca fórmulas y no se fuerza.
 function _assertWritable(rng, force) {
-  if (force || !CONFIG.PROTECT_FORMULAS) return;
+  if (force || !CONFIG_CONTROL.PROTECT_FORMULAS) return;
   var fs = rng.getFormulas();
   for (var r = 0; r < fs.length; r++) {
     for (var c = 0; c < fs[r].length; c++) {
@@ -146,7 +140,7 @@ function _indexOfHeader(headers, name) {
 
 /** Lista todas las pestañas con sus dimensiones. */
 function getSheets() {
-  return _ss().getSheets().map(function (sh) {
+  return _ssControl().getSheets().map(function (sh) {
     return { name: sh.getName(), index: sh.getIndex(),
              rows: sh.getLastRow(), cols: sh.getLastColumn() };
   });
@@ -154,7 +148,7 @@ function getSheets() {
 
 /** Metadatos: nombre del libro, pestañas y esquema conocido. */
 function getMeta() {
-  return { spreadsheet: _ss().getName(), sheets: getSheets(), schemas: SCHEMAS };
+  return { spreadsheet: _ssControl().getName(), sheets: getSheets(), schemas: SCHEMAS };
 }
 
 /**
@@ -434,7 +428,7 @@ function searchAll(query, opts) {
   var filter = opts.sheets || null;
   var q = String(query).toLowerCase();
   var matches = [];
-  var sheets = _ss().getSheets();
+  var sheets = _ssControl().getSheets();
   for (var s = 0; s < sheets.length; s++) {
     var sh = sheets[s], name = sh.getName();
     if (filter && filter.indexOf(name) < 0) continue;
@@ -825,7 +819,7 @@ function getAdelantos() {
 var HOJA_CAPACIDAD_WEB = 'Capacidad_Web';
 
 function _sheetCapacidadWeb() {
-  var ss = CONFIG.SPREADSHEET_ID ? SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID) : SpreadsheetApp.getActiveSpreadsheet();
+  var ss = _ssControl();
   var sh = ss.getSheetByName(HOJA_CAPACIDAD_WEB);
   if (!sh) {
     sh = ss.insertSheet(HOJA_CAPACIDAD_WEB);
@@ -884,7 +878,7 @@ function guardarCapacidadWeb(q, asignaciones) {
 function getHorasBolsaPorQ() {
   var out = {};
   var suma = function (sheetName, qCol, hCol) {
-    var sh = _ss().getSheetByName(sheetName);
+    var sh = _ssControl().getSheetByName(sheetName);
     if (!sh) return;
     var last = Math.min(sh.getLastRow(), 5000);
     if (last < 2) return;
@@ -906,11 +900,11 @@ function getHorasBolsaPorQ() {
  * SNAPSHOT: TODO lo necesario para el frontend y las simulaciones en una sola
  * llamada (minimiza la latencia de Apps Script).
  */
-function getSnapshot() {
+function getSnapshotControl() {
   // soloValores: el frontend de /simulador y /capacidad solo consume los
   // VALORES (nunca formulas/editable) -> snapshot mucho más pequeño y rápido.
   var lite = { soloValores: true };
-  var ss = _ss();
+  var ss = _ssControl();
   return {
     generadoEn: new Date().toISOString(),
     // Identifica el LIBRO del que sale todo: el frontend lo muestra para que
@@ -933,8 +927,8 @@ function getSnapshot() {
 /* ===========================================================================
  * 8. API WEB  (doGet / doPost -> JSON)
  * =========================================================================== */
-function doGet(e)  { return _serve(e); }
-function doPost(e) { return _serve(e); }
+function doGetControl(e)  { return _serveControl(e); }
+function doPostControl(e) { return _serveControl(e); }
 
 // Acciones de SOLO LECTURA: NO exigen token (la web pública sólo lee del libro).
 // Cualquier acción de ESCRITURA (write/writeRange/batch/append/updateRow) SÍ
@@ -948,14 +942,14 @@ var _READ_ACTIONS = {
   guardarCapacidadWeb: 1
 };
 
-function _serve(e) {
+function _serveControl(e) {
   try {
     var p = _params(e);
     var action = p.action || 'help';
     if (!_READ_ACTIONS[action]) _auth(p); // sólo las escrituras requieren token
-    return _json({ ok: true, action: action, data: _route(p.action, p) });
+    return _jsonControl({ ok: true, action: action, data: _route(p.action, p) });
   } catch (err) {
-    return _json({ ok: false, error: String(err && err.message ? err.message : err) });
+    return _jsonControl({ ok: false, error: String(err && err.message ? err.message : err) });
   }
 }
 
@@ -975,9 +969,9 @@ function _auth(p) {
   // placeholder del repositorio quedan DESHABILITADAS por completo: así se
   // garantiza que, desde la web, lo único que puede cambiar del Excel es la
   // hoja propia "Capacidad_Web" (guardarCapacidadWeb, en _READ_ACTIONS).
-  if (!CONFIG.API_TOKEN || CONFIG.API_TOKEN === 'CAMBIA_ESTE_TOKEN_LARGO_Y_SECRETO')
-    throw new Error('Escrituras genéricas deshabilitadas: configura un API_TOKEN propio en CONFIG.');
-  if (p.token !== CONFIG.API_TOKEN) throw new Error('Token inválido o ausente.');
+  var token = PropertiesService.getScriptProperties().getProperty('CONTROL_API_TOKEN');
+  if (!token) throw new Error('Escrituras genéricas deshabilitadas: no hay propiedad del script CONTROL_API_TOKEN.');
+  if (p.token !== token) throw new Error('Token inválido o ausente.');
 }
 
 // Coerción de parámetros que pueden venir como string (GET) u objeto (POST).
@@ -1011,7 +1005,7 @@ function _route(action, p) {
     case 'search':      return searchAll(p.query, { sheets: _obj(p.sheets),
                                                     numberedOnly: _bool(p.numberedOnly), limit: _num(p.limit) });
     // --- Lectura estructurada por módulo (alimenta las simulaciones) ---
-    case 'snapshot':    return getSnapshot();
+    case 'snapshot':    return getSnapshotControl();
     case 'tarifas':     return getTarifas();
     case 'iniciativas': return getIniciativas();
     case 'ejecucion':   return getEjecucion();
@@ -1053,7 +1047,7 @@ function _help() {
   };
 }
 
-function _json(o) {
+function _jsonControl(o) {
   return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
 }
 

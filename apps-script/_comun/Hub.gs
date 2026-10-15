@@ -1,0 +1,135 @@
+/* ===========================================================================
+   Hub.gs · Proyecto ÚNICO de Apps Script del Reference Data & Surveillance Hub
+
+   Todos los backends de la web viven en este proyecto y comparten UNA
+   implementación (una sola URL /exec). Cada página llama a esa URL con
+   ?app=<nombre> y aquí se reparte al backend que toca:
+
+     ?app=comidas · control · equipo · guardias · ofertas · pases ·
+          seguimiento · timereport · vacaciones
+
+   En links.json basta con poner la URL /exec en "hubBackend": cada clave de
+   backend lleva su "app" y la web compone la URL sola.
+
+   Ficheros: TODOS los .gs de apps-script/ (cada carpeta es una app; _comun/
+   es lo compartido). En Apps Script los ficheros comparten el ámbito global:
+   comprobar.mjs vigila que no se repita ningún nombre.
+
+   Puesta en marcha (proyecto nuevo, desde el editor):
+     1. autorizar()            pide todos los permisos y prueba cada hoja.
+     2. instalarDisparadores() crea los disparadores de todas las apps.
+     3. diagnosticarHub()      resumen: hojas, propiedades y disparadores.
+   =========================================================================== */
+
+const HUB_APPS = ['comidas', 'control', 'equipo', 'guardias', 'ofertas', 'pases', 'seguimiento', 'timereport', 'vacaciones'];
+
+/* Hojas de cálculo de cada app. Antes comidas, control y pases eran scripts
+   ligados a su hoja (getActiveSpreadsheet); en un proyecto independiente hay
+   que abrirlas por id. Para cambiar una sin tocar el código: propiedad del
+   script <CLAVE>_SPREADSHEET_ID (p. ej. PASES_SPREADSHEET_ID). Vacaciones
+   lleva la suya en V_CONFIG.EXCEL_ID. */
+const HUB_HOJAS = {
+  COMIDAS: '1Wk12cky78qu7aUcHkRlQuDy3OjvRQ8fZXeNcPrgHDP8',    // Comidas_RDR
+  CONTROL: '1pk-2g_vVM6mCXGe3ZzljwM465R9O14GVEDUNSpBX40I',    // Control - RDR BBVA
+  PASES: '1PWqHHorE8u_Xdyn9TeMWwf03CFv3FlPPuLeKAEpYr5Y',      // Pases_Calendados_NFQ
+  GUARDIAS: '1Nn6Jm7CkvDFhSLBMyXZPBGITyH8P9oLBiKMZrGDtoLs',   // RDR Guardias (datos)
+  TIMEREPORT: '1k4xF0KSCFbeMZgtIcQAzFIOL0JM5o3bpYaGM_rPRoc4'  // RDR TimeReport Web (datos)
+};
+
+const _HUB_SS = {}; // una apertura por hoja y ejecución
+
+function _hubIdHoja(clave) {
+  let id = '';
+  try { id = PropertiesService.getScriptProperties().getProperty(clave + '_SPREADSHEET_ID') || ''; } catch (e) {}
+  id = id || HUB_HOJAS[clave];
+  if (!id) throw new Error('Falta el id de la hoja de ' + clave + ' (HUB_HOJAS o propiedad ' + clave + '_SPREADSHEET_ID).');
+  return id;
+}
+
+/** Hoja de cálculo de una app (COMIDAS, CONTROL, PASES, GUARDIAS, TIMEREPORT). */
+function _hubHoja(clave) {
+  if (!_HUB_SS[clave]) _HUB_SS[clave] = SpreadsheetApp.openById(_hubIdHoja(clave));
+  return _HUB_SS[clave];
+}
+
+// ── Web: reparto por ?app= ───────────────────────────────────────────────────
+function doGet(e) { return _hubRepartir(e, true); }
+function doPost(e) { return _hubRepartir(e, false); }
+
+function _hubRepartir(e, get) {
+  const app = String((e && e.parameter && e.parameter.app) || '').trim().toLowerCase();
+  switch (app) {
+    case 'comidas': return get ? doGetComidas(e) : doPostComidas(e);
+    case 'control': return get ? doGetControl(e) : doPostControl(e);
+    case 'equipo': return get ? doGetEquipo(e) : doPostEquipo(e);
+    case 'guardias': return get ? doGetGuardias(e) : doPostGuardias(e);
+    case 'ofertas': return get ? doGetOfertas(e) : doPostOfertas(e);
+    case 'pases': return get ? doGetPases(e) : doPostPases(e);
+    case 'seguimiento': return get ? doGetSeguimiento(e) : doPostSeguimiento(e);
+    case 'timereport': return get ? doGetTR(e) : doPostTR(e);
+    case 'vacaciones': return get ? doGetVacaciones(e) : doPostVacaciones(e);
+  }
+  return ContentService.createTextOutput(JSON.stringify({
+    ok: false,
+    error: app ? 'App desconocida: ' + app : 'Falta ?app=<nombre> en la URL',
+    apps: HUB_APPS
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+// ── Puesta en marcha (ejecutar desde el editor) ──────────────────────────────
+
+/* EJECUTAR tras pegar código nuevo: pide todos los permisos (hojas, Drive,
+   correo, calendario, disparadores…) y comprueba que cada app arranca. */
+function autorizar() {
+  MailApp.getRemainingDailyQuota();
+  GmailApp.getAliases();
+  DriveApp.getRootFolder();
+  CalendarApp.getDefaultCalendar();
+  UrlFetchApp.fetch('https://raw.githubusercontent.com/rdr-nfq/team-hub/main/beyond-the-grid/public/links/links.json', { muteHttpExceptions: true });
+  ScriptApp.getProjectTriggers();
+  Object.keys(HUB_HOJAS).forEach(function (k) {
+    try { Logger.log('Hoja ' + k + ': ' + _hubHoja(k).getName()); }
+    catch (e) { Logger.log('⚠ Hoja ' + k + ': ' + e); }
+  });
+  [['guardias', autorizarGuardias], ['ofertas', autorizarOfertas], ['seguimiento', autorizarSeguimiento],
+   ['timereport', autorizarTR], ['vacaciones', autorizarVacaciones]].forEach(function (a) {
+    try { a[1](); Logger.log('✓ ' + a[0]); } catch (e) { Logger.log('⚠ ' + a[0] + ': ' + e); }
+  });
+  Logger.log('Permisos concedidos. Siguiente paso: instalarDisparadores().');
+}
+
+/* EJECUTAR UNA VEZ (se puede repetir: no duplica nada). Disparadores de
+   todas las apps: recordatorios de comidas y del Time Report, avisos de
+   pases y caché de vacaciones. */
+function instalarDisparadores() {
+  [['comidas · recordatorios', crearTriggers],
+   ['timereport · recordatorio de evidencias', crearTriggerRecordatorioTR],
+   ['pases · avisos programados', instalarTriggerAvisos],
+   ['vacaciones · cambios en el Excel', instalarDisparadoresVacaciones],
+   ['vacaciones · caché precalentada', instalarPrecalentado]].forEach(function (d) {
+    try { d[1](); Logger.log('✓ ' + d[0]); } catch (e) { Logger.log('⚠ ' + d[0] + ': ' + e); }
+  });
+  _hubListarDisparadores();
+}
+
+/** Qué hay configurado: hojas, propiedades (solo nombres) y disparadores. */
+function diagnosticarHub() {
+  Object.keys(HUB_HOJAS).forEach(function (k) {
+    try { Logger.log('Hoja ' + k + ': ' + _hubHoja(k).getName() + ' (' + _hubIdHoja(k) + ')'); }
+    catch (e) { Logger.log('⚠ Hoja ' + k + ': ' + e); }
+  });
+  const props = PropertiesService.getScriptProperties().getKeys();
+  Logger.log('Propiedades del script: ' + (props.sort().join(', ') || 'ninguna'));
+  ['GITHUB_TOKEN', 'CLAVE_EQUIPO'].forEach(function (k) {
+    if (props.indexOf(k) < 0) Logger.log('⚠ Falta la propiedad ' + k + ' (Gestión de equipo no podrá guardar).');
+  });
+  if (props.indexOf('vac:campanas') < 0) Logger.log('ℹ Sin vac:campanas: vacaciones usará los formularios por defecto (Navidad 2026).');
+  if (props.indexOf('FIRMANTES_LATAM') < 0) Logger.log('ℹ Sin FIRMANTES_LATAM: ofertas solo tendrá los firmantes del código.');
+  _hubListarDisparadores();
+  Logger.log('Remitente de correo: ' + (_correoRemitente() || 'la cuenta del script') + ' · cuota restante hoy: ' + MailApp.getRemainingDailyQuota());
+}
+
+function _hubListarDisparadores() {
+  const t = ScriptApp.getProjectTriggers();
+  Logger.log('Disparadores (' + t.length + '): ' + t.map(function (x) { return x.getHandlerFunction() + ' [' + x.getEventType() + ']'; }).join(', '));
+}

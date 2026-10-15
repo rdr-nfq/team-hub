@@ -156,7 +156,7 @@ const LETRA_DIA = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
 const PALETA_PERSONAS = ['#85C8FF', '#88E783', '#FFB56B', '#9694FF', '#8BE1E9', '#FFE761', '#5BBEFF', '#F8CD51', '#B5E5A4', '#D0A3FF'];
 
 /* EJECUTAR UNA VEZ A MANO tras pegar código nuevo: pide todos los permisos. */
-function autorizar() {
+function autorizarVacaciones() {
   _ss().getName();
   MailApp.getRemainingDailyQuota();
   GmailApp.getAliases(); // remitente del grupo (Correo.gs)
@@ -170,7 +170,7 @@ let _SS = null; // una sola apertura del Excel por petición
 function _ss() { return _SS || (_SS = SpreadsheetApp.openById(V_CONFIG.EXCEL_ID)); }
 
 // ── Entrada HTTP ─────────────────────────────────────────────────────────────
-function doGet(e) {
+function doGetVacaciones(e) {
   const p = (e && e.parameter) || {};
   if (String(p.modo || '').toLowerCase() === 'publico') {
     try { return _salida(datosPublicos(p.anio)); } catch (err) { return _salida({ error: String(err.message || err) }); }
@@ -178,7 +178,7 @@ function doGet(e) {
   return _servir(p);
 }
 
-function doPost(e) {
+function doPostVacaciones(e) {
   let p = {};
   try { p = JSON.parse((e && e.postData && e.postData.contents) || '{}'); } catch (_) {}
   const q = (e && e.parameter) || {};

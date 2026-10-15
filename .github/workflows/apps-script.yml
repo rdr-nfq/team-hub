@@ -1,7 +1,7 @@
 name: Apps Script (comprobación)
 
-# Revisa los backends de apps-script/: sintaxis de cada .gs y nombres globales
-# repetidos dentro de un mismo proyecto. No despliega nada: el despliegue se
+# Revisa el proyecto único de apps-script/: sintaxis de cada .gs, nombres
+# globales repetidos en todo el proyecto, reparto (Hub.gs) y disparadores. No despliega nada: el despliegue se
 # hace a mano en script.google.com (ver apps-script/README.md).
 
 on:

@@ -31,7 +31,7 @@ function desinstalarTriggerAvisos() {
 /* ───────── Entry point del trigger horario ───────── */
 function revisarAvisosProgramados() {
   const ahora = new Date();
-  const pases = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONSTANTES.HOJA_PASES).getDataRange().getValues();
+  const pases = _hubHoja('PASES').getSheetByName(CONSTANTES.HOJA_PASES).getDataRange().getValues();
   const enviados = cargarAvisosEnviados();
 
   const VENTANA_PRE_DIAS = 16, VENTANA_POST_DIAS = 7, MS_DIA = 86400000;
@@ -166,7 +166,7 @@ function ajustarASiguienteLaboral(d) {
 
 /* ───────── Registro idempotente ───────── */
 function cargarAvisosEnviados() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = _hubHoja('PASES');
   let sheet = ss.getSheetByName(AVISOS_CONFIG.HOJA_REGISTRO);
   if (!sheet) {
     sheet = ss.insertSheet(AVISOS_CONFIG.HOJA_REGISTRO);
@@ -183,7 +183,7 @@ function cargarAvisosEnviados() {
   return map;
 }
 function registrarEnviado(fechaPaseStr, codigo) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(AVISOS_CONFIG.HOJA_REGISTRO);
+  const sheet = _hubHoja('PASES').getSheetByName(AVISOS_CONFIG.HOJA_REGISTRO);
   if (!sheet) return;
   const partes = fechaPaseStr.split("/");
   sheet.appendRow([new Date(partes[2], partes[1] - 1, partes[0]), codigo, new Date()]);
@@ -224,7 +224,7 @@ function asuntoHiloPase_(fechaPaseStr) {
 }
 
 function recopilarEstadoPase(fechaPaseStr, filaPase) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = _hubHoja('PASES');
   const pases = ss.getSheetByName(CONSTANTES.HOJA_PASES).getDataRange().getValues();
   const paseRow = pases[filaPase - 1] || [];
 
@@ -525,7 +525,7 @@ function contenidoDescanso(s, fechaPase) {
 /* ───────── DEBUG: probar todos los correos de golpe ───────── */
 function probarTodosLosCorreos() {
   const filaPase = 2;
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = _hubHoja('PASES');
   const fechaPase = ss.getSheetByName(CONSTANTES.HOJA_PASES).getRange(filaPase, 1).getValue();
   const fechaPaseStr = formatearFechaSegura(fechaPase);
   const estado = recopilarEstadoPase(fechaPaseStr, filaPase);

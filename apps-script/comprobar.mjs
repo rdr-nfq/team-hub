@@ -1,17 +1,14 @@
-// Comprueba los Apps Script de esta carpeta (lo ejecuta también la Action
-// .github/workflows/apps-script.yml):
+// Comprueba el proyecto ÚNICO de Apps Script (todas las carpetas de
+// apps-script/ se pegan en el mismo proyecto). Lo ejecuta también la Action
+// .github/workflows/apps-script.yml:
 //   1. Sintaxis de cada .gs (se compila con el motor V8 de Node, sin ejecutarlo).
-//   2. Nombres globales repetidos dentro de un mismo proyecto (carpeta): en
-//      Apps Script todos los ficheros comparten ámbito global, así que un
-//      `const` duplicado rompe el proyecto entero y una `function` duplicada
-//      pisa a la otra sin avisar.
-//
-//   3. (Solo aviso, no falla) Nombres globales repetidos ENTRE proyectos: es
-//      lo que hay que resolver para juntarlos todos en un único proyecto de
-//      Apps Script (objetivo a largo plazo: más fácil de traspasar).
-//      vacaciones-antiguo/ no cuenta: se retira. Correo.gs tampoco: es común.
-//
-//   4. Correo.gs (envío común) tiene que ser IDÉNTICO en todas las carpetas.
+//   2. Nombres globales repetidos en CUALQUIER fichero: en Apps Script todos
+//      los ficheros comparten el ámbito global, así que un `const` duplicado
+//      rompe el proyecto entero y una `function` duplicada pisa a la otra sin
+//      avisar.
+//   3. Nombres de fichero repetidos entre carpetas: en el editor no puede
+//      haber dos ficheros con el mismo nombre.
+//   4. Cada app del enrutador (_comun/Hub.gs) tiene su doGet<App>/doPost<App>.
 //
 //   node apps-script/comprobar.mjs
 
@@ -25,58 +22,51 @@ const RE_GLOBAL = /^(?:async\s+)?(function\*?|const|let|var|class)\s+([A-Za-z_$]
 
 let errores = 0;
 let total = 0;
-const entreProyectos = new Map(); // nombre -> Set(carpetas)
-const correos = new Map(); // carpeta -> contenido de Correo.gs
+const globales = new Map(); // nombre -> fichero
+const ficheros = new Map(); // nombre de fichero -> carpeta
+let todo = "";
 for (const carpeta of readdirSync(raiz).sort()) {
   const dir = join(raiz, carpeta);
   if (!statSync(dir).isDirectory()) continue;
-  const globales = new Map(); // nombre -> fichero
   for (const f of readdirSync(dir).filter((x) => x.endsWith(".gs")).sort()) {
     const ruta = join(dir, f);
     const rel = relative(join(raiz, ".."), ruta);
     const src = readFileSync(ruta, "utf8");
     total++;
+    todo += src + "\n";
+    if (ficheros.has(f)) {
+      errores++;
+      console.error(`✗ ${f} está en ${ficheros.get(f)}/ y en ${carpeta}/: en el editor no puede haber dos ficheros con el mismo nombre`);
+    } else ficheros.set(f, carpeta);
     try {
       new vm.Script(src, { filename: rel });
     } catch (e) {
       errores++;
-      const pos = (e.stack || "").split("\n")[0];
-      console.error(`✗ ${rel}: ${e.message}\n    ${pos}`);
+      console.error(`✗ ${rel}: ${e.message}\n    ${(e.stack || "").split("\n")[0]}`);
       continue;
     }
-    if (f === "Correo.gs") correos.set(carpeta, src);
     for (const [, , nombre] of src.matchAll(RE_GLOBAL)) {
-      if (carpeta !== "vacaciones-antiguo" && f !== "Correo.gs") {
-        if (!entreProyectos.has(nombre)) entreProyectos.set(nombre, new Set());
-        entreProyectos.get(nombre).add(carpeta);
-      }
       const previo = globales.get(nombre);
-      if (previo && previo !== f) {
+      if (previo && previo !== `${carpeta}/${f}`) {
         errores++;
-        console.error(`✗ ${carpeta}/: «${nombre}» está definido en ${previo} y en ${f} (mismo proyecto Apps Script)`);
+        console.error(`✗ «${nombre}» está definido en ${previo} y en ${carpeta}/${f} (el proyecto es uno solo)`);
       } else {
-        globales.set(nombre, f);
+        globales.set(nombre, `${carpeta}/${f}`);
       }
     }
   }
 }
 
-const [modelo, ...otras] = [...correos];
-for (const [carpeta, src] of otras) {
-  if (src !== modelo[1]) {
-    errores++;
-    console.error(`✗ ${carpeta}/Correo.gs no es igual que ${modelo[0]}/Correo.gs: copia la versión buena en todas las carpetas`);
-  }
-}
+// Enrutador: cada case 'app' llama a funciones que existen.
+const hub = readFileSync(join(raiz, "_comun", "Hub.gs"), "utf8");
+for (const [, fn] of hub.matchAll(/return get \? (\w+)\(e\) : \w+\(e\)/g)) if (!globales.has(fn)) { errores++; console.error(`✗ Hub.gs llama a ${fn}, que no existe`); }
+for (const [, fn] of hub.matchAll(/: (\w+)\(e\);/g)) if (!globales.has(fn)) { errores++; console.error(`✗ Hub.gs llama a ${fn}, que no existe`); }
+for (const [, fn] of hub.matchAll(/\['[^']+', (\w+)\]/g)) if (!globales.has(fn)) { errores++; console.error(`✗ Hub.gs usa ${fn}, que no existe`); }
+// Disparadores: cada newTrigger('x') apunta a una función global.
+for (const [, fn] of todo.matchAll(/newTrigger\('(\w+)'\)/g)) if (!globales.has(fn)) { errores++; console.error(`✗ Un disparador apunta a ${fn}, que no existe`); }
 
 if (errores) {
   console.error(`\n${errores} problema(s) en ${total} ficheros .gs`);
   process.exit(1);
 }
-console.log(`✓ ${total} ficheros .gs sin errores de sintaxis ni globales duplicados`);
-
-const repetidos = [...entreProyectos].filter(([, s]) => s.size > 1);
-if (repetidos.length) {
-  console.log(`\nℹ Camino a un único proyecto: ${repetidos.length} nombres globales se repiten entre proyectos`);
-  for (const [n, s] of repetidos.sort((a, b) => b[1].size - a[1].size)) console.log(`   ${n}: ${[...s].join(", ")}`);
-}
+console.log(`✓ ${total} ficheros .gs · un solo proyecto · sin errores de sintaxis ni nombres repetidos`);

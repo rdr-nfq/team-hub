@@ -11,11 +11,11 @@
    =========================================================================== */
 
 function getSpreadsheet() {
-  return SpreadsheetApp.getActiveSpreadsheet(); // o SpreadsheetApp.openById('ID')
+  return _hubHoja('COMIDAS'); // Comidas_RDR (id en _comun/Hub.gs)
 }
 
 // ── GET · cargar datos al inicio ──────────────────────────────────────────
-function doGet(e) {
+function doGetComidas(e) {
   const ss = getSpreadsheet();
 
   // 1) Restaurantes
@@ -62,7 +62,7 @@ function doGet(e) {
 }
 
 // ── POST · guardar / actualizar la elección de un compañero ───────────────
-function doPost(e) {
+function doPostComidas(e) {
   try {
     const ss = getSpreadsheet();
     const sheet = ss.getSheetByName('Equipo');
@@ -105,6 +105,6 @@ function doPost(e) {
 }
 
 // ── CORS preflight ────────────────────────────────────────────────────────
-function doOptions(e) {
+function doOptionsComidas(e) {
   return ContentService.createTextOutput('OK').setMimeType(ContentService.MimeType.TEXT);
 }

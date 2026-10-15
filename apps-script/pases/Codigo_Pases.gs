@@ -96,7 +96,7 @@ function parsearFechaEs(fechaStr) {
    Crear con new SheetCtx(); reutilizar para todas las lecturas/escrituras
    dentro del mismo doPost. */
 function SheetCtx() {
-  this.ss = SpreadsheetApp.getActiveSpreadsheet();
+  this.ss = _hubHoja('PASES');
   this._sheets = {};
   this._data = {};
 }
@@ -115,19 +115,19 @@ SheetCtx.prototype.invalidar = function (name) { delete this._data[name]; };
    Router HTTP
    ───────────────────────────────────────────────────────── */
 
-function doGet(e) {
+function doGetPases(e) {
   return ContentService
     .createTextOutput(JSON.stringify({ status: "ok", message: "API RDR Hub up" }))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-function doOptions(e) {
+function doOptionsPases(e) {
   return ContentService
     .createTextOutput("")
     .setMimeType(ContentService.MimeType.TEXT);
 }
 
-function doPost(e) {
+function doPostPases(e) {
   try {
     if (!e || !e.postData || !e.postData.contents) throw new Error("Petición malformada: no hay body.");
 
@@ -1212,7 +1212,7 @@ function quitarTagsHtml(s) {
  * Ejecutar y pegar el resultado del registro (Ver → Registros de ejecución).
  */
 function inspeccionarFechasPases() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = _hubHoja('PASES');
   const tzScript = Session.getScriptTimeZone();
   const tzSheet = ss.getSpreadsheetTimeZone();
   Logger.log("Zona horaria del SCRIPT: " + tzScript + " · Zona horaria del SHEETS: " + tzSheet +
@@ -1260,7 +1260,7 @@ function inspeccionarFechasPases() {
  */
 function regularizarFechasPases(dryRun) {
   if (dryRun === undefined) dryRun = true;
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = _hubHoja('PASES');
   const tzScript = Session.getScriptTimeZone();
   const tzSheet = ss.getSpreadsheetTimeZone();
   const dia = (d, tz) => Utilities.formatDate(d, tz, "dd/MM/yyyy");

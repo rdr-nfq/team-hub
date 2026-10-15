@@ -73,24 +73,19 @@ var G_HOJA = ['Guardias', [
 /* Ejecutar UNA vez desde el editor para conceder los permisos (Sheets, Gmail,
    UrlFetch para leer equipo.json). Si tras un cambio aparece "No tienes
    permiso para llamar a…", volver a ejecutarla. */
-function autorizar() {
-  _ss().getName();
+function autorizarGuardias() {
+  _ssGuardias().getName();
   GmailApp.getAliases();
   UrlFetchApp.fetch(G_CONFIG.EQUIPO_JSON_URL, { muteHttpExceptions: true });
   Logger.log('Permisos concedidos.');
 }
 
-function _ss() {
-  var props = PropertiesService.getScriptProperties();
-  var id = props.getProperty('DATA_SPREADSHEET_ID');
-  if (id) return SpreadsheetApp.openById(id);
-  var ss = SpreadsheetApp.create('RDR Guardias (datos)');
-  props.setProperty('DATA_SPREADSHEET_ID', ss.getId());
-  return ss;
+function _ssGuardias() {
+  return _hubHoja('GUARDIAS'); // «RDR Guardias (datos)» (id en _comun/Hub.gs)
 }
 
-function _hoja() {
-  var ss = _ss();
+function _hojaGuardias() {
+  var ss = _ssGuardias();
   var sh = ss.getSheetByName(G_HOJA[0]);
   if (!sh) {
     sh = ss.insertSheet(G_HOJA[0]);
@@ -105,10 +100,10 @@ function _hoja() {
   return sh;
 }
 
-function doGet(e)  { return _serve(e); }
-function doPost(e) { return _serve(e); }
+function doGetGuardias(e)  { return _serveGuardias(e); }
+function doPostGuardias(e) { return _serveGuardias(e); }
 
-function _serve(e) {
+function _serveGuardias(e) {
   try {
     var p = {};
     if (e && e.parameter) for (var k in e.parameter) p[k] = e.parameter[k];
@@ -128,13 +123,13 @@ function _serve(e) {
       case 'borrar': data = borrarGuardia(p); break;
       default: throw new Error('Acción desconocida: ' + action);
     }
-    return _json({ ok: true, action: action, data: data });
+    return _jsonGuardias({ ok: true, action: action, data: data });
   } catch (err) {
-    return _json({ ok: false, error: String(err && err.message ? err.message : err) });
+    return _jsonGuardias({ ok: false, error: String(err && err.message ? err.message : err) });
   }
 }
 
-function _json(obj) {
+function _jsonGuardias(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
 }
@@ -150,8 +145,8 @@ function _horaTexto(v) {
   return String(v == null ? '' : v);
 }
 
-function _filas() {
-  var sh = _hoja();
+function _filasGuardias() {
+  var sh = _hojaGuardias();
   var last = sh.getLastRow();
   if (last < 2) return [];
   return sh.getRange(2, 1, last - 1, G_HOJA[1].length).getValues();
@@ -185,7 +180,7 @@ function misGuardias(email) {
   var x = String(email || '').trim().toLowerCase();
   if (!x) throw new Error('Falta el email.');
   var out = [];
-  _filas().forEach(function (r, i) {
+  _filasGuardias().forEach(function (r, i) {
     if (String(r[3] || '').trim().toLowerCase() !== x) return;
     var o = _aObjeto(r, i + 2);
     if (o.prueba) return;
@@ -197,7 +192,7 @@ function misGuardias(email) {
 
 function todasLasGuardias() {
   var out = [];
-  _filas().forEach(function (r, i) { out.push(_aObjeto(r, i + 2)); });
+  _filasGuardias().forEach(function (r, i) { out.push(_aObjeto(r, i + 2)); });
   out.sort(function (a, b) { return b.creadoEn < a.creadoEn ? -1 : b.creadoEn > a.creadoEn ? 1 : 0; });
   return out;
 }
@@ -205,7 +200,7 @@ function todasLasGuardias() {
 function _porId(id) {
   var x = String(id || '').trim();
   if (!x) throw new Error('Falta el id.');
-  var filas = _filas();
+  var filas = _filasGuardias();
   for (var i = 0; i < filas.length; i++) {
     if (String(filas[i][0] || '') === x) return _aObjeto(filas[i], i + 2);
   }
@@ -233,7 +228,7 @@ function crearGuardia(p) {
 
   var id = Utilities.getUuid();
   var ahora = new Date();
-  var sh = _hoja();
+  var sh = _hojaGuardias();
   sh.getRange(sh.getLastRow() + 1, 1, 1, G_HOJA[1].length).setValues([[
     id, ahora, persona, email, fecha, horaEntrada, horaSalida, descripcion,
     'pendiente', '', '', '', '', prueba, false
@@ -283,7 +278,7 @@ function resolverGuardia(p) {
   }
 
   var ahora = new Date();
-  var sh = _hoja();
+  var sh = _hojaGuardias();
   sh.getRange(actual.row, 9, 1, 5).setValues([[estado, importe, motivo, ahora, resueltoPor]]);
 
   var guardia = Object.assign({}, actual, {
@@ -302,7 +297,7 @@ function marcarMyNfq(p) {
   var valor = p.valor === true || p.valor === 'true';
   var actual = _porId(id);
   if (actual.estado !== 'aprobada') throw new Error('Solo se puede marcar en guardias aprobadas.');
-  _hoja().getRange(actual.row, 15, 1, 1).setValues([[valor]]);
+  _hojaGuardias().getRange(actual.row, 15, 1, 1).setValues([[valor]]);
   return Object.assign({}, actual, { aprobadaMyNfq: valor });
 }
 
@@ -312,13 +307,13 @@ function marcarMyNfq(p) {
 function borrarGuardia(p) {
   var id = String(p.id || '').trim();
   var actual = _porId(id);
-  _hoja().deleteRow(actual.row);
+  _hojaGuardias().deleteRow(actual.row);
   return { id: id, borrada: true };
 }
 
 /* ──────────────────────────── Equipo / coordinadores ──────────────────────────── */
 
-function _equipo() {
+function _equipoGuardias() {
   var resp = UrlFetchApp.fetch(G_CONFIG.EQUIPO_JSON_URL, { muteHttpExceptions: true, followRedirects: true });
   if (resp.getResponseCode() !== 200) throw new Error('HTTP ' + resp.getResponseCode() + ' al leer equipo.json');
   var body = resp.getContentText();
@@ -328,7 +323,7 @@ function _equipo() {
 
 function _emailsCoordinadores() {
   var vistos = {}, out = [];
-  _equipo().forEach(function (m) {
+  _equipoGuardias().forEach(function (m) {
     if (!m.coordinador || !m.email) return;
     var k = String(m.email).trim().toLowerCase();
     if (!k || vistos[k]) return;
@@ -438,7 +433,7 @@ function _avisarSolicitanteResolucion(g) {
 
 /* ─────────────────────────────────── Pruebas ─────────────────────────────────── */
 
-function _test_ping() { Logger.log(JSON.stringify(_serve({ parameter: { action: 'ping' } }).getContent())); }
+function _test_ping() { Logger.log(JSON.stringify(_serveGuardias({ parameter: { action: 'ping' } }).getContent())); }
 
 /* Ejecutar desde el editor si no llegan los avisos: manda un correo de prueba
    a todos los coordinadores con el mismo método que los avisos reales, y deja

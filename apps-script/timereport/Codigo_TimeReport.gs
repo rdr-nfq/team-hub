@@ -79,7 +79,7 @@ var HOJAS = {
    evidencias (Drive), el recordatorio (Gmail) y la lectura de equipo.json
    (UrlFetch). Si tras un cambio aparece "No tienes permiso para llamar a…",
    volver a ejecutarla. */
-function autorizar() {
+function autorizarTR() {
   DriveApp.getRootFolder().getName();
   GmailApp.getAliases();
   Logger.log('Cuota de correo restante hoy: ' + MailApp.getRemainingDailyQuota());
@@ -87,18 +87,13 @@ function autorizar() {
   Logger.log('Permisos concedidos. Raíz de evidencias (links.json → evidenciasDrive): ' + (_evidenciasRootId() || '(sin configurar)'));
 }
 
-function _ss() {
-  var props = PropertiesService.getScriptProperties();
-  var id = props.getProperty('DATA_SPREADSHEET_ID');
-  if (id) return SpreadsheetApp.openById(id);
-  var ss = SpreadsheetApp.create('RDR TimeReport Web (datos)');
-  props.setProperty('DATA_SPREADSHEET_ID', ss.getId());
-  return ss;
+function _ssTR() {
+  return _hubHoja('TIMEREPORT'); // «RDR TimeReport Web (datos)» (id en _comun/Hub.gs)
 }
 
-function _hoja(clave) {
+function _hojaTR(clave) {
   var def = HOJAS[clave];
-  var ss = _ss();
+  var ss = _ssTR();
   var sh = ss.getSheetByName(def[0]);
   if (!sh) {
     sh = ss.insertSheet(def[0]);
@@ -107,10 +102,10 @@ function _hoja(clave) {
   return sh;
 }
 
-function doGet(e)  { return _serve(e); }
-function doPost(e) { return _serve(e); }
+function doGetTR(e)  { return _serveTR(e); }
+function doPostTR(e) { return _serveTR(e); }
 
-function _serve(e) {
+function _serveTR(e) {
   try {
     var p = {};
     if (e && e.parameter) for (var k in e.parameter) p[k] = e.parameter[k];
@@ -122,7 +117,7 @@ function _serve(e) {
     var data;
     switch (action) {
       case 'ping': data = { ok: 1 }; break;
-      case 'snapshot': data = getSnapshot(p.q); break;
+      case 'snapshot': data = getSnapshotTR(p.q); break;
       case 'guardarProyectos': data = guardarProyectos(p.q, p.proyectos); break;
       case 'guardarReparto': data = guardarReparto(p.q, p.desdeQuincena, p.filas); break;
       case 'guardarBloqueadas': data = guardarBloqueadas(p.q, p.personas); break;
@@ -131,18 +126,18 @@ function _serve(e) {
       case 'descargarEvidencias': data = descargarEvidencias(p.q, p.quincena, p.raiz); break;
       default: throw new Error('Acción desconocida: ' + action);
     }
-    return _json({ ok: true, action: action, data: data });
+    return _jsonTR({ ok: true, action: action, data: data });
   } catch (err) {
-    return _json({ ok: false, error: String(err && err.message ? err.message : err) });
+    return _jsonTR({ ok: false, error: String(err && err.message ? err.message : err) });
   }
 }
 
-function _json(obj) {
+function _jsonTR(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-function _filas(sh) {
+function _filasTR(sh) {
   var last = sh.getLastRow();
   if (last < 2) return [];
   return sh.getRange(2, 1, last - 1, sh.getLastColumn()).getValues();
@@ -152,11 +147,11 @@ function _q(v) { return String(v || '').replace(/[_\s]+/g, '').toUpperCase(); }
 
 /* ────────────────────────── Snapshot y guardados ────────────────────────── */
 
-function getSnapshot(q) {
+function getSnapshotTR(q) {
   q = _q(q);
   var qsSet = {};
   var proyectos = [];
-  _filas(_hoja('proyectos')).forEach(function (r) {
+  _filasTR(_hojaTR('proyectos')).forEach(function (r) {
     var rq = _q(r[0]);
     if (rq) qsSet[rq] = 1;
     if (rq !== q) return;
@@ -171,7 +166,7 @@ function getSnapshot(q) {
     });
   });
   var reparto = [];
-  _filas(_hoja('reparto')).forEach(function (r) {
+  _filasTR(_hojaTR('reparto')).forEach(function (r) {
     var rq = _q(r[0]);
     if (rq) qsSet[rq] = 1;
     if (rq !== q) return;
@@ -180,7 +175,7 @@ function getSnapshot(q) {
     reparto.push({ quincena: Number(r[1]) || 0, persona: String(r[2] || ''), proyectoId: String(r[3] || ''), dias: dias });
   });
   var bloqueadas = [];
-  _filas(_hoja('bloqueadas')).forEach(function (r) {
+  _filasTR(_hojaTR('bloqueadas')).forEach(function (r) {
     if (_q(r[0]) !== q) return;
     try { bloqueadas = JSON.parse(r[1] || '[]'); } catch (e4) {}
   });
@@ -206,7 +201,7 @@ function _borrarDelQ(sh, q, filtroExtra) {
 function guardarProyectos(q, proyectos) {
   q = _q(q);
   if (!q) throw new Error('Falta el Q.');
-  var sh = _hoja('proyectos');
+  var sh = _hojaTR('proyectos');
   // Hojas creadas con versiones previas: añadir la cabecera de las columnas nuevas.
   var cab = HOJAS.proyectos[1];
   if (sh.getLastColumn() < cab.length) sh.getRange(1, 1, 1, cab.length).setValues([cab]);
@@ -225,7 +220,7 @@ function guardarReparto(q, desdeQuincena, filas) {
   q = _q(q);
   if (!q) throw new Error('Falta el Q.');
   var desde = Number(desdeQuincena) || 1;
-  var sh = _hoja('reparto');
+  var sh = _hojaTR('reparto');
   _borrarDelQ(sh, q, function (fila) { return (Number(fila[1]) || 0) >= desde; });
   var now = new Date();
   var rows = (filas || [])
@@ -240,7 +235,7 @@ function guardarReparto(q, desdeQuincena, filas) {
 function guardarBloqueadas(q, personas) {
   q = _q(q);
   if (!q) throw new Error('Falta el Q.');
-  var sh = _hoja('bloqueadas');
+  var sh = _hojaTR('bloqueadas');
   _borrarDelQ(sh, q);
   sh.getRange(sh.getLastRow() + 1, 1, 1, 3).setValues([[q, JSON.stringify(personas || []), new Date()]]);
   return { n: (personas || []).length };
@@ -269,10 +264,10 @@ function _infoQuincena(q, quincena) {
 
 function _sinAcentos(s) { return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
 function _nombreFichero(persona) { return _sinAcentos(persona).replace(/[^A-Za-z0-9]+/g, ''); }
-function _norm(s) { return _sinAcentos(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+function _normTR(s) { return _sinAcentos(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
 
 /* Equipo (equipo.json del hub): [{nombre, email, emailBBVA, coordinador…}] */
-function _equipo() {
+function _equipoTR() {
   var resp = UrlFetchApp.fetch(TR_CONFIG.EQUIPO_JSON_URL, { muteHttpExceptions: true, followRedirects: true });
   if (resp.getResponseCode() !== 200) throw new Error('HTTP ' + resp.getResponseCode() + ' al leer equipo.json');
   var body = resp.getContentText();
@@ -327,7 +322,7 @@ function diagnosticarEvidencias() {
   }
 }
 
-function _subcarpeta(padre, nombre) {
+function _subcarpetaTR(padre, nombre) {
   var it = padre.getFoldersByName(nombre);
   return it.hasNext() ? it.next() : padre.createFolder(nombre);
 }
@@ -337,7 +332,7 @@ function _carpetaQuincena(info, raiz) {
   var rootId = _evidenciasRootId(raiz);
   if (!rootId) throw new Error('Evidencias sin configurar: falta la clave "evidenciasDrive" (carpeta raíz de Drive) en links.json (ejecuta diagnosticarEvidencias en el editor).');
   var root = DriveApp.getFolderById(rootId);
-  return _subcarpeta(_subcarpeta(root, String(info.anio)), info.carpeta);
+  return _subcarpetaTR(_subcarpetaTR(root, String(info.anio)), info.carpeta);
 }
 
 function carpetaEvidencias(q, quincena, raiz) {
@@ -352,11 +347,11 @@ var _ZIP_RE = /\.zip$/i;
    número de letras de nombre/apellidos que contenga, si es único); 2) por el
    propietario del fichero (email del equipo). null = sin identificar. */
 function _identificar(file, team) {
-  var base = _norm(file.getName().replace(/\.[^.]+$/, ''));
+  var base = _normTR(file.getName().replace(/\.[^.]+$/, ''));
   var compacto = base.replace(/\s+/g, '');
   var mejor = null, mejorScore = 0, empate = false;
   team.forEach(function (p) {
-    var n = _norm(p.nombre);
+    var n = _normTR(p.nombre);
     var canon = n.replace(/\s+/g, '');
     var score = 0;
     if (canon && compacto.indexOf(canon) >= 0) score = 100;
@@ -381,7 +376,7 @@ function _identificar(file, team) {
 function estadoEvidencias(q, quincena, raiz) {
   var info = _infoQuincena(q, quincena);
   var folder = _carpetaQuincena(info, raiz);
-  var team = _equipo();
+  var team = _equipoTR();
   var entregados = [], sinIdentificar = [], zip = null;
   var usados = {}; // nombre canónico ya asignado en esta carpeta -> nº de ficheros
   var it = folder.getFiles();
@@ -453,15 +448,13 @@ function crearTriggerRecordatorioTR() {
   Logger.log('Disparador creado: enviarRecordatorioTR, diario a las 9:00 (' + TR_CONFIG.TZ + ').');
 }
 
-function _hoyISO() { return Utilities.formatDate(new Date(), TR_CONFIG.TZ, 'yyyy-MM-dd'); }
+function _hoyISOTR() { return Utilities.formatDate(new Date(), TR_CONFIG.TZ, 'yyyy-MM-dd'); }
 
-/* Festivos de España del backend de vacaciones ({iso:"ES"|"MX"|"AMBOS"}). {} si falla. */
+/* Festivos de España de vacaciones ({iso:"ES"|"MX"|"AMBOS"}). {} si falla. */
 function _festivosES() {
   try {
-    var links = JSON.parse(UrlFetchApp.fetch(TR_CONFIG.LINKS_JSON_URL, { muteHttpExceptions: true }).getContentText());
-    var url = links.vacacionesBackend && links.vacacionesBackend.url;
-    if (!url) return {};
-    var d = JSON.parse(UrlFetchApp.fetch(url + (url.indexOf('?') < 0 ? '?' : '&') + 'modo=publico', { muteHttpExceptions: true, followRedirects: true }).getContentText());
+    // Mismo proyecto que vacaciones: se piden directamente (antes, por HTTP).
+    var d = datosPublicos();
     var out = {};
     Object.keys(d.festivos || {}).forEach(function (k) { if (d.festivos[k] === 'ES' || d.festivos[k] === 'AMBOS') out[k] = 1; });
     return out;
@@ -502,7 +495,7 @@ function _quincenaARecordar(hoy, festivos) {
 
 /* Handler del disparador diario. */
 function enviarRecordatorioTR() {
-  var hoy = _hoyISO();
+  var hoy = _hoyISOTR();
   var r = _quincenaARecordar(hoy, _festivosES());
   if (!r) { Logger.log(hoy + ': hoy no toca recordatorio.'); return; }
   _recordarATodos(r.info, false);
@@ -524,7 +517,7 @@ function enviarRecordatorioTRPrueba() {
 }
 
 function _quincenaEnCurso() {
-  var p = _hoyISO().split('-').map(Number);
+  var p = _hoyISOTR().split('-').map(Number);
   var q = p[0] + 'Q' + (Math.floor((p[1] - 1) / 3) + 1);
   return _infoQuincena(q, ((p[1] - 1) % 3) * 2 + (p[2] <= 15 ? 1 : 2));
 }
@@ -538,7 +531,7 @@ function _urlCarpeta(info) {
    coordinación. Si el envío conjunto falla (una dirección que ya no existe
    puede tumbarlo), se reintenta persona a persona y se anota quién falla. */
 function _recordarATodos(info, manual) {
-  var team = _equipo().filter(function (p) { return p.email && p.activo !== false && p.baja !== true; });
+  var team = _equipoTR().filter(function (p) { return p.email && p.activo !== false && p.baja !== true; });
   var emails = team.map(function (p) { return String(p.email).trim(); });
   if (!emails.length) { Logger.log('equipo.json sin emails: no se envía nada.'); return; }
   var coord = team.filter(function (p) { return p.coordinador === true; }).map(function (p) { return String(p.email).trim(); });

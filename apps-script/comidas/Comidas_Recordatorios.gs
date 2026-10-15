@@ -48,7 +48,7 @@ function crearTriggers() {
 
 // ── Handler de los disparadores ───────────────────────────────────────────
 function enviarRecordatorio() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet();
   const tz = ss.getSpreadsheetTimeZone();
   const isoDow = +Utilities.formatDate(new Date(), tz, 'u'); // 1=Lun … 7=Dom
   if (isoDow > 3) return;                 // solo Lun-Mié
@@ -207,7 +207,7 @@ function cuerpo_(pendientes, fecha, esFinal, lider, nombre) {
 
 // ── Prueba: envía SOLO a PRUEBA_TO el correo que saldría hoy ──────────────
 function enviarRecordatorioPrueba() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet();
   const tz = ss.getSpreadsheetTimeZone();
   const j = new Date();
   const isoDow = +Utilities.formatDate(j, tz, 'u');
@@ -221,7 +221,7 @@ function enviarRecordatorioPrueba() {
 
 // ── Diagnóstico: qué haría el próximo disparo, sin enviar nada ────────────
 function diagnosticarComidas() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet();
   const tz = ss.getSpreadsheetTimeZone();
   const isoDow = +Utilities.formatDate(new Date(), tz, 'u');
   const fecha = proximoJueves_(tz, isoDow);
