@@ -27,6 +27,11 @@
  *  con fórmulas y formato, Festivos_2026 (grupos + festivos), Solicitudes_2026
  *  vacía e informe. No hace falta nada más después.
  *  Los grupos cuyos miembros tienen email .mx se crean como "México DC" (MX).
+ *
+ *  ARREGLO (oct. 2026): la migración juntaba en una fila a dos personas con
+ *  dos palabras del nombre en común («Botella Jiménez, Juan Carlos» quedó
+ *  dentro de «Jiménez García, Carlos»). revisarMezclas2026() dice qué
+ *  cambiaría; repararMezclas2026() lo arregla sin rehacer nada más.
  *  ⚠ Antes de migrar, resuelve las solicitudes pendientes en el panel antiguo.
  * ============================================================================
  */
@@ -80,8 +85,8 @@ function migrar2026(forzar) {
   // Personas: las de la rejilla mensual, con su fila del resumen.
   const equipo = _equipo();
   const filas = base.personas.map(function (nombre) {
-    const r = resumen.filter(function (x) { return _mismoNombre(x.nombre, nombre); })[0] || null;
-    const m = equipo.filter(function (x) { return _mismoNombre(x.nombre, nombre); })[0] || null;
+    const r = _buscarNombre(resumen, nombre);
+    const m = _buscarNombre(equipo, nombre);
     return {
       nombre: nombre, email: m ? _normEmail(m.email) : '', activo: !(r && r.tachado),
       anteriores: r ? r.anteriores : 0, dias: r ? r.comienzo : 0, pendientesAntiguo: r ? r.pendientes : '',
@@ -90,8 +95,8 @@ function migrar2026(forzar) {
   });
   // Quien está en el resumen pero no en la rejilla mensual (sin ausencias): también entra.
   resumen.forEach(function (r) {
-    if (filas.some(function (f) { return _mismoNombre(f.nombre, r.nombre); })) return;
-    const m = equipo.filter(function (x) { return _mismoNombre(x.nombre, r.nombre); })[0] || null;
+    if (_buscarNombre(filas, r.nombre)) return;
+    const m = _buscarNombre(equipo, r.nombre);
     filas.push({ nombre: r.nombre, email: m ? _normEmail(m.email) : '', activo: !r.tachado, anteriores: r.anteriores, dias: r.comienzo,
       pendientesAntiguo: r.pendientes, enResumen: true, enEquipo: !!m, codigos: {} });
   });
@@ -174,7 +179,7 @@ function _migLeerBloques(sh, anio) {
       const nombre = String(data[rr][colNombre] || '').trim();
       if (!nombre || _migMes(nombre) >= 0) break;
       if (nombre.length < 4) continue;
-      let canon = personas.filter(function (p) { return _mismoNombre(p, nombre); })[0];
+      let canon = _buscarNombre(personas, nombre);
       if (!canon) { canon = nombre; personas.push(nombre); codigos[nombre] = {}; }
       Object.keys(colDia).forEach(function (n) {
         const iso = anio + '-' + _pad(mes + 1) + '-' + _pad(Number(n));
@@ -251,7 +256,7 @@ function _migLeerCalendario(sh, anio, nombres) {
     let nombre = '';
     for (let c = 0; c < 5; c++) {
       const v = String(data[r][c] || '').trim();
-      const canon = nombres.filter(function (n) { return v && _mismoNombre(n, v); })[0];
+      const canon = v ? _buscarNombre(nombres, v) : null;
       if (canon) { nombre = canon; break; }
     }
     if (!nombre || out[nombre]) continue;
@@ -340,4 +345,76 @@ function _migInforme(ss, filas, grupos, comp, diffs) {
   sh.setColumnWidth(1, 220);
   sh.setColumnWidth(9, 520);
   sh.setFrozenRows(0);
+}
+
+/* ── Arreglo de personas mezcladas ─────────────────────────────────────────
+   Para cada persona de la pestaña antigua que NO tiene fila propia en
+   Vacas_2026: busca la fila en la que se mezcló (2+ palabras en común, la
+   regla vieja), le quita los días que eran de la otra persona (solo las
+   celdas que siguen teniendo ese código y que no eran suyas en la pestaña
+   antigua: lo pedido después por la web no se toca) y crea la fila que
+   faltaba con sus días, su email (equipo.json) y su grupo de festivos.
+   El nombre se toma de Vacas_2027 si ya está allí, para que su «Días año
+   anterior» enlace solo. */
+function revisarMezclas2026() { return _mezclas2026(false); }
+function repararMezclas2026() { const r = _mezclas2026(true); _invalidar(); return r; }
+
+function _mezclas2026(aplicar) {
+  const ss = _ss();
+  const origen = ss.getSheetByName(MIG.ORIGEN);
+  if (!origen) throw new Error('No existe la pestaña "' + MIG.ORIGEN + '".');
+  const grid = _leerAnio(ss, MIG.ANIO);
+  if (!grid) throw new Error('No existe ' + _nombreHoja(MIG.ANIO) + '.');
+  const base = _migLeerBloques(origen, MIG.ANIO);
+  const resumen = _migLeerResumen(origen);
+  const nombres = base.personas.slice();
+  resumen.forEach(function (r) { if (!_buscarNombre(nombres, r.nombre)) nombres.push(r.nombre); });
+  const viejaRegla = function (a, b) {
+    const pal = function (s) { return _norm(s).split(' ').filter(function (t) { return t.length > 1; }); };
+    const tb = pal(b);
+    return pal(a).filter(function (t) { return tb.indexOf(t) >= 0; }).length >= 2;
+  };
+  const sig = _leerAnio(ss, MIG.ANIO + 1);
+  const equipo = _equipo();
+  const grupos = _leerGrupos(ss, MIG.ANIO).map(function (g) { return g.grupo; });
+  const fxg = _festivosPorGrupo(_leerFestivos(ss, MIG.ANIO));
+  const informe = [];
+  nombres.forEach(function (n) {
+    if (grid.personas.some(function (x) { return _mismoNombre(x.nombre, n); })) return; // tiene su fila
+    const codigos = base.codigos[n] || {};
+    const r = _buscarNombre(resumen, n);
+    const enSig = sig ? _buscarNombre(sig.personas, n) : null;
+    const m = _buscarNombre(equipo, n);
+    const nombre = enSig ? enSig.nombre : n;
+    // Grupo: el primero cuyos festivos incluyen todos sus FE (Madrid si no tiene).
+    const fe = Object.keys(codigos).filter(function (iso) { return codigos[iso] === 'FE'; });
+    const grupo = grupos.filter(function (g) { return fe.every(function (iso) { return fxg[g] && fxg[g][iso]; }); })
+      .sort(function (a, b) { return (b === 'Madrid') - (a === 'Madrid'); })[0] || grupos[0] || '';
+    // Fila con la que se mezcló y sus códigos propios en la pestaña antigua.
+    const victima = grid.personas.filter(function (x) { return viejaRegla(x.nombre, n); })[0] || null;
+    const limpiar = [];
+    if (victima) {
+      const suya = base.codigos[_buscarNombre(base.personas, victima.nombre)] || {};
+      Object.keys(codigos).forEach(function (iso) {
+        const actual = victima.codigos[_idxDia(iso)] || '';
+        if (actual === codigos[iso] && (suya[iso] || '') !== codigos[iso]) limpiar.push({ iso: iso, de: actual, a: suya[iso] || '' });
+      });
+    }
+    const p = {
+      nombre: nombre, email: m ? _normEmail(m.email) : '', grupo: grupo, activo: !(r && r.tachado),
+      anteriores: r ? r.anteriores : 0, dias: r ? r.comienzo : 0, codigos: Object.assign({}, codigos)
+    };
+    const linea = nombre + ' (en la pestaña antigua: «' + n + '») · email ' + (p.email || '—') + ' · grupo ' + grupo
+      + ' · días año anterior ' + p.anteriores + ' · días del año ' + p.dias
+      + ' · ' + Object.keys(codigos).filter(function (k) { return codigos[k] !== 'FE'; }).length + ' días con código'
+      + (victima ? ' · mezclado con ' + victima.nombre + ': se le quitan ' + limpiar.length + ' días (' + limpiar.map(function (x) { return x.iso + ' ' + x.de; }).join(', ') + ')' : ' · no se mezcló con nadie');
+    informe.push(linea);
+    Logger.log((aplicar ? 'ARREGLANDO: ' : 'Se arreglaría: ') + linea);
+    if (!aplicar) return;
+    limpiar.forEach(function (x) { grid.sh.getRange(victima.fila, _colDia(x.iso)).setValue(x.a); });
+    const res = _anadirFila(ss, MIG.ANIO, p);
+    Logger.log('  → fila ' + res.fila + ' de ' + _nombreHoja(MIG.ANIO) + (res.enlazadoSiguiente ? ' · enlazada con ' + _nombreHoja(MIG.ANIO + 1) : ''));
+  });
+  if (!informe.length) Logger.log('No falta nadie: todas las personas de "' + MIG.ORIGEN + '" tienen su fila en ' + _nombreHoja(MIG.ANIO) + '.');
+  return informe;
 }

@@ -89,6 +89,7 @@
  *        borrarGrupo   { grupo }                                                   (coord.)
  *        asignarGrupo  { anio, persona, grupo }                                    (coord.)
  *        ajustarDias   { anio, persona, dias }   ("Días del año", columna F)       (coord.)
+ *        anadirPersona { anio, nombre, emailPersona?, grupo, dias, anteriores? }  (alta a mitad de año) (coord.)
  *        solicitarCampana { campana, semanas:[lunes…], comentario }   (formulario de Navidad/Verano…)
  *                      una solicitud NUEVA por bloque de semanas seguidas (partida por año)
  *        guardarCampana { campana:{ id?, nombre, emoji, activa, semanas, tipo,
@@ -202,6 +203,7 @@ function _servir(p) {
       case 'asignarGrupo': _exigirCoord(p.email); data = asignarGrupo(p); break;
       case 'crearAnio': _exigirCoord(p.email); data = crearAnio(p); break;
       case 'ajustarDias': _exigirCoord(p.email); data = ajustarDias(p); break;
+      case 'anadirPersona': _exigirCoord(p.email); data = anadirPersona(p); break;
       default: throw new Error('Acción desconocida: ' + p.action);
     }
     if (p.action !== 'ping' && p.action !== 'datos') _invalidar();
@@ -492,20 +494,40 @@ function _personaPorEmail(grid, email) {
   // Sin email en la rejilla: por nombre de equipo.json.
   const m = _equipo().filter(function (x) { return _emailsDe(x).indexOf(_normEmail(email)) >= 0; })[0];
   if (!m) return null;
-  return grid.personas.filter(function (x) { return _mismoNombre(x.nombre, m.nombre); })[0] || null;
+  return _buscarNombre(grid.personas, m.nombre);
 }
 function _personaPorNombre(grid, nombre) {
   return grid.personas.filter(function (x) { return x.nombre === nombre; })[0] || null;
 }
 
-/** Nombres "parecidos": iguales normalizados o con 2+ palabras en común. */
-function _mismoNombre(a, b) {
+/* Nombres "parecidos": iguales normalizados, o todas las palabras del más
+   corto (mínimo 2) están en el otro, en cualquier orden: «Iker Cid» ↔ «Cid
+   Barandela, Iker». Antes bastaban 2 palabras en común y «Botella Jiménez,
+   Juan Carlos» casaba con «Jiménez García, Carlos» (la migración los juntó).
+   Puntos: 2 si son iguales; si no, palabras del corto / palabras del largo. */
+function _puntosNombre(a, b) {
   const x = _norm(a), y = _norm(b);
-  if (!x || !y) return false;
-  if (x === y) return true;
-  const tx = x.split(' '), ty = y.split(' ');
-  const comunes = tx.filter(function (t) { return t.length > 1 && ty.indexOf(t) >= 0; }).length;
-  return comunes >= 2 || (comunes === 1 && Math.min(tx.length, ty.length) === 1);
+  if (!x || !y) return 0;
+  if (x === y) return 2;
+  const pal = function (s) { return s.split(' ').filter(function (t) { return t.length > 1; }); };
+  const tx = pal(x), ty = pal(y);
+  const corto = tx.length <= ty.length ? tx : ty, largo = corto === tx ? ty : tx;
+  if (corto.length < 2) return 0;
+  if (!corto.every(function (t) { return largo.indexOf(t) >= 0; })) return 0;
+  return corto.length / largo.length;
+}
+function _mismoNombre(a, b) { return _puntosNombre(a, b) > 0; }
+
+/** El elemento de `lista` cuyo nombre se parece más a `nombre` (strings u
+ *  objetos con .nombre). null si no hay ninguno o si dos empatan. */
+function _buscarNombre(lista, nombre) {
+  let mejor = null, max = 0, empate = false;
+  (lista || []).forEach(function (x) {
+    const pts = _puntosNombre(typeof x === 'string' ? x : x.nombre, nombre);
+    if (pts > max) { mejor = x; max = pts; empate = false; }
+    else if (pts > 0 && pts === max) empate = true;
+  });
+  return empate ? null : mejor;
 }
 
 /** ¿Día laborable para esta persona? (ni finde, ni festivo de su grupo, ni FE en su fila) */
@@ -1088,6 +1110,78 @@ function ajustarDias(p) {
   if (!isFinite(dias) || dias < 0 || dias > 99 || Math.round(dias * 2) !== dias * 2) throw new Error('Días no válidos: usa un número entre 0 y 99 (admite medios días, p. ej. 27,5).');
   grid.sh.getRange(persona.fila, G.DIAS).setValue(dias);
   return { persona: persona.nombre, anio: anio, dias: dias };
+}
+
+/** Alta de una persona en Vacas_<año> (incorporación a mitad de año): fila
+ *  nueva al final, con los festivos de su grupo marcados (FE). */
+function anadirPersona(p) {
+  const ss = _ss();
+  const anio = Number(p.anio);
+  const nombre = String(p.nombre || '').replace(/\s+/g, ' ').trim();
+  if (nombre.length < 4) throw new Error('Escribe el nombre completo (Apellidos, Nombre).');
+  const email = _normEmail(p.emailPersona); // p.email es quien lo pide
+  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error('Email no válido: ' + email);
+  const num = function (v, def) { const n = Number(String(v == null || v === '' ? def : v).replace(',', '.')); return n; };
+  const dias = num(p.dias, V_CONFIG.DIAS_ANIO), anteriores = num(p.anteriores, 0);
+  if (!isFinite(dias) || dias < 0 || dias > 99 || Math.round(dias * 2) !== dias * 2) throw new Error('Días del año no válidos: un número entre 0 y 99 (admite medios días).');
+  if (!isFinite(anteriores) || Math.abs(anteriores) > 99 || Math.round(anteriores * 2) !== anteriores * 2) throw new Error('Días del año anterior no válidos.');
+  const grupo = String(p.grupo || '').trim();
+  if (!grupo) throw new Error('Elige su grupo de festivos.');
+  if (!_leerGrupos(ss, anio).some(function (g) { return g.grupo === grupo; })) throw new Error('No existe el grupo ' + grupo + ' en ' + _nombreFestivos(anio) + '.');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    return _anadirFila(ss, anio, { nombre: nombre, email: email, grupo: grupo, activo: true, anteriores: anteriores, dias: dias, codigos: {} });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Escribe una persona en la primera fila libre de Vacas_<anio>, con sus
+ *  fórmulas. f: {nombre, email, grupo, activo, anteriores, dias, codigos:{iso: código}} */
+function _anadirFila(ss, anio, f) {
+  const grid = _leerAnio(ss, anio);
+  if (!grid) throw new Error('No existe ' + _nombreHoja(anio) + '.');
+  const igual = grid.personas.filter(function (x) { return _norm(x.nombre) === _norm(f.nombre); })[0];
+  if (igual) throw new Error(igual.nombre + ' ya está en ' + _nombreHoja(anio) + ' (fila ' + igual.fila + ').');
+  const conEmail = f.email && grid.personas.filter(function (x) { return x.email === f.email; })[0];
+  if (conEmail) throw new Error('El email ' + f.email + ' ya lo tiene ' + conEmail.nombre + ' en ' + _nombreHoja(anio) + '.');
+  const sh = grid.sh;
+  const fila = grid.personas.length ? Math.max.apply(null, grid.personas.map(function (x) { return x.fila; })) + 1 : G.FILA_1;
+  if (sh.getMaxRows() < fila) sh.insertRowsAfter(sh.getMaxRows(), fila - sh.getMaxRows() + 15);
+  // Festivos de su grupo (sin pisar otros códigos).
+  const fxg = _festivosPorGrupo(_leerFestivos(ss, anio));
+  Object.keys(fxg[f.grupo] || {}).forEach(function (iso) { if (!f.codigos[iso]) f.codigos[iso] = 'FE'; });
+  const columnas = _columnasDias(anio);
+  const fila1 = [f.nombre, f.email || '', f.grupo || '', f.activo !== false, Number(f.anteriores) || 0, Number(f.dias) || 0, '', '', '']
+    .concat(columnas.map(function (iso) { return iso ? (f.codigos[iso] || '') : ''; }));
+  const formateada = !!sh.getRange(fila, G.GRUPO).getDataValidation(); // dentro del margen con formato
+  sh.getRange(fila, 1, 1, fila1.length).setValues([fila1]);
+  if (formateada) {
+    const ultCol = _colLetra(G.DIA1 - 1 + columnas.length), dia1 = _colLetra(G.DIA1);
+    sh.getRange(fila, G.TOTAL, 1, 3).setFormulas([['=E' + fila + '+F' + fila, '=SUMPRODUCT(--(' + dia1 + fila + ':' + ultCol + fila + '="VA"))', '=G' + fila + '-H' + fila]]);
+    sh.getRange(fila, G.ACTIVO).insertCheckboxes().setValue(f.activo !== false);
+    _anterioresEnDirecto(ss, sh, anio, _soloFila(fila, f.nombre));
+  } else {
+    _formatearRejilla(ss, sh, anio);
+  }
+  // Si ya estaba en el año siguiente (p. ej. puesta a mano), su «Días año
+  // anterior» pasa a leer esta fila en directo.
+  const sig = ss.getSheetByName(_nombreHoja(anio + 1));
+  let enlazado = false;
+  if (sig && sig.getLastRow() >= G.FILA_1) {
+    const k = sig.getRange(G.FILA_1, G.PERSONA, sig.getLastRow() - G.FILA_1 + 1, 1).getValues()
+      .map(function (r) { return String(r[0] || '').trim(); }).indexOf(f.nombre);
+    if (k >= 0) enlazado = _anterioresEnDirecto(ss, sig, anio + 1, _soloFila(G.FILA_1 + k, f.nombre)) > 0;
+  }
+  return { anio: anio, persona: f.nombre, fila: fila, grupo: f.grupo, festivos: Object.keys(fxg[f.grupo] || {}).length, enlazadoSiguiente: enlazado };
+}
+
+/** Lista de nombres para _anterioresEnDirecto con solo una fila rellena. */
+function _soloFila(fila, nombre) {
+  const out = [];
+  for (let k = G.FILA_1; k <= fila; k++) out.push([k === fila ? nombre : '']);
+  return out;
 }
 
 function asignarGrupo(p) {
