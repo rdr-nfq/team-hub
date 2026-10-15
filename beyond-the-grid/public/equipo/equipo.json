@@ -210,6 +210,17 @@
       ],
       "track": "tecnico",
       "coordinador": false
+    },
+    {
+      "id": "T061592",
+      "nombre": "AXEL KAHOU HE EXPÓSITO",
+      "email": "axel.he@nfq.es",
+      "emailBBVA": "axel.kahouhe.contractor@bbva.com",
+      "equipos": [
+        "market-abuse"
+      ],
+      "track": "funcional",
+      "coordinador": false
     }
   ]
 }
