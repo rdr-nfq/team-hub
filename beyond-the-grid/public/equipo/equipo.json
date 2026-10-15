@@ -200,6 +200,17 @@
       "emailBBVA": "carmen.casado.nieto.contractor@bbva.com",
       "track": "funcional",
       "coordinador": false
+    },
+    {
+      "id": "",
+      "nombre": "RAFAEL GARCÍA SÁNCHEZ",
+      "email": "rafael.garcia@nter.es",
+      "emailBBVA": "rafael.garica.sanchez.contractor@bbva.com",
+      "equipos": [
+        "market-abuse"
+      ],
+      "track": "tecnico",
+      "coordinador": false
     }
   ]
 }
