@@ -2283,6 +2283,12 @@ window.CertSystem = (function() {
     const opt = sel.options[sel.selectedIndex];
     const userId = sel.value;
     const userName = opt.dataset.nombre;
+    // Sin ID en Gestión de equipo ("-" o vacío) el certificado no se puede
+    // asociar a nadie: no contaría en «Progreso del equipo».
+    if (!userId || userId === '-' || userId === 'undefined') {
+      document.getElementById('cert-feedback').textContent = userName + ' aún no tiene ID en Gestión de equipo. Pide a coordinación que lo rellene y vuelve a descargar el certificado (si no, no contará en tu progreso).';
+      return;
+    }
     const userTrack = opt.dataset.track || '';
     // Etiqueta legible para la pista
     const trackLabels = { funcional: 'Pista funcional', tecnico: 'Pista técnica', cross: 'Pista cross', welcome: 'Onboarding' };
