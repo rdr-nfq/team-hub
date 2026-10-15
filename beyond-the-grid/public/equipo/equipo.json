@@ -6,7 +6,12 @@
       "email": "angela.montero@nfq.es",
       "emailBBVA": "angela.montero.contractor@bbva.com",
       "track": "funcional",
-      "coordinador": true
+      "coordinador": true,
+      "equipos": [
+        "rdr",
+        "market-abuse",
+        "comms-surveillance"
+      ]
     },
     {
       "id": "XE48467",
@@ -201,7 +206,7 @@
       "coordinador": false
     },
     {
-      "id": "",
+      "id": "T061313",
       "nombre": "RAFAEL GARCÍA SÁNCHEZ",
       "email": "rafael.garcia@nter.es",
       "emailBBVA": "rafael.garica.sanchez.contractor@bbva.com",
