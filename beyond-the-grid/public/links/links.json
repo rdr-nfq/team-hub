@@ -48,8 +48,9 @@
     "note": "App \"comidas\" del proyecto único (hubBackend). La \"url\" es la del proyecto antiguo, solo como respaldo hasta configurar hubBackend. Backend Apps Script de /comidas (restaurantes, semanas y votos). Código: apps-script/comidas/ (ligado al Google Sheet de comidas). Cambia en cada despliegue."
   },
   "formacionesBackend": {
+    "app": "formaciones",
     "url": "https://script.google.com/macros/s/AKfycbzAKr3NyT7Ppyip9Jh6c2adjXHbhXcxpZD8UawtBUcTuH0cnLtKjGN7VFgyhf_ACR_C/exec",
-    "note": "Backend Apps Script de /formacion/equipo (progreso de formaciones por persona). Código: AÚN NO está en apps-script/ (pendiente de incorporar). Cambia en cada despliegue."
+    "note": "App \"formaciones\" del proyecto único (hubBackend). La \"url\" es la del proyecto antiguo, solo como respaldo hasta configurar hubBackend. Código: apps-script/formaciones/."
   },
   "pasesSheet": {
     "url": "https://docs.google.com/spreadsheets/d/1PWqHHorE8u_Xdyn9TeMWwf03CFv3FlPPuLeKAEpYr5Y/edit?gid=899065686#gid=899065686",
@@ -61,8 +62,9 @@
     "note": "App \"pases\" del proyecto único (hubBackend). La \"url\" es la del proyecto antiguo, solo como respaldo hasta configurar hubBackend. Backend Apps Script de /pases (pases, proyectos, componentes). Código: apps-script/pases/ (ligado al Sheet de pasesSheet). Cambia en cada despliegue."
   },
   "retroBackend": {
+    "app": "retro",
     "url": "https://script.google.com/macros/s/AKfycbx1sGjHUH9LPw1qF4nOBPOCcP1T9eW-zbMg8FQznqTWOd4yipqpke_8ynNxdu4Gsza2/exec",
-    "note": "Backend Apps Script de /retro (retrospectivas). Código: AÚN NO está en apps-script/ (pendiente de incorporar). Cambia en cada despliegue."
+    "note": "App \"retro\" del proyecto único (hubBackend). La \"url\" es la del proyecto antiguo, solo como respaldo hasta configurar hubBackend. Código: apps-script/retrospectiva/."
   },
   "vacacionesBackend": {
     "app": "vacaciones",

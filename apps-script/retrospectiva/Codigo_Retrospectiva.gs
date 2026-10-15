@@ -1,5 +1,5 @@
 /**
- * ARCHIVO: Code.gs
+ * ARCHIVO: Codigo_Retrospectiva.gs
  * Backend para Retro RDR servido como API JSON consumida desde GitHub Pages.
  *
  * ESTADOS DE SESIÓN (columna 4 de la hoja 'Sesiones'):
@@ -14,22 +14,17 @@
  * - doGet sirve para health-check y lectura de listas vía query string.
  * - Las respuestas son siempre TextOutput con MimeType.JSON.
  *
- * DESPLIEGUE:
- *   1. Pegar este código en Apps Script (proyecto existente).
- *   2. Deploy → New deployment → Web app
- *      - Execute as: Me (tu cuenta)
- *      - Who has access: Anyone
- *   3. Copiar la URL terminada en /exec y pegarla en index.html (constante
- *      GAS_URL).
- *   4. Cada vez que se modifique este script: Deploy → Manage deployments →
- *      editar → New version (no crear un nuevo deploy, así la URL no cambia).
+ * DESPLIEGUE: forma parte del proyecto único de apps-script/ (?app=retro;
+ * ver apps-script/README.md). La hoja «Retrospectiva RDR» (pestañas Sesiones,
+ * Usuarios, Tarjetas, Mejoras y Termometro) se abre por id:
+ * _hubHoja('RETRO') en _comun/Hub.gs.
  */
 
 // =================================================================
 // ROUTER
 // =================================================================
 
-function doGet(e) {
+function doGetRetro(e) {
   // GET sólo para acciones de lectura (más rápidas y cacheables).
   var action = (e && e.parameter && e.parameter.action) || 'ping';
   try {
@@ -42,13 +37,13 @@ function doGet(e) {
       case 'datosCompletos':  data = obtenerDatosCompletos(e.parameter.id); break;
       default: throw new Error("Acción GET desconocida: " + action);
     }
-    return jsonOut({ ok: true, data: data });
+    return _jsonRetro({ ok: true, data: data });
   } catch (err) {
-    return jsonOut({ ok: false, error: err.message || String(err) });
+    return _jsonRetro({ ok: false, error: err.message || String(err) });
   }
 }
 
-function doPost(e) {
+function doPostRetro(e) {
   // POST para todas las mutaciones. Body: JSON con {action, ...payload}.
   try {
     var raw = e && e.postData && e.postData.contents;
@@ -68,13 +63,13 @@ function doPost(e) {
       case 'cambiarFase':         data = cambiarFase(body.idSesion, body.nuevaFase); break;
       default: throw new Error("Acción POST desconocida: " + action);
     }
-    return jsonOut({ ok: true, data: data });
+    return _jsonRetro({ ok: true, data: data });
   } catch (err) {
-    return jsonOut({ ok: false, error: err.message || String(err) });
+    return _jsonRetro({ ok: false, error: err.message || String(err) });
   }
 }
 
-function jsonOut(obj) {
+function _jsonRetro(obj) {
   return ContentService
     .createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
@@ -88,32 +83,33 @@ function jsonOut(obj) {
 // también la de la lista de sesiones. Esto reduce drásticamente el
 // nº de lecturas a SpreadsheetApp (caras: ~100-300ms cada una).
 
-var CACHE_TTL_SEC = 30; // los datos se refrescan cada 30s aunque nadie escriba
-var CACHE_KEY_DATOS = function (id) { return 'datos:' + String(id).trim(); };
-var CACHE_KEY_LISTA = 'lista:activas';
-var CACHE_KEY_HIST  = 'lista:archived';
-var CACHE_KEY_INAC  = 'lista:inactive';
+var RETRO_CACHE_TTL = 30; // los datos se refrescan cada 30s aunque nadie escriba
+// Prefijo «retro:»: la caché es la misma para todo el proyecto único.
+var RETRO_CACHE_DATOS = function (id) { return 'retro:datos:' + String(id).trim(); };
+var RETRO_CACHE_LISTA = 'retro:lista:activas';
+var RETRO_CACHE_HIST  = 'retro:lista:archived';
+var RETRO_CACHE_INAC  = 'retro:lista:inactive';
 
-function cacheGet(key) {
+function _cacheGetRetro(key) {
   try {
     var raw = CacheService.getScriptCache().get(key);
     return raw ? JSON.parse(raw) : null;
   } catch (e) { return null; }
 }
 
-function cachePut(key, value) {
+function _cachePutRetro(key, value) {
   try {
-    CacheService.getScriptCache().put(key, JSON.stringify(value), CACHE_TTL_SEC);
+    CacheService.getScriptCache().put(key, JSON.stringify(value), RETRO_CACHE_TTL);
   } catch (e) { /* ignorar: la caché es opcional */ }
 }
 
-function cacheInvalidarSesion(idSesion) {
+function _cacheInvalidarRetro(idSesion) {
   try {
     CacheService.getScriptCache().removeAll([
-      CACHE_KEY_DATOS(idSesion),
-      CACHE_KEY_LISTA,
-      CACHE_KEY_HIST,
-      CACHE_KEY_INAC,
+      RETRO_CACHE_DATOS(idSesion),
+      RETRO_CACHE_LISTA,
+      RETRO_CACHE_HIST,
+      RETRO_CACHE_INAC,
     ]);
   } catch (e) { /* ignorar */ }
 }
@@ -126,10 +122,10 @@ function cacheInvalidarSesion(idSesion) {
 function obtenerListaSesiones() {
   // Caché: leemos de SpreadsheetApp es caro (~100-300ms). Esta lista
   // cambia raramente, así que la cacheamos.
-  var cached = cacheGet(CACHE_KEY_LISTA);
+  var cached = _cacheGetRetro(RETRO_CACHE_LISTA);
   if (cached) return cached;
 
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Sesiones');
+  var sheet = _hubHoja('RETRO').getSheetByName('Sesiones');
   if (!sheet) throw new Error("No se encuentra la pestaña 'Sesiones'");
 
   var data = sheet.getDataRange().getValues();
@@ -151,7 +147,7 @@ function obtenerListaSesiones() {
       });
     }
   }
-  cachePut(CACHE_KEY_LISTA, sesiones);
+  _cachePutRetro(RETRO_CACHE_LISTA, sesiones);
   return sesiones;
 }
 
@@ -161,10 +157,10 @@ function obtenerListaSesiones() {
  * frontend pueda mostrarlos sin tener que abrir cada sesión.
  */
 function obtenerHistorico() {
-  var cached = cacheGet(CACHE_KEY_HIST);
+  var cached = _cacheGetRetro(RETRO_CACHE_HIST);
   if (cached) return cached;
   var r = _obtenerSesionesPorEstado('ARCHIVED', true);
-  cachePut(CACHE_KEY_HIST, r);
+  _cachePutRetro(RETRO_CACHE_HIST, r);
   return r;
 }
 
@@ -173,10 +169,10 @@ function obtenerHistorico() {
  * para facilitar la decisión de reactivar o eliminar permanentemente.
  */
 function obtenerInactivas() {
-  var cached = cacheGet(CACHE_KEY_INAC);
+  var cached = _cacheGetRetro(RETRO_CACHE_INAC);
   if (cached) return cached;
   var r = _obtenerSesionesPorEstado('INACTIVE', true);
-  cachePut(CACHE_KEY_INAC, r);
+  _cachePutRetro(RETRO_CACHE_INAC, r);
   return r;
 }
 
@@ -189,7 +185,7 @@ function obtenerInactivas() {
  * mucho cuando haya muchas sesiones archivadas.
  */
 function _obtenerSesionesPorEstado(estado, conMetadatos) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = _hubHoja('RETRO');
   var sheetSesiones = ss.getSheetByName('Sesiones');
   if (!sheetSesiones) throw new Error("No se encuentra la pestaña 'Sesiones'");
 
@@ -205,7 +201,7 @@ function _obtenerSesionesPorEstado(estado, conMetadatos) {
         : String(fechaCelda);
       var fechaOrden = (fechaCelda instanceof Date)
         ? fechaCelda.getTime()
-        : parseFechaDDMMYYYY(String(fechaCelda));
+        : _fechaRetro(String(fechaCelda));
       sesiones.push({
         id: id,
         fecha: fechaTexto,
@@ -221,10 +217,10 @@ function _obtenerSesionesPorEstado(estado, conMetadatos) {
   }
 
   if (conMetadatos && sesiones.length) {
-    contar(ss, 'Usuarios',   ids, sesiones, 'participantes', 0); // col 0 = idSesion
-    contar(ss, 'Tarjetas',   ids, sesiones, 'tarjetas',      1); // col 1 = idSesion
-    contar(ss, 'Mejoras',    ids, sesiones, 'mejoras',       1); // col 1 = idSesion
-    contar(ss, 'Termometro', ids, sesiones, 'votosTermometro', 0); // col 0 = idSesion
+    _contarRetro(ss, 'Usuarios',   ids, sesiones, 'participantes', 0); // col 0 = idSesion
+    _contarRetro(ss, 'Tarjetas',   ids, sesiones, 'tarjetas',      1); // col 1 = idSesion
+    _contarRetro(ss, 'Mejoras',    ids, sesiones, 'mejoras',       1); // col 1 = idSesion
+    _contarRetro(ss, 'Termometro', ids, sesiones, 'votosTermometro', 0); // col 0 = idSesion
   }
 
   // Ordenar por fecha descendente (más reciente primero) y limpiar fechaOrden
@@ -235,7 +231,7 @@ function _obtenerSesionesPorEstado(estado, conMetadatos) {
 }
 
 /** Helper para contar filas por sesión sin reescribir el loop 4 veces. */
-function contar(ss, nombreHoja, ids, sesiones, prop, colId) {
+function _contarRetro(ss, nombreHoja, ids, sesiones, prop, colId) {
   var hoja = ss.getSheetByName(nombreHoja);
   if (!hoja) return;
   var datos = hoja.getDataRange().getValues();
@@ -256,7 +252,7 @@ function contar(ss, nombreHoja, ids, sesiones, prop, colId) {
 }
 
 /** Parsea 'dd/MM/yyyy' a timestamp; si falla devuelve 0. */
-function parseFechaDDMMYYYY(s) {
+function _fechaRetro(s) {
   var p = (s || '').split(' - ')[0].split('/');
   if (p.length !== 3) return 0;
   var d = new Date(Number(p[2]), Number(p[1]) - 1, Number(p[0]));
@@ -267,10 +263,10 @@ function crearSesion(fechaStr, nombreSesion) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Sesiones');
+    var sheet = _hubHoja('RETRO').getSheetByName('Sesiones');
     var idSesion = Utilities.getUuid();
     sheet.appendRow([idSesion, fechaStr, 1, 'ACTIVE', nombreSesion || '']);
-    cacheInvalidarSesion(idSesion);
+    _cacheInvalidarRetro(idSesion);
     return idSesion;
   } finally { lock.releaseLock(); }
 }
@@ -288,7 +284,7 @@ function cambiarEstadoSesion(idSesion, estado) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Sesiones');
+    var sheet = _hubHoja('RETRO').getSheetByName('Sesiones');
     var data = sheet.getDataRange().getValues();
     var encontrado = false;
     for (var i = 1; i < data.length; i++) {
@@ -299,7 +295,7 @@ function cambiarEstadoSesion(idSesion, estado) {
       }
     }
     if (!encontrado) throw new Error("Sesión no encontrada");
-    cacheInvalidarSesion(idSesion);
+    _cacheInvalidarRetro(idSesion);
     return obtenerListaSesiones();
   } finally { lock.releaseLock(); }
 }
@@ -313,7 +309,7 @@ function eliminarSesion(idSesion) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var ss = _hubHoja('RETRO');
     var sheet = ss.getSheetByName('Sesiones');
     var cleanId = String(idSesion).trim();
     var data = sheet.getDataRange().getValues();
@@ -327,7 +323,7 @@ function eliminarSesion(idSesion) {
     }
     if (!encontrado) throw new Error("Sesión no encontrada");
     borrarDatosHuerfanos(ss, cleanId);
-    cacheInvalidarSesion(cleanId);
+    _cacheInvalidarRetro(cleanId);
     return obtenerInactivas();
   } finally { lock.releaseLock(); }
 }
@@ -357,7 +353,7 @@ function registrarUsuario(idSesion, nombre) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Usuarios');
+    var sheet = _hubHoja('RETRO').getSheetByName('Usuarios');
     if (!sheet) return;
 
     var data = sheet.getDataRange().getValues();
@@ -372,7 +368,7 @@ function registrarUsuario(idSesion, nombre) {
     }
     if (!existe) {
       sheet.appendRow([cleanId, cleanNombre]);
-      cacheInvalidarSesion(cleanId);
+      _cacheInvalidarRetro(cleanId);
     }
   } finally { lock.releaseLock(); }
 }
@@ -383,10 +379,10 @@ function obtenerDatosCompletos(idSesion) {
 
   // Caché de respuestas completas. Acelera muchísimo el polling (cada
   // participante pregunta cada 3s). Las mutaciones invalidan la caché.
-  var cached = cacheGet(CACHE_KEY_DATOS(cleanId));
+  var cached = _cacheGetRetro(RETRO_CACHE_DATOS(cleanId));
   if (cached) return cached;
 
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = _hubHoja('RETRO');
 
   var hojaSesiones = ss.getSheetByName('Sesiones');
   var datosSesiones = hojaSesiones ? hojaSesiones.getDataRange().getValues() : [];
@@ -458,7 +454,7 @@ function obtenerDatosCompletos(idSesion) {
     // descartar respuestas viejas que llegan tarde por culpa del polling.
     rev: Date.now()
   };
-  cachePut(CACHE_KEY_DATOS(cleanId), resultado);
+  _cachePutRetro(RETRO_CACHE_DATOS(cleanId), resultado);
   return resultado;
 }
 
@@ -466,10 +462,10 @@ function crearTarjeta(idSesion, categoria, texto) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    var hoja = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Tarjetas');
+    var hoja = _hubHoja('RETRO').getSheetByName('Tarjetas');
     var idTarjeta = Utilities.getUuid();
     hoja.appendRow([idTarjeta, idSesion, categoria, texto, 0]);
-    cacheInvalidarSesion(idSesion);
+    _cacheInvalidarRetro(idSesion);
     return obtenerDatosCompletos(idSesion);
   } finally { lock.releaseLock(); }
 }
@@ -478,10 +474,10 @@ function crearMejora(idSesion, texto) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    var hoja = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Mejoras');
+    var hoja = _hubHoja('RETRO').getSheetByName('Mejoras');
     var idMejora = Utilities.getUuid();
     hoja.appendRow([idMejora, idSesion, texto, false]);
-    cacheInvalidarSesion(idSesion);
+    _cacheInvalidarRetro(idSesion);
     return obtenerDatosCompletos(idSesion);
   } finally { lock.releaseLock(); }
 }
@@ -490,7 +486,7 @@ function votarTarjeta(idSesion, idTarjeta) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    var hoja = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Tarjetas');
+    var hoja = _hubHoja('RETRO').getSheetByName('Tarjetas');
     var datos = hoja.getDataRange().getValues();
     for (var i = 1; i < datos.length; i++) {
       if (datos[i][0] == idTarjeta) {
@@ -499,7 +495,7 @@ function votarTarjeta(idSesion, idTarjeta) {
         break;
       }
     }
-    cacheInvalidarSesion(idSesion);
+    _cacheInvalidarRetro(idSesion);
     return obtenerDatosCompletos(idSesion);
   } finally { lock.releaseLock(); }
 }
@@ -508,9 +504,9 @@ function enviarVotoTermometro(idSesion, idOpcionVoto) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    var hoja = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Termometro');
+    var hoja = _hubHoja('RETRO').getSheetByName('Termometro');
     hoja.appendRow([idSesion, idOpcionVoto]);
-    cacheInvalidarSesion(idSesion);
+    _cacheInvalidarRetro(idSesion);
     return obtenerDatosCompletos(idSesion);
   } finally { lock.releaseLock(); }
 }
@@ -519,7 +515,7 @@ function cambiarFase(idSesion, nuevaFase) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    var hoja = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Sesiones');
+    var hoja = _hubHoja('RETRO').getSheetByName('Sesiones');
     var datos = hoja.getDataRange().getValues();
     for (var i = 1; i < datos.length; i++) {
       if (String(datos[i][0]).trim() === String(idSesion).trim()) {
@@ -527,7 +523,7 @@ function cambiarFase(idSesion, nuevaFase) {
         break;
       }
     }
-    cacheInvalidarSesion(idSesion);
+    _cacheInvalidarRetro(idSesion);
     return obtenerDatosCompletos(idSesion);
   } finally { lock.releaseLock(); }
 }

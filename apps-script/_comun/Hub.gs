@@ -5,8 +5,8 @@
    implementación (una sola URL /exec). Cada página llama a esa URL con
    ?app=<nombre> y aquí se reparte al backend que toca:
 
-     ?app=comidas · control · equipo · guardias · ofertas · pases ·
-          seguimiento · timereport · vacaciones
+     ?app=comidas · control · equipo · formaciones · guardias · ofertas ·
+          pases · retro · seguimiento · timereport · vacaciones
 
    En links.json basta con poner la URL /exec en "hubBackend": cada clave de
    backend lleva su "app" y la web compone la URL sola.
@@ -21,7 +21,7 @@
      3. diagnosticarHub()      resumen: hojas, propiedades y disparadores.
    =========================================================================== */
 
-const HUB_APPS = ['comidas', 'control', 'equipo', 'guardias', 'ofertas', 'pases', 'seguimiento', 'timereport', 'vacaciones'];
+const HUB_APPS = ['comidas', 'control', 'equipo', 'formaciones', 'guardias', 'ofertas', 'pases', 'retro', 'seguimiento', 'timereport', 'vacaciones'];
 
 /* Hojas de cálculo de cada app. Antes comidas, control y pases eran scripts
    ligados a su hoja (getActiveSpreadsheet); en un proyecto independiente hay
@@ -31,7 +31,9 @@ const HUB_APPS = ['comidas', 'control', 'equipo', 'guardias', 'ofertas', 'pases'
 const HUB_HOJAS = {
   COMIDAS: '1Wk12cky78qu7aUcHkRlQuDy3OjvRQ8fZXeNcPrgHDP8',    // Comidas_RDR
   CONTROL: '1pk-2g_vVM6mCXGe3ZzljwM465R9O14GVEDUNSpBX40I',    // Control - RDR BBVA
+  FORMACIONES: '1-J6IETYor07e4f3NTYBBbvC9nGmzJfmVVGIOyq1KjoA', // Certificados_Formaciones
   PASES: '1PWqHHorE8u_Xdyn9TeMWwf03CFv3FlPPuLeKAEpYr5Y',      // Pases_Calendados_NFQ
+  RETRO: '1aJY_RenwDw-vioRlZN2HXLYE2n0Tx4vVpw5PZ7H6qbU',      // Retrospectiva RDR
   GUARDIAS: '1Nn6Jm7CkvDFhSLBMyXZPBGITyH8P9oLBiKMZrGDtoLs',   // RDR Guardias (datos)
   TIMEREPORT: '1k4xF0KSCFbeMZgtIcQAzFIOL0JM5o3bpYaGM_rPRoc4'  // RDR TimeReport Web (datos)
 };
@@ -62,9 +64,11 @@ function _hubRepartir(e, get) {
     case 'comidas': return get ? doGetComidas(e) : doPostComidas(e);
     case 'control': return get ? doGetControl(e) : doPostControl(e);
     case 'equipo': return get ? doGetEquipo(e) : doPostEquipo(e);
+    case 'formaciones': return get ? doGetFormaciones(e) : doPostFormaciones(e);
     case 'guardias': return get ? doGetGuardias(e) : doPostGuardias(e);
     case 'ofertas': return get ? doGetOfertas(e) : doPostOfertas(e);
     case 'pases': return get ? doGetPases(e) : doPostPases(e);
+    case 'retro': return get ? doGetRetro(e) : doPostRetro(e);
     case 'seguimiento': return get ? doGetSeguimiento(e) : doPostSeguimiento(e);
     case 'timereport': return get ? doGetTR(e) : doPostTR(e);
     case 'vacaciones': return get ? doGetVacaciones(e) : doPostVacaciones(e);
@@ -100,11 +104,12 @@ function autorizar() {
 
 /* EJECUTAR UNA VEZ (se puede repetir: no duplica nada). Disparadores de
    todas las apps: recordatorios de comidas y del Time Report, avisos de
-   pases y caché de vacaciones. */
+   pases, certificados de formaciones y caché de vacaciones. */
 function instalarDisparadores() {
   [['comidas · recordatorios', crearTriggers],
    ['timereport · recordatorio de evidencias', crearTriggerRecordatorioTR],
    ['pases · avisos programados', instalarTriggerAvisos],
+   ['formaciones · sincronizar certificados (cada 5 min)', instalarSincronizacionFormaciones],
    ['vacaciones · cambios en el Excel', instalarDisparadoresVacaciones],
    ['vacaciones · caché precalentada', instalarPrecalentado]].forEach(function (d) {
     try { d[1](); Logger.log('✓ ' + d[0]); } catch (e) { Logger.log('⚠ ' + d[0] + ': ' + e); }

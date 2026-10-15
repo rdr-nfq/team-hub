@@ -18,20 +18,17 @@ la URL (`lib/links.js`).
 | `comidas/` | `Codigo_Comidas.gs`, `Comidas_Recordatorios.gs` | `comidas` | `/comidas` | `comidasBackend` |
 | `control/` | `Codigo_Control.gs` (ver `control/README.md`) | `control` | `/simulador`, `/capacidad` | `controlBackend` |
 | `equipo/` | `Codigo_Equipo.gs` | `equipo` | `/equipo-gestion` | `equipoBackend` |
+| `formaciones/` | `Codigo_Formaciones.gs` (certificados de Drive → hoja → progreso) | `formaciones` | `/formacion/equipo`, progreso de cada uno | `formacionesBackend` |
 | `guardias/` | `Codigo_Guardias.gs` | `guardias` | `/guardias`, `/guardias-gestion` | `guardiasBackend` |
 | `ofertas/` | `Codigo_Ofertas.gs` | `ofertas` | `/ofertas` | `ofertasBackend` |
 | `pases/` | `Codigo_Pases.gs`, `Avisos_Pases.gs` | `pases` | `/pases` | `pasesBackend` |
+| `retrospectiva/` | `Codigo_Retrospectiva.gs` | `retro` | `/retro` | `retroBackend` |
 | `seguimiento/` | `Codigo_Seguimiento.gs` | `seguimiento` | `/seguimiento` | `seguimientoBackend` |
 | `timereport/` | `Codigo_TimeReport.gs` | `timereport` | `/timereport`, `/timereport-gestion` | `timereportBackend` |
 | `vacaciones/` | `Codigo_Vacaciones.gs`, `Migracion_2026.gs` | `vacaciones` | `/vacaciones`, `/vacaciones-gestion` | `vacacionesV2Backend`, `vacacionesBackend` |
 
 `appsscript.json` es el manifiesto del proyecto (zona horaria, V8, web app
 «Ejecutar como: yo» · «Cualquier usuario», servicio avanzado Gmail).
-
-**Fuera del proyecto** (su código solo está en script.google.com):
-`formacionesBackend` (`/formacion/equipo`) y `retroBackend` (`/retro`). Para
-juntarlos, copiar aquí su código en `formaciones/` y `retro/` y añadirlos al
-reparto de `Hub.gs`.
 
 ### Hojas de cálculo
 
@@ -43,7 +40,9 @@ propiedad del script `<CLAVE>_SPREADSHEET_ID`:
 |---|---|
 | `COMIDAS` | Comidas_RDR |
 | `CONTROL` | Control - RDR BBVA |
+| `FORMACIONES` | Certificados_Formaciones (pestaña Certificados; los PDFs, en la carpeta `FORM_CARPETA_ID`) |
 | `PASES` | Pases_Calendados_NFQ |
+| `RETRO` | Retrospectiva RDR |
 | `GUARDIAS` | RDR Guardias (datos) |
 | `TIMEREPORT` | RDR TimeReport Web (datos) |
 | (vacaciones) | «Vacaciones RDR», en `V_CONFIG.EXCEL_ID` |
@@ -69,7 +68,8 @@ Seguimiento, ofertas y timereport (evidencias) trabajan con carpetas de Drive
 `instalarDisparadores()` (se puede repetir: no duplica) crea todos:
 recordatorios de comidas (`enviarRecordatorio`), recordatorio de evidencias
 del Time Report (`enviarRecordatorioTR`), avisos de pases
-(`revisarAvisosProgramados`), y en vacaciones la invalidación de caché al
+(`revisarAvisosProgramados`), certificados de formaciones cada 5 min
+(`syncCertificates`), y en vacaciones la invalidación de caché al
 editar el Excel (`vacacionesAlCambiarExcel`) y la caché precalentada
 (`precalentarCache`).
 
@@ -79,7 +79,7 @@ editar el Excel (`vacacionesAlCambiarExcel`) y la caché precalentada
 2. **Configuración del proyecto** → marcar «Mostrar el archivo de manifiesto
    appsscript.json» y pegar `appsscript.json`.
 3. **Pegar todos los `.gs`**: un fichero del editor por cada `.gs` de cada
-   carpeta (14), con el mismo nombre. El orden da igual.
+   carpeta (16), con el mismo nombre. El orden da igual.
 4. **Propiedades del script** (Configuración del proyecto): copiar desde los
    proyectos antiguos `GITHUB_TOKEN`, `CLAVE_EQUIPO`, `vac:campanas` y
    `FIRMANTES_LATAM` (y las opcionales que se usen).

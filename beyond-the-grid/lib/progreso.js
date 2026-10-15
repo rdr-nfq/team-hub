@@ -6,6 +6,7 @@
 
 import { NIVELES, FORMACIONES, isDisponible } from "./formaciones";
 import { mismoEmail } from "./email";
+import { urlDe } from "./links";
 
 const LS_PREFIX = "rdr_prog_";
 const REMOTE_PREFIX = "rdr_remote_"; // caché SWR del progreso real del backend
@@ -97,7 +98,7 @@ export async function cargarRemoto(email) {
       fetch("/team-hub/links/links.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
       fetch("/team-hub/equipo/equipo.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
     ]);
-    const url = L && L.formacionesBackend && L.formacionesBackend.url;
+    const url = urlDe(L, "formacionesBackend");
     if (!url) return new Set();
     const team = (eq && eq.team) || [];
     const me = team.find((p) => mismoEmail(p.email, email));

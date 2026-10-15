@@ -24,6 +24,24 @@ import Toast from "@/components/chrome/Toast";
  */
 const LinksContext = createContext(null);
 
+/**
+ * URL de una clave de links.json (null si falta o es un placeholder).
+ * Backends del proyecto único de Apps Script: { app: "vacaciones" } + la URL
+ * /exec en "hubBackend" -> <hub>?app=vacaciones. Mientras hubBackend no tenga
+ * URL, se usa la "url" propia de la clave. Para código fuera de React
+ * (p. ej. lib/progreso.js) que lee links.json por su cuenta.
+ */
+export function urlDe(links, key) {
+  if (!links) return null;
+  const valida = (u) => (u && u.indexOf("PEGAR_AQUI") === -1 ? u : null);
+  const entry = links[key];
+  if (entry && typeof entry === "object" && entry.app) {
+    const hub = links.hubBackend && valida(typeof links.hubBackend === "string" ? links.hubBackend : links.hubBackend.url);
+    if (hub) return hub + (hub.indexOf("?") < 0 ? "?" : "&") + "app=" + encodeURIComponent(entry.app);
+  }
+  return valida(entry && (typeof entry === "string" ? entry : entry.url));
+}
+
 export function LinksProvider({ children }) {
   const [links, setLinks] = useState(null);
   const [error, setError] = useState(false);
@@ -46,22 +64,7 @@ export function LinksProvider({ children }) {
     timer.current = setTimeout(() => setToast(""), 2200);
   }, []);
 
-  const getUrl = useCallback(
-    (key) => {
-      if (!links) return null;
-      const valida = (u) => (u && u.indexOf("PEGAR_AQUI") === -1 ? u : null);
-      const entry = links[key];
-      // Backends del proyecto único de Apps Script: { app: "vacaciones" } +
-      // la URL /exec en "hubBackend" -> <hub>?app=vacaciones. Mientras
-      // hubBackend no tenga URL, se usa la "url" propia de la clave.
-      if (entry && typeof entry === "object" && entry.app) {
-        const hub = links.hubBackend && valida(typeof links.hubBackend === "string" ? links.hubBackend : links.hubBackend.url);
-        if (hub) return hub + (hub.indexOf("?") < 0 ? "?" : "&") + "app=" + encodeURIComponent(entry.app);
-      }
-      return valida(entry && (typeof entry === "string" ? entry : entry.url));
-    },
-    [links]
-  );
+  const getUrl = useCallback((key) => urlDe(links, key), [links]);
 
   const copyLink = useCallback(
     async (key) => {

@@ -1,143 +1,112 @@
 /**
  * ============================================================================
- *  SINCRONIZADOR DE CERTIFICADOS · BBVA × NFQ · RDR FORMACIONES
+ *  FORMACIONES · certificados → progreso del equipo (proyecto único, ?app=formaciones)
  * ============================================================================
  *
- *  Este Apps Script:
- *   1. Lee periódicamente una carpeta de Google Drive donde se suben los PDFs
- *      de certificados (nombres con formato: {userId}__{courseId}__{YYYYMMDD}.pdf)
- *   2. Registra cada certificado nuevo en un Google Sheet (id, curso, fecha)
- *   3. Expone un endpoint doGet que devuelve un JSON con todos los registros
- *      para que la web `equipo-formaciones.html` lo consuma vía fetch.
+ *  1. syncCertificates (disparador cada 5 min, lo crea instalarDisparadores)
+ *     lee la carpeta de Drive donde se suben los PDFs de certificados
+ *     ({userId}__{courseId}__{YYYYMMDD}.pdf) y los apunta en la pestaña
+ *     «Certificados» de la hoja Certificados_Formaciones (HUB_HOJAS.FORMACIONES).
+ *     Cada fichero es UNA fila (se identifica por su id de Drive): si se
+ *     renombra un PDF (p. ej. para corregir el userId), se actualiza su fila
+ *     en vez de añadir otra.
+ *  2. doGetFormaciones devuelve todos los registros en JSON para
+ *     /formacion/equipo y el progreso de cada persona (records por userId =
+ *     id de equipo.json).
  *
- *  ============================================================================
- *  INSTRUCCIONES DE INSTALACIÓN
- *  ============================================================================
- *
- *  1. Crea una carpeta en Google Drive para los certificados (compartida con el equipo).
- *     Copia su ID del URL: https://drive.google.com/drive/folders/XXXXXX  →  el XXXXXX.
- *
- *  2. Crea un Google Sheet vacío. Copia su ID del URL:
- *     https://docs.google.com/spreadsheets/d/XXXXXX/edit → el XXXXXX.
- *
- *  3. Abre el Sheet → menú "Extensiones" → "Apps Script".
- *
- *  4. Pega ESTE archivo entero en el editor (reemplazando el código por defecto).
- *
- *  5. Edita las dos constantes de abajo (FOLDER_ID y SHEET_ID) con tus IDs.
- *
- *  6. Guarda (icono disquete).
- *
- *  7. Ejecuta la función `syncCertificates` manualmente una vez para autorizar
- *     los permisos (Drive + Sheets). Acepta los permisos al solicitarlos.
- *
- *  8. Configura el trigger horario:
- *     - Click en el icono del reloj (Triggers) en la barra lateral izquierda.
- *     - "Añadir trigger".
- *     - Función: syncCertificates
- *     - Evento: Basado en tiempo → Cada hora.
- *     - Guardar.
- *
- *  9. Desplegar como Web App:
- *     - Botón "Implementar" → "Nueva implementación".
- *     - Tipo: "Aplicación web".
- *     - Ejecutar como: "Yo mismo".
- *     - Quién tiene acceso: "Cualquier persona" (necesario para que la web pública
- *       pueda hacer fetch sin login).
- *     - "Implementar".
- *     - Copia la URL que aparece (algo como https://script.google.com/macros/s/.../exec)
- *
- *  10. Pega esa URL en `equipo-formaciones.html` reemplazando `APPS_SCRIPT_URL = ""`.
- *
- *  ============================================================================
+ *  Desde el editor: syncCertificates() a mano; resetearCertificados() vacía
+ *  la pestaña (se vuelve a llenar en la siguiente sincronización).
+ * ============================================================================
  */
 
-// >>> EDITAR ESTOS DOS VALORES <<<
-const FOLDER_ID = '1e5zysoDRyBIj30VrKtC6jLPhDzpRQDgl';
-const SHEET_ID  = '1-J6IETYor07e4f3NTYBBbvC9nGmzJfmVVGIOyq1KjoA';
+// Carpeta de Drive con los PDFs de certificados.
+const FORM_CARPETA_ID = '1e5zysoDRyBIj30VrKtC6jLPhDzpRQDgl';
 
 // Nombre de la pestaña del Sheet donde guardamos los registros
-const SHEET_NAME = 'Certificados';
+const FORM_HOJA = 'Certificados';
 
 /**
- * Sincroniza la carpeta de Drive con el Sheet.
- * Lee todos los PDFs de la carpeta, parsea sus nombres y añade los nuevos al Sheet.
- * Ejecutar manualmente la primera vez y luego mediante un trigger horario.
+ * Sincroniza la carpeta de Drive con el Sheet: añade los PDFs nuevos y
+ * actualiza la fila de los que se han renombrado.
  */
 function syncCertificates() {
-  const sheet = getOrCreateSheet();
-  const existing = loadExistingRefs(sheet);
-  const folder = DriveApp.getFolderById(FOLDER_ID);
-  const files = folder.getFiles();
-
-  let added = 0;
-  let skipped = 0;
-
-  while (files.hasNext()) {
-    const file = files.next();
-    const name = file.getName();
-
-    // Solo PDFs
-    if (!name.toLowerCase().endsWith('.pdf')) {
-      continue;
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) { Logger.log('Otra sincronización en curso: se omite esta.'); return { added: 0, updated: 0, skipped: 0 }; }
+  try {
+    const sheet = _hojaFormaciones();
+    let filas = _refsFormaciones(sheet); // fileId -> { fila, ref }
+    // Filas repetidas del mismo fichero (renombrados con la versión anterior
+    // de este script): se borran y se queda la última.
+    if (filas._repetidas.length) {
+      filas._repetidas.sort(function (a, b) { return b - a; }).forEach(function (f) { sheet.deleteRow(f); });
+      Logger.log('Borradas ' + filas._repetidas.length + ' filas repetidas del mismo fichero.');
+      filas = _refsFormaciones(sheet);
     }
-
-    // Parsear nombre: {userId}__{courseId}__{YYYYMMDD}.pdf
-    const ref = name.replace(/\.pdf$/i, '');
-    const parts = ref.split('__');
-
-    if (parts.length !== 3) {
-      Logger.log('Nombre con formato no válido: ' + name);
-      continue;
+    delete filas._repetidas;
+    const refs = {};
+    Object.keys(filas).forEach(function (id) { refs[filas[id].ref] = true; });
+    const files = DriveApp.getFolderById(FORM_CARPETA_ID).getFiles();
+    let added = 0, updated = 0, skipped = 0;
+    while (files.hasNext()) {
+      const file = files.next();
+      const name = file.getName();
+      if (!name.toLowerCase().endsWith('.pdf')) continue;
+      // {userId}__{courseId}__{YYYYMMDD}.pdf
+      const ref = name.replace(/\.pdf$/i, '');
+      const parts = ref.split('__');
+      if (parts.length !== 3) { Logger.log('Nombre con formato no válido: ' + name); continue; }
+      const [userId, courseId, dateStr] = parts;
+      if (!/^\d{8}$/.test(dateStr)) { Logger.log('Fecha inválida en: ' + name); continue; }
+      const previa = filas[file.getId()];
+      if (previa) {
+        if (previa.ref === ref) { skipped++; continue; }
+        // Renombrado: misma fila, datos nuevos.
+        sheet.getRange(previa.fila, 1, 1, 4).setValues([[ref, userId, courseId, dateStr]]);
+        Logger.log('Renombrado: ' + previa.ref + ' → ' + ref);
+        previa.ref = ref;
+        updated++;
+        continue;
+      }
+      if (refs[ref]) { skipped++; continue; } // mismo nombre en otro fichero (duplicado)
+      sheet.appendRow([ref, userId, courseId, dateStr, file.getUrl(), file.getId(), new Date().toISOString()]);
+      filas[file.getId()] = { fila: sheet.getLastRow(), ref: ref };
+      refs[ref] = true;
+      added++;
     }
-
-    const [userId, courseId, dateStr] = parts;
-
-    // Validar fecha YYYYMMDD
-    if (!/^\d{8}$/.test(dateStr)) {
-      Logger.log('Fecha inválida en: ' + name);
-      continue;
-    }
-
-    if (existing.has(ref)) {
-      skipped++;
-      continue;
-    }
-
-    // Añadir fila: ref, userId, courseId, date, fileUrl, fileId, importedAt
-    sheet.appendRow([
-      ref,
-      userId,
-      courseId,
-      dateStr,
-      file.getUrl(),
-      file.getId(),
-      new Date().toISOString(),
-    ]);
-    existing.add(ref);
-    added++;
+    Logger.log('Sincronización completa: ' + added + ' nuevos, ' + updated + ' renombrados, ' + skipped + ' sin cambios.');
+    return { added: added, updated: updated, skipped: skipped };
+  } finally {
+    lock.releaseLock();
   }
+}
 
-  Logger.log(`Sincronización completa: ${added} nuevos, ${skipped} ya existentes.`);
-  return { added, skipped };
+/* Disparador de la sincronización (lo llama instalarDisparadores; se puede
+   repetir: no duplica). */
+function instalarSincronizacionFormaciones() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'syncCertificates') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('syncCertificates').timeBased().everyMinutes(5).create();
 }
 
 /**
  * Endpoint público: devuelve todos los registros como JSON.
- * URL: https://script.google.com/macros/s/.../exec
+ * URL: <hubBackend>?app=formaciones
  *
  * Cada record incluye los campos crudos del Sheet + un objeto `courseMeta`
  * derivado del courseId (nombre legible, nivel, track) para que la web no
  * necesite mantener un catálogo aparte.
  */
-function doGet(e) {
+function doPostFormaciones(e) { return doGetFormaciones(e); } // solo lectura
+
+function doGetFormaciones(e) {
   try {
-    const sheet = getOrCreateSheet();
+    const sheet = _hojaFormaciones();
     const data = sheet.getDataRange().getValues();
 
     // Cabecera en la primera fila
     if (data.length <= 1) {
-      return jsonResponse({ records: [], updatedAt: new Date().toISOString() });
+      return _jsonFormaciones({ records: [], updatedAt: new Date().toISOString() });
     }
 
     // [ref, userId, courseId, date, fileUrl, fileId, importedAt]
@@ -149,16 +118,16 @@ function doGet(e) {
         courseId: courseId,
         date: row[3],
         fileUrl: row[4],
-        courseMeta: deriveCourseMeta(courseId),
+        courseMeta: _metaCursoFormaciones(courseId),
       };
     });
 
-    return jsonResponse({
+    return _jsonFormaciones({
       records: records,
       updatedAt: new Date().toISOString(),
     });
   } catch (err) {
-    return jsonResponse({ error: err.toString() });
+    return _jsonFormaciones({ error: err.toString() });
   }
 }
 
@@ -174,7 +143,7 @@ function doGet(e) {
  *
  * Si el courseId no encaja con la convención, devuelve un meta genérico.
  */
-function deriveCourseMeta(courseId) {
+function _metaCursoFormaciones(courseId) {
   // Pequeño catálogo manual para nombres legibles bonitos.
   // Añade aquí entradas cuando publiques nuevas formaciones; lo que NO esté
   // listado se autogenera del slug.
@@ -223,11 +192,11 @@ function deriveCourseMeta(courseId) {
 /**
  * Devuelve la hoja "Certificados", creándola con cabecera si no existe.
  */
-function getOrCreateSheet() {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  let sheet = ss.getSheetByName(SHEET_NAME);
+function _hojaFormaciones() {
+  const ss = _hubHoja('FORMACIONES');
+  let sheet = ss.getSheetByName(FORM_HOJA);
   if (!sheet) {
-    sheet = ss.insertSheet(SHEET_NAME);
+    sheet = ss.insertSheet(FORM_HOJA);
     sheet.appendRow([
       'ref', 'userId', 'courseId', 'date', 'fileUrl', 'fileId', 'importedAt'
     ]);
@@ -242,13 +211,19 @@ function getOrCreateSheet() {
 }
 
 /**
- * Conjunto con los `ref` ya registrados (para no duplicar).
+ * Filas ya registradas, por id de fichero de Drive: { fileId: { fila, ref } }.
  */
-function loadExistingRefs(sheet) {
+function _refsFormaciones(sheet) {
+  const out = { _repetidas: [] }; // _repetidas: filas anteriores de un fileId que se repite
   const lastRow = sheet.getLastRow();
-  if (lastRow <= 1) return new Set();
-  const refs = sheet.getRange(2, 1, lastRow - 1, 1).getValues().flat();
-  return new Set(refs);
+  if (lastRow <= 1) return out;
+  sheet.getRange(2, 1, lastRow - 1, 6).getValues().forEach(function (r, i) {
+    const id = String(r[5] || '').trim();
+    if (!id) return;
+    if (out[id]) out._repetidas.push(out[id].fila);
+    out[id] = { fila: i + 2, ref: String(r[0] || '') };
+  });
+  return out;
 }
 
 /**
@@ -256,7 +231,7 @@ function loadExistingRefs(sheet) {
  * (Las Web Apps de Apps Script tienen CORS gestionado automáticamente
  *  cuando se despliegan como "Cualquier persona".)
  */
-function jsonResponse(obj) {
+function _jsonFormaciones(obj) {
   return ContentService
     .createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
@@ -266,8 +241,8 @@ function jsonResponse(obj) {
  * Función auxiliar para limpiar el Sheet en caso de necesidad.
  * Solo ejecutar manualmente. NO añadir a triggers.
  */
-function resetSheet() {
-  const sheet = getOrCreateSheet();
+function resetearCertificados() {
+  const sheet = _hojaFormaciones();
   sheet.clear();
   sheet.appendRow([
     'ref', 'userId', 'courseId', 'date', 'fileUrl', 'fileId', 'importedAt'

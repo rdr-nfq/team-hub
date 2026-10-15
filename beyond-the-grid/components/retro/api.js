@@ -21,7 +21,7 @@ export function useGas() {
     async (action, params) => {
       if (!url) throw new Error("Backend de retro no configurado (links.json → retroBackend)");
       const qs = new URLSearchParams({ action, ...(params || {}) }).toString();
-      const res = await fetch(`${url}?${qs}`, { method: "GET", redirect: "follow" });
+      const res = await fetch(`${url}${url.includes("?") ? "&" : "?"}${qs}`, { method: "GET", redirect: "follow" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || "Error desconocido");
