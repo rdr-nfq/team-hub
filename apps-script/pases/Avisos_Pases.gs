@@ -210,7 +210,7 @@ function ejecutarAviso(av, filaPase, fechaPaseStr, fechaPase) {
    de cada aviso va en el cuerpo (lo pone wrap()). */
 function enviarAvisoMail_(html, fechaPaseStr) {
   // getModoDebug() (Codigo_Pases.gs): conmutable desde la web por los admins.
-  const dest = getModoDebug() ? CONSTANTES.BUZON_PRUEBAS_DEBUG : CONSTANTES.BUZON_DESARROLLOS;
+  const dest = getModoDebug() ? _buzonPruebasPases() : CONSTANTES.BUZON_DESARROLLOS;
   GmailApp.sendEmail(dest, asuntoHiloPase_(fechaPaseStr), quitarTagsHtml(html), {
     htmlBody: html, name: AVISOS_CONFIG.REMITE, noReply: true
   });

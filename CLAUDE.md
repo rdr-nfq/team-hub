@@ -163,6 +163,7 @@ Todo el código Apps Script vive en **`apps-script/`** y es **un único proyecto
 - Todos los ficheros comparten el ámbito global: ningún nombre global puede repetirse entre carpetas.
 - Antes de subir: `node apps-script/comprobar.mjs` (sintaxis, globales repetidos en todo el proyecto, reparto y disparadores; también lo pasa la Action `apps-script.yml`).
 - Tras el push, recordar al usuario que pegue el fichero en el proyecto único y haga **Nueva versión** de la implementación existente (la URL `/exec` no cambia).
+- Traspaso de la gestión del hub a otra persona: `TRASPASO.md` (raíz del repositorio).
 
 ---
 

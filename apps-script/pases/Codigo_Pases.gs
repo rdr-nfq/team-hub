@@ -43,6 +43,8 @@
 
 const CONSTANTES = {
   MODO_DEBUG: false, // fallback si ScriptProperties no está disponible — ver getModoDebug()
+  // Modo depuración: buzón BBVA de pruebas. Se cambia con la propiedad del
+  // script PASES_BUZON_PRUEBAS (en un traspaso, el del nuevo responsable).
   BUZON_PRUEBAS_DEBUG: "pablo.llorentec.contractor@bbva.com",
   BUZON_DESARROLLOS: "desarrollos.nfq.rdr.group@bbva.com",
   HOJA_PASES:        "Pases_Calendados",
@@ -53,6 +55,12 @@ const CONSTANTES = {
   HOJA_ORDEN:        "Orden_Ejecucion",
   HOJA_CLIENTES:     "Clientes BBVA",
 };
+
+/* Buzón de pruebas del modo depuración (propiedad PASES_BUZON_PRUEBAS). */
+function _buzonPruebasPases() {
+  try { return PropertiesService.getScriptProperties().getProperty("PASES_BUZON_PRUEBAS") || CONSTANTES.BUZON_PRUEBAS_DEBUG; }
+  catch (_) { return CONSTANTES.BUZON_PRUEBAS_DEBUG; }
+}
 
 /* ── Modo debug conmutable desde la web (solo admins) ──
    Con el modo debug activo, TODOS los correos (estados de fase y avisos
@@ -1163,7 +1171,7 @@ function construirResumenPaquetesHtml(ctx, fechaStr) {
 function enviarCorreoSeguro(ctx, asunto, cuerpo, fechaStr, fila, esInicio) {
   if (!fila || fila < 2) return;
   const debug = getModoDebug();
-  const dest = debug ? CONSTANTES.BUZON_PRUEBAS_DEBUG : CONSTANTES.BUZON_DESARROLLOS;
+  const dest = debug ? _buzonPruebasPases() : CONSTANTES.BUZON_DESARROLLOS;
   let asuntoHilo = "[RDR Hub] Pase Calendado - " + fechaStr;
   if (debug) asuntoHilo = "[TEST] " + asuntoHilo;
 

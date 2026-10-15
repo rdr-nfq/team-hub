@@ -11,7 +11,7 @@
 
    Funciones de uso:
      crearTriggers()             una vez, para programar los avisos
-     enviarRecordatorioPrueba()  envía a PRUEBA_TO el correo que saldría hoy
+     enviarRecordatorioPrueba()  envía al responsable del hub el correo que saldría hoy
      diagnosticarComidas()       qué haría el próximo disparo, sin enviar nada
      probarRemitente()           (Correo.gs) remitente en uso + prueba con emojis
      revisarRebotes()            avisos de no entrega recientes
@@ -21,10 +21,9 @@
 
 const WEB_URL   = 'https://rdr-nfq.github.io/team-hub/comidas/'; // enlace del botón del correo
 const REMITE    = 'Comidas RDR';
-const PRUEBA_TO = 'pablo.llorente@nfq.es';
 
-// Dirección a la que van las respuestas al correo.
-const RESPONDER_A = 'pablo.llorente@nfq.es';
+// Las respuestas a los recordatorios van al responsable del hub
+// (_hubResponsable(), en _comun/Hub.gs).
 
 // El JSON del equipo se lee SIEMPRE desde la URL "raw" de GitHub: devuelve text/plain
 // sin redirecciones ni páginas HTML de error. NO usar la URL de GitHub Pages: puede
@@ -104,7 +103,7 @@ function quitarTags_(html) {
 }
 
 function enviarMail_(destinatarios, subject, htmlBody) {
-  return _correoEnviar(destinatarios, subject, quitarTags_(htmlBody), htmlBody, { nombre: REMITE, replyTo: RESPONDER_A });
+  return _correoEnviar(destinatarios, subject, quitarTags_(htmlBody), htmlBody, { nombre: REMITE, replyTo: _hubResponsable() });
 }
 
 // ── Datos ─────────────────────────────────────────────────────────────────
@@ -205,7 +204,7 @@ function cuerpo_(pendientes, fecha, esFinal, lider, nombre) {
     +   '<p style="margin:18px 0 0;font-size:12px;color:#8a8a8a;">Si el botón no va: <a href="' + WEB_URL + '" style="color:#001391;">' + WEB_URL + '</a></p></div></div>';
 }
 
-// ── Prueba: envía SOLO a PRUEBA_TO el correo que saldría hoy ──────────────
+// ── Prueba: envía SOLO al responsable del hub el correo que saldría hoy ───
 function enviarRecordatorioPrueba() {
   const ss = getSpreadsheet();
   const tz = ss.getSpreadsheetTimeZone();
@@ -214,9 +213,9 @@ function enviarRecordatorioPrueba() {
   j.setDate(j.getDate() + ((4 - isoDow + 7) % 7 || 7)); // próximo jueves
   const fecha = Utilities.formatDate(j, tz, 'dd/MM/yyyy');
   const pendientes = noVotantes_(ss, fecha);
-  enviarMail_(PRUEBA_TO, '[PRUEBA] ' + asunto_(fecha, false),
+  enviarMail_(_hubResponsable(), '[PRUEBA] ' + asunto_(fecha, false),
     cuerpo_(pendientes.length ? pendientes : [{ nombre: 'equipo' }], fecha, false, lider_(ss, fecha)));
-  Logger.log('Prueba enviada a ' + PRUEBA_TO + ' (remitente: ' + (_correoRemitente() || 'la cuenta del script') + ').');
+  Logger.log('Prueba enviada a ' + _hubResponsable() + ' (remitente: ' + (_correoRemitente() || 'la cuenta del script') + ').');
 }
 
 // ── Diagnóstico: qué haría el próximo disparo, sin enviar nada ────────────

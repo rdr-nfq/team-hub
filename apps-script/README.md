@@ -61,6 +61,8 @@ Seguimiento, ofertas y timereport (evidencias) trabajan con carpetas de Drive
 | `CONTROL_API_TOKEN` | control | Opcional: sin ella, las escrituras genéricas al Excel de control quedan deshabilitadas |
 | `MODO_DEBUG` | pases | Opcional |
 | `CORREO_REMITENTE` | todas | Opcional: cambia el remitente de `Correo.gs` |
+| `HUB_RESPONSABLE` | todas | Email del responsable del hub: recibe las pruebas y las respuestas a los recordatorios de comidas (por defecto, `HUB_RESPONSABLE` en `Hub.gs`) |
+| `PASES_BUZON_PRUEBAS` | pases | Buzón de pruebas del modo depuración de pases |
 | `<CLAVE>_SPREADSHEET_ID` | todas | Opcional: cambia la hoja de una app |
 
 ### Disparadores
@@ -92,6 +94,14 @@ editar el Excel (`vacacionesAlCambiarExcel`) y la caché precalentada
    los recordatorios y avisos saldrían dos veces) y archivar sus
    implementaciones.
 8. Alias «Enviar como» del grupo y correos: ver `_comun/Correo.gs`.
+
+## Traspaso a otra persona
+
+Paso a paso completo en [`/TRASPASO.md`](../TRASPASO.md). Lo propio del
+proyecto: los disparadores son de quien los crea, así que quien lo deja
+ejecuta `quitarDisparadores()` y quien lo recibe `instalarDisparadores()`; y
+la web app se ejecuta como quien la implementa, así que la nueva responsable
+crea una implementación nueva y cambia `hubBackend`.
 
 ## Flujo para cambiar un backend
 

@@ -40,6 +40,16 @@ const HUB_HOJAS = {
 
 const _HUB_SS = {}; // una apertura por hoja y ejecución
 
+/* Responsable del hub: recibe las pruebas (p. ej. enviarRecordatorioPrueba de
+   comidas) y las respuestas a los recordatorios de comidas. En un traspaso,
+   basta con la propiedad del script HUB_RESPONSABLE (sin tocar el código). */
+const HUB_RESPONSABLE = 'pablo.llorente@nfq.es';
+function _hubResponsable() {
+  let v = '';
+  try { v = PropertiesService.getScriptProperties().getProperty('HUB_RESPONSABLE') || ''; } catch (e) {}
+  return String(v || HUB_RESPONSABLE).trim();
+}
+
 function _hubIdHoja(clave) {
   let id = '';
   try { id = PropertiesService.getScriptProperties().getProperty(clave + '_SPREADSHEET_ID') || ''; } catch (e) {}
@@ -141,8 +151,18 @@ function diagnosticarHub() {
   });
   if (props.indexOf('vac:campanas') < 0) Logger.log('ℹ Sin vac:campanas: vacaciones usará los formularios por defecto (Navidad 2026).');
   if (props.indexOf('FIRMANTES_LATAM') < 0) Logger.log('ℹ Sin FIRMANTES_LATAM: ofertas solo tendrá los firmantes del código.');
+  Logger.log('Responsable del hub (pruebas y respuestas): ' + _hubResponsable() + ' · ejecuta el script: ' + (Session.getActiveUser().getEmail() || '?'));
   _hubListarDisparadores();
   Logger.log('Remitente de correo: ' + (_correoRemitente() || 'la cuenta del script') + ' · cuota restante hoy: ' + MailApp.getRemainingDailyQuota());
+}
+
+/* TRASPASO: los disparadores son de quien los crea (cada uno solo ve y borra
+   los suyos). Quien deja de gestionar el hub ejecuta esto con SU cuenta; quien
+   lo recibe ejecuta instalarDisparadores() con la suya. */
+function quitarDisparadores() {
+  const t = ScriptApp.getProjectTriggers();
+  t.forEach(function (x) { ScriptApp.deleteTrigger(x); });
+  Logger.log('Borrados ' + t.length + ' disparadores de ' + (Session.getActiveUser().getEmail() || 'esta cuenta') + ' en este proyecto.');
 }
 
 function _hubListarDisparadores() {
