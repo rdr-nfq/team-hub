@@ -89,7 +89,9 @@
  *        borrarGrupo   { grupo }                                                   (coord.)
  *        asignarGrupo  { anio, persona, grupo }                                    (coord.)
  *        ajustarDias   { anio, persona, dias }   ("Días del año", columna F)       (coord.)
- *        anadirPersona { anio, nombre, emailPersona?, grupo, dias, anteriores? }  (alta a mitad de año) (coord.)
+ *        sincronizarEquipo { miembros?:[{nombre,email,emailBBVA}] }   (coord.; lo llama
+ *                      Gestión de equipo al guardar) quien falte en Vacas_<año> (y en el
+ *                      año siguiente si existe) se añade; sin miembros: equipo.json
  *        solicitarCampana { campana, semanas:[lunes…], comentario }   (formulario de Navidad/Verano…)
  *                      una solicitud NUEVA por bloque de semanas seguidas (partida por año)
  *        guardarCampana { campana:{ id?, nombre, emoji, activa, semanas, tipo,
@@ -203,7 +205,7 @@ function _servir(p) {
       case 'asignarGrupo': _exigirCoord(p.email); data = asignarGrupo(p); break;
       case 'crearAnio': _exigirCoord(p.email); data = crearAnio(p); break;
       case 'ajustarDias': _exigirCoord(p.email); data = ajustarDias(p); break;
-      case 'anadirPersona': _exigirCoord(p.email); data = anadirPersona(p); break;
+      case 'sincronizarEquipo': _exigirCoord(p.email); data = sincronizarEquipo(p); break;
       default: throw new Error('Acción desconocida: ' + p.action);
     }
     if (p.action !== 'ping' && p.action !== 'datos') _invalidar();
@@ -1112,29 +1114,77 @@ function ajustarDias(p) {
   return { persona: persona.nombre, anio: anio, dias: dias };
 }
 
-/** Alta de una persona en Vacas_<año> (incorporación a mitad de año): fila
- *  nueva al final, con los festivos de su grupo marcados (FE). */
-function anadirPersona(p) {
+/* Altas desde Gestión de equipo: cada miembro (con email) que no esté en
+   Vacas_<año> se añade al final, para el año en curso y el siguiente si ya
+   existe. Se busca por email y, si no, por nombre; si se encuentra por nombre
+   en una fila sin email, se le pone el email. Si hay una fila SIN email que
+   comparte un apellido, no se toca nada: se devuelve en «revisar» (podría
+   ser esa persona con el nombre escrito de otra forma).
+   Grupo: Madrid (México DC si el email es .mx). Días del año: los que quedan
+   de este año en proporción (27 en un año futuro); se ajustan en Personas. */
+function sincronizarEquipo(p) {
   const ss = _ss();
-  const anio = Number(p.anio);
-  const nombre = String(p.nombre || '').replace(/\s+/g, ' ').trim();
-  if (nombre.length < 4) throw new Error('Escribe el nombre completo (Apellidos, Nombre).');
-  const email = _normEmail(p.emailPersona); // p.email es quien lo pide
-  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error('Email no válido: ' + email);
-  const num = function (v, def) { const n = Number(String(v == null || v === '' ? def : v).replace(',', '.')); return n; };
-  const dias = num(p.dias, V_CONFIG.DIAS_ANIO), anteriores = num(p.anteriores, 0);
-  if (!isFinite(dias) || dias < 0 || dias > 99 || Math.round(dias * 2) !== dias * 2) throw new Error('Días del año no válidos: un número entre 0 y 99 (admite medios días).');
-  if (!isFinite(anteriores) || Math.abs(anteriores) > 99 || Math.round(anteriores * 2) !== anteriores * 2) throw new Error('Días del año anterior no válidos.');
-  const grupo = String(p.grupo || '').trim();
-  if (!grupo) throw new Error('Elige su grupo de festivos.');
-  if (!_leerGrupos(ss, anio).some(function (g) { return g.grupo === grupo; })) throw new Error('No existe el grupo ' + grupo + ' en ' + _nombreFestivos(anio) + '.');
+  const miembros = (Array.isArray(p.miembros) ? p.miembros : _equipo())
+    .filter(function (m) { return m && m.nombre && _normEmail(m.email) && m.activo !== false && m.baja !== true; })
+    .map(function (m) { return { nombre: String(m.nombre).replace(/\s+/g, ' ').trim(), email: _normEmail(m.email), emails: _emailsDe(m) }; });
+  const hoy = _hoyISO(), actual = Number(hoy.slice(0, 4));
+  const anios = _anios(ss).filter(function (a) { return a >= actual; });
+  const out = { anios: anios, altas: [], vinculados: [], revisar: [] };
+  if (!anios.length || !miembros.length) return out;
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
-    return _anadirFila(ss, anio, { nombre: nombre, email: email, grupo: grupo, activo: true, anteriores: anteriores, dias: dias, codigos: {} });
+    anios.forEach(function (anio) {
+      const grid = _leerAnio(ss, anio);
+      const prev = _leerAnio(ss, anio - 1), sig = _leerAnio(ss, anio + 1);
+      const grupos = _leerGrupos(ss, anio).map(function (g) { return g.grupo; });
+      const pal = function (s) { return _norm(s).split(' ').filter(function (t) { return t.length > 3; }); };
+      miembros.forEach(function (m) {
+        if (grid.personas.some(function (x) { return x.email && m.emails.indexOf(x.email) >= 0; })) return;
+        const porNombre = _buscarNombre(grid.personas, m.nombre);
+        if (porNombre) {
+          if (!porNombre.email) {
+            grid.sh.getRange(porNombre.fila, G.EMAIL).setValue(m.email);
+            porNombre.email = m.email;
+            out.vinculados.push({ anio: anio, nombre: porNombre.nombre, email: m.email });
+          } else {
+            out.revisar.push({ anio: anio, nombre: m.nombre, email: m.email, motivo: 'su fila (' + porNombre.nombre + ') tiene otro email: ' + porNombre.email });
+          }
+          return;
+        }
+        const pm = pal(m.nombre).slice(1); // sin el nombre de pila (equipo.json: «Nombre Apellidos»)
+        const dudosas = grid.personas.filter(function (x) { return !x.email && pal(x.nombre).some(function (t) { return pm.indexOf(t) >= 0; }); });
+        if (dudosas.length) {
+          out.revisar.push({ anio: anio, nombre: m.nombre, email: m.email, motivo: '¿es ' + dudosas.map(function (x) { return x.nombre; }).join(' o ') + '? Pon su email en la columna B de ' + _nombreHoja(anio) });
+          return;
+        }
+        // Mismo nombre que en el año anterior o el siguiente (si ya está),
+        // para que «Días año anterior» enlace entre los dos años.
+        const enOtro = function (g) { return g ? (g.personas.filter(function (x) { return x.email && m.emails.indexOf(x.email) >= 0; })[0] || _buscarNombre(g.personas, m.nombre)) : null; };
+        const antes = enOtro(prev) || enOtro(sig);
+        const grupo = antes && grupos.indexOf(antes.grupo) >= 0 ? antes.grupo
+          : (/\.mx$/.test(m.email) && grupos.indexOf('México DC') >= 0) ? 'México DC'
+          : grupos.indexOf('Madrid') >= 0 ? 'Madrid' : (grupos[0] || '');
+        let dias = V_CONFIG.DIAS_ANIO;
+        if (anio === actual) {
+          const quedan = _diasAnio(anio) - _idxDia(hoy);
+          dias = Math.round(V_CONFIG.DIAS_ANIO * quedan / _diasAnio(anio) * 2) / 2;
+        }
+        let res;
+        try {
+          res = _anadirFila(ss, anio, { nombre: antes ? antes.nombre : m.nombre, email: m.email, grupo: grupo, activo: true, anteriores: 0, dias: dias, codigos: {} });
+        } catch (e) {
+          out.revisar.push({ anio: anio, nombre: m.nombre, email: m.email, motivo: String(e.message || e) });
+          return;
+        }
+        grid.personas.push({ fila: res.fila, nombre: res.persona, email: m.email, grupo: grupo, codigos: [] });
+        out.altas.push({ anio: anio, nombre: res.persona, email: m.email, grupo: grupo, dias: dias, fila: res.fila });
+      });
+    });
   } finally {
     lock.releaseLock();
   }
+  return out;
 }
 
 /** Escribe una persona en la primera fila libre de Vacas_<anio>, con sus

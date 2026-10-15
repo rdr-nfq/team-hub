@@ -8,6 +8,8 @@ import { IconUsers, IconAlert, IconPlus, IconX, IconExternal } from "./icons";
 import { rgba } from "@/lib/ui";
 import { useAccentMap } from "@/lib/theme";
 import { EQUIPOS, equiposDe } from "@/lib/equipos";
+import { useAuth } from "../chrome/AuthGate";
+import ResultadoSincronizacion from "../vacaciones/ResultadoSincronizacion";
 
 /* Gestión del equipo · Coordinación.
    Edita TODO equipo.json: cualquier campo de cada miembro (incluidos los que
@@ -57,6 +59,10 @@ function SelectorEquiposMiembro({ valor, onChange }) {
 export default function EquipoGestionRoute() {
   const { getUrl } = useLinks();
   const backendUrl = getUrl("equipoBackend");
+  const vacacionesUrl = getUrl("vacacionesV2Backend");
+  const { email } = useAuth();
+  // Tras guardar: altas en el Excel de vacaciones (backend de vacaciones).
+  const [vac, setVac] = useState(null); // null | { fase: "enviando" } | { fase: "ok", r } | { fase: "error", error }
 
   const [team, setTeam] = useState(null);
   const original = useRef("");
@@ -113,8 +119,28 @@ export default function EquipoGestionRoute() {
       if (!res || !res.ok) throw new Error((res && res.error) || "error del backend");
       original.current = JSON.stringify(team);
       setEstado({ fase: "ok", ...res.data });
+      sincronizarVacaciones(team);
     } catch (e) {
       setEstado({ fase: "error", error: String(e.message || e) });
+    }
+  };
+
+  /* Quien esté en el equipo y no en Vacas_<año> se añade allí (y en el año
+     siguiente si existe). Se mandan los miembros: equipo.json tarda unos
+     minutos en verse actualizado desde el Apps Script. */
+  const sincronizarVacaciones = async (miembros) => {
+    if (!vacacionesUrl) return;
+    setVac({ fase: "enviando" });
+    try {
+      const res = await fetch(vacacionesUrl, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: "sincronizarEquipo", email, miembros: miembros.map((m) => ({ nombre: m.nombre, email: m.email, emailBBVA: m.emailBBVA, activo: m.activo, baja: m.baja })) }),
+      }).then((r) => r.json());
+      if (!res || !res.ok) throw new Error((res && res.error) || "error del backend");
+      setVac({ fase: "ok", r: res.data });
+    } catch (e) {
+      setVac({ fase: "error", error: String(e.message || e) });
     }
   };
 
@@ -207,6 +233,17 @@ export default function EquipoGestionRoute() {
                   </a>
                 )}
               </p>
+            )}
+            {vac && (
+              <div className="mb-3 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2">
+                {vac.fase === "enviando" && <p className="text-[12px] text-sand/60">Vacaciones: comprobando que todo el equipo esté en el Excel…</p>}
+                {vac.fase === "ok" && <ResultadoSincronizacion r={vac.r} />}
+                {vac.fase === "error" && (
+                  <p className="text-[12px] font-bold text-mandarin">
+                    Vacaciones: no se pudo comprobar el Excel ({vac.error}). Puedes repetirlo en Vacaciones → Personas → «Sincronizar con Gestión de equipo».
+                  </p>
+                )}
+              </div>
             )}
             {estado.fase === "error" && (
               <p className="mb-3 rounded-lg border border-mandarin/50 bg-mandarin/10 px-3 py-2 text-xs font-bold text-mandarin">

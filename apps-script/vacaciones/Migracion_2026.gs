@@ -369,52 +369,58 @@ function _mezclas2026(aplicar) {
   const resumen = _migLeerResumen(origen);
   const nombres = base.personas.slice();
   resumen.forEach(function (r) { if (!_buscarNombre(nombres, r.nombre)) nombres.push(r.nombre); });
-  const viejaRegla = function (a, b) {
-    const pal = function (s) { return _norm(s).split(' ').filter(function (t) { return t.length > 1; }); };
-    const tb = pal(b);
-    return pal(a).filter(function (t) { return tb.indexOf(t) >= 0; }).length >= 2;
-  };
+  // Regla vieja (2+ palabras en común): la migración metía a cada persona en
+  // la fila del PRIMER nombre que casaba así.
+  const pal = function (s) { return _norm(s).split(' ').filter(function (t) { return t.length > 1; }); };
+  const viejaRegla = function (a, b) { const tb = pal(b); return pal(a).filter(function (t) { return tb.indexOf(t) >= 0; }).length >= 2; };
   const sig = _leerAnio(ss, MIG.ANIO + 1);
   const equipo = _equipo();
   const grupos = _leerGrupos(ss, MIG.ANIO).map(function (g) { return g.grupo; });
   const fxg = _festivosPorGrupo(_leerFestivos(ss, MIG.ANIO));
   const informe = [];
-  nombres.forEach(function (n) {
-    if (grid.personas.some(function (x) { return _mismoNombre(x.nombre, n); })) return; // tiene su fila
+  nombres.forEach(function (n, k) {
+    const canon = nombres.slice(0, k).filter(function (x) { return viejaRegla(x, n); })[0];
+    if (!canon) return; // la migración le dio su propia fila
+    const victima = _buscarNombre(grid.personas, canon);
+    const propia = grid.personas.filter(function (x) { return x !== victima && _mismoNombre(x.nombre, n); })[0] || null;
     const codigos = base.codigos[n] || {};
-    const r = _buscarNombre(resumen, n);
-    const enSig = sig ? _buscarNombre(sig.personas, n) : null;
-    const m = _buscarNombre(equipo, n);
-    const nombre = enSig ? enSig.nombre : n;
-    // Grupo: el primero cuyos festivos incluyen todos sus FE (Madrid si no tiene).
-    const fe = Object.keys(codigos).filter(function (iso) { return codigos[iso] === 'FE'; });
-    const grupo = grupos.filter(function (g) { return fe.every(function (iso) { return fxg[g] && fxg[g][iso]; }); })
-      .sort(function (a, b) { return (b === 'Madrid') - (a === 'Madrid'); })[0] || grupos[0] || '';
-    // Fila con la que se mezcló y sus códigos propios en la pestaña antigua.
-    const victima = grid.personas.filter(function (x) { return viejaRegla(x.nombre, n); })[0] || null;
     const limpiar = [];
     if (victima) {
-      const suya = base.codigos[_buscarNombre(base.personas, victima.nombre)] || {};
+      const suya = base.codigos[canon] || {};
       Object.keys(codigos).forEach(function (iso) {
         const actual = victima.codigos[_idxDia(iso)] || '';
         if (actual === codigos[iso] && (suya[iso] || '') !== codigos[iso]) limpiar.push({ iso: iso, de: actual, a: suya[iso] || '' });
       });
     }
+    // Si ya tiene fila (p. ej. creada desde Gestión de equipo), se le
+    // completan los días que falten, sin pisar nada.
+    const completar = propia ? Object.keys(codigos).filter(function (iso) { return !propia.codigos[_idxDia(iso)]; }) : [];
+    if (propia && !limpiar.length && !completar.length) { Logger.log('Ya arreglado: ' + propia.nombre + '.'); return; }
+    const r = _buscarNombre(resumen, n);
+    const enSig = sig ? _buscarNombre(sig.personas, n) : null;
+    const m = _buscarNombre(equipo, n);
+    const fe = Object.keys(codigos).filter(function (iso) { return codigos[iso] === 'FE'; });
+    const grupo = grupos.filter(function (g) { return fe.every(function (iso) { return fxg[g] && fxg[g][iso]; }); })
+      .sort(function (a, b) { return (b === 'Madrid') - (a === 'Madrid'); })[0] || grupos[0] || '';
     const p = {
-      nombre: nombre, email: m ? _normEmail(m.email) : '', grupo: grupo, activo: !(r && r.tachado),
+      nombre: enSig ? enSig.nombre : n, email: m ? _normEmail(m.email) : '', grupo: grupo, activo: !(r && r.tachado),
       anteriores: r ? r.anteriores : 0, dias: r ? r.comienzo : 0, codigos: Object.assign({}, codigos)
     };
-    const linea = nombre + ' (en la pestaña antigua: «' + n + '») · email ' + (p.email || '—') + ' · grupo ' + grupo
-      + ' · días año anterior ' + p.anteriores + ' · días del año ' + p.dias
-      + ' · ' + Object.keys(codigos).filter(function (k) { return codigos[k] !== 'FE'; }).length + ' días con código'
-      + (victima ? ' · mezclado con ' + victima.nombre + ': se le quitan ' + limpiar.length + ' días (' + limpiar.map(function (x) { return x.iso + ' ' + x.de; }).join(', ') + ')' : ' · no se mezcló con nadie');
+    const linea = (propia ? propia.nombre + ' (ya tiene fila: se le completan ' + completar.length + ' días)' : p.nombre + ' (fila nueva)')
+      + ' · en la pestaña antigua «' + n + '» · mezclado con ' + canon + ': '
+      + (victima ? 'se le quitan ' + limpiar.length + ' días' + (limpiar.length ? ' (' + limpiar.map(function (x) { return x.iso + ' ' + x.de; }).join(', ') + ')' : '') : 'no está en ' + _nombreHoja(MIG.ANIO))
+      + (propia ? '' : ' · email ' + (p.email || '—') + ' · grupo ' + grupo + ' · días año anterior ' + p.anteriores + ' · días del año ' + p.dias);
     informe.push(linea);
     Logger.log((aplicar ? 'ARREGLANDO: ' : 'Se arreglaría: ') + linea);
     if (!aplicar) return;
     limpiar.forEach(function (x) { grid.sh.getRange(victima.fila, _colDia(x.iso)).setValue(x.a); });
-    const res = _anadirFila(ss, MIG.ANIO, p);
-    Logger.log('  → fila ' + res.fila + ' de ' + _nombreHoja(MIG.ANIO) + (res.enlazadoSiguiente ? ' · enlazada con ' + _nombreHoja(MIG.ANIO + 1) : ''));
+    if (propia) {
+      completar.forEach(function (iso) { grid.sh.getRange(propia.fila, _colDia(iso)).setValue(codigos[iso]); });
+    } else {
+      const res = _anadirFila(ss, MIG.ANIO, p);
+      Logger.log('  → fila ' + res.fila + ' de ' + _nombreHoja(MIG.ANIO) + (res.enlazadoSiguiente ? ' · enlazada con ' + _nombreHoja(MIG.ANIO + 1) : ''));
+    }
   });
-  if (!informe.length) Logger.log('No falta nadie: todas las personas de "' + MIG.ORIGEN + '" tienen su fila en ' + _nombreHoja(MIG.ANIO) + '.');
+  if (!informe.length) Logger.log('Nada que arreglar: nadie quedó mezclado en ' + _nombreHoja(MIG.ANIO) + '.');
   return informe;
 }

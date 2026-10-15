@@ -11,6 +11,7 @@ import Calendario, { MARCA_COLOR } from "./Calendario";
 import DaySheet from "./DaySheet";
 import AhoraPanel from "./AhoraPanel";
 import CampanasAdmin from "./CampanasAdmin";
+import ResultadoSincronizacion from "./ResultadoSincronizacion";
 import { VacacionesSkeleton, ErrorCard } from "./VacacionesRoute";
 import { EstadoSolBadge } from "./SolicitudPanel";
 import { useVacaciones, useV2Configurado, fechaCortaEs, festivosDeGrupo, laborables, CLAVE_V2, CLASE_SOL } from "./datos";
@@ -198,76 +199,34 @@ function DiasInput({ valor, deshabilitado, onGuardar }) {
   );
 }
 
-/* Alta de una persona en Vacas_<año> (incorporación a mitad de año). */
-function AltaPersona({ d, post, onCambio }) {
-  const vacio = { nombre: "", email: "", grupo: d.grupos.find((g) => g.grupo === "Madrid")?.grupo || d.grupos[0]?.grupo || "", dias: "27", anteriores: "0" };
-  const [abierto, setAbierto] = useState(false);
-  const [f, setF] = useState(vacio);
-  const [estado, setEstado] = useState({ fase: "form" });
-  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
-  const falta = f.nombre.trim().length < 4 ? "Escribe el nombre completo." : !f.grupo ? "Elige su grupo de festivos." : "";
-  const enviar = async () => {
-    if (falta || estado.fase === "enviando") return;
+/* Las altas se hacen en Gestión de equipo (al guardar, sincroniza). Aquí
+   solo se puede repetir esa sincronización. */
+function SincronizarEquipo({ post, onCambio }) {
+  const [estado, setEstado] = useState({ fase: "listo" });
+  const sincronizar = async () => {
     setEstado({ fase: "enviando" });
     try {
-      const r = await post("anadirPersona", { anio: d.year, nombre: f.nombre.trim(), emailPersona: f.email.trim(), grupo: f.grupo, dias: f.dias, anteriores: f.anteriores });
-      setEstado({ fase: "ok", texto: `✓ ${r.persona} añadida en la fila ${r.fila} de Vacas_${r.anio}${r.festivos ? `, con los ${r.festivos} festivos de ${r.grupo}` : ""}${r.enlazadoSiguiente ? `. Su «Días año anterior» de ${r.anio + 1} ya lee esta fila` : ""}.` });
-      setF(vacio);
-      onCambio();
+      const r = await post("sincronizarEquipo", {});
+      setEstado({ fase: "ok", r });
+      if (r.altas.length || r.vinculados.length) onCambio();
     } catch (e) {
-      setEstado({ fase: "error", texto: String(e.message || e) });
+      setEstado({ fase: "error", error: String(e.message || e) });
     }
   };
-  if (!abierto) {
-    return (
-      <button type="button" onClick={() => { setAbierto(true); setEstado({ fase: "form" }); }} className={`${BTN} text-[#001391]`} style={{ background: PALETTE.lime }}>
-        <IconPlus className="h-4 w-4" /> Añadir persona
-      </button>
-    );
-  }
   return (
-    <section className={`${GLASS} space-y-3 p-4`} aria-label="Añadir persona">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-[15px] font-bold text-sand">Añadir persona a {d.year}</p>
-          <p className="text-[12px] text-sand/60">Para incorporaciones: se añade al final de Vacas_{d.year} con los festivos de su grupo. Con el email puede pedir días desde la web.</p>
-        </div>
-        <button type="button" onClick={() => setAbierto(false)} aria-label="Cerrar" className="rounded-lg p-1.5 text-sand/60 hover:text-sand"><IconX className="h-4 w-4" /></button>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_2fr_1fr_auto_auto]">
-        <label className="block">
-          <span className="text-[10px] font-bold uppercase tracking-wide text-sand/50">Nombre (Apellidos, Nombre)</span>
-          <input value={f.nombre} onChange={set("nombre")} placeholder="Botella Jiménez, Juan Carlos" className={`${FIELD} block w-full text-[13px]`} />
-        </label>
-        <label className="block">
-          <span className="text-[10px] font-bold uppercase tracking-wide text-sand/50">Email</span>
-          <input type="email" value={f.email} onChange={set("email")} placeholder="nombre.apellido@nfq.es" className={`${FIELD} block w-full text-[13px]`} />
-        </label>
-        <label className="block">
-          <span className="text-[10px] font-bold uppercase tracking-wide text-sand/50">Grupo festivos</span>
-          <select value={f.grupo} onChange={set("grupo")} className={`${FIELD} block w-full text-[13px]`}>
-            {d.grupos.map((g) => <option key={g.grupo} value={g.grupo}>{g.grupo}</option>)}
-          </select>
-        </label>
-        <label className="block">
-          <span className="text-[10px] font-bold uppercase tracking-wide text-sand/50">Del año</span>
-          <input type="number" min={0} max={99} step={0.5} value={f.dias} onChange={set("dias")} className={`${FIELD} block w-20 text-right text-[13px] tabular-nums`} />
-        </label>
-        <label className="block">
-          <span className="text-[10px] font-bold uppercase tracking-wide text-sand/50">Año ant.</span>
-          <input type="number" min={-99} max={99} step={0.5} value={f.anteriores} onChange={set("anteriores")} className={`${FIELD} block w-20 text-right text-[13px] tabular-nums`} />
-        </label>
-      </div>
+    <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-3">
-        <button type="button" disabled={!!falta || estado.fase === "enviando"} onClick={enviar} className={`${BTN} text-[#001391]`} style={{ background: PALETTE.lime }}>
-          {estado.fase === "enviando" ? "Añadiendo…" : `Añadir a Vacas_${d.year}`}
+        <p className="text-[12.5px] text-sand/60">
+          Las altas se hacen en <a href="/team-hub/equipo-gestion/" className="font-bold text-sand/85 underline decoration-dotted underline-offset-2 hover:text-serene">Gestión de equipo</a>:
+          al guardar allí, quien falte aquí se añade solo (grupo Madrid y los días que quedan del año; ajústalos en esta tabla).
+        </p>
+        <button type="button" disabled={estado.fase === "enviando"} onClick={sincronizar} className={`${BTN} border border-white/15 text-sand/85 hover:border-white/30`}>
+          <IconReload size={13} /> {estado.fase === "enviando" ? "Sincronizando…" : "Sincronizar con Gestión de equipo"}
         </button>
-        {falta && <span className="text-[12px] text-sand/55">{falta}</span>}
-        {!falta && <span className="text-[12px] text-sand/55">«Del año»: los que le tocan este año (si entra a mitad, la parte proporcional).</span>}
       </div>
-      {estado.fase === "ok" && <p className={`text-xs font-bold ${TEXT.lime}`}>{estado.texto}</p>}
-      {estado.fase === "error" && <p className="rounded-lg border border-mandarin/50 bg-mandarin/10 px-3 py-2 text-xs font-bold text-mandarin">{estado.texto}</p>}
-    </section>
+      {estado.fase === "ok" && <ResultadoSincronizacion r={estado.r} />}
+      {estado.fase === "error" && <p className="rounded-lg border border-mandarin/50 bg-mandarin/10 px-3 py-2 text-xs font-bold text-mandarin">{estado.error}</p>}
+    </div>
   );
 }
 
@@ -296,7 +255,7 @@ function Personas({ d, post, onCambio }) {
           {" "}Los días sueltos se editan en el Excel (pestaña Vacas_{d.year}).
         </p>
       </div>
-      <AltaPersona d={d} post={post} onCambio={onCambio} />
+      <SincronizarEquipo post={post} onCambio={onCambio} />
       {error && <p className="rounded-lg border border-mandarin/50 bg-mandarin/10 px-3 py-2 text-xs font-bold text-mandarin">{error}</p>}
       <div className={`${GLASS} overflow-x-auto`}>
         <table className="w-full min-w-[720px] text-[13px]">
