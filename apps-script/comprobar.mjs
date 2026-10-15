@@ -61,7 +61,7 @@ for (const carpeta of readdirSync(raiz).sort()) {
 const hub = readFileSync(join(raiz, "_comun", "Hub.gs"), "utf8");
 for (const [, fn] of hub.matchAll(/return get \? (\w+)\(e\) : \w+\(e\)/g)) if (!globales.has(fn)) { errores++; console.error(`✗ Hub.gs llama a ${fn}, que no existe`); }
 for (const [, fn] of hub.matchAll(/: (\w+)\(e\);/g)) if (!globales.has(fn)) { errores++; console.error(`✗ Hub.gs llama a ${fn}, que no existe`); }
-for (const [, fn] of hub.matchAll(/\['[^']+', (\w+)\]/g)) if (!globales.has(fn)) { errores++; console.error(`✗ Hub.gs usa ${fn}, que no existe`); }
+for (const [, fn] of hub.matchAll(/\['[^']+', '(\w+)', '\w+'\]/g)) if (!globales.has(fn)) { errores++; console.error(`✗ Hub.gs usa ${fn}, que no existe`); }
 // Disparadores: cada newTrigger('x') apunta a una función global.
 for (const [, fn] of todo.matchAll(/newTrigger\('(\w+)'\)/g)) if (!globales.has(fn)) { errores++; console.error(`✗ Un disparador apunta a ${fn}, que no existe`); }
 

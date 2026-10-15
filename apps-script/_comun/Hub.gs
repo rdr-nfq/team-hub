@@ -95,10 +95,9 @@ function autorizar() {
     try { Logger.log('Hoja ' + k + ': ' + _hubHoja(k).getName()); }
     catch (e) { Logger.log('⚠ Hoja ' + k + ': ' + e); }
   });
-  [['guardias', autorizarGuardias], ['ofertas', autorizarOfertas], ['seguimiento', autorizarSeguimiento],
-   ['timereport', autorizarTR], ['vacaciones', autorizarVacaciones]].forEach(function (a) {
-    try { a[1](); Logger.log('✓ ' + a[0]); } catch (e) { Logger.log('⚠ ' + a[0] + ': ' + e); }
-  });
+  _hubEjecutar([['guardias', 'autorizarGuardias', 'Codigo_Guardias'], ['ofertas', 'autorizarOfertas', 'Codigo_Ofertas'],
+    ['seguimiento', 'autorizarSeguimiento', 'Codigo_Seguimiento'], ['timereport', 'autorizarTR', 'Codigo_TimeReport'],
+    ['vacaciones', 'autorizarVacaciones', 'Codigo_Vacaciones']]);
   Logger.log('Permisos concedidos. Siguiente paso: instalarDisparadores().');
 }
 
@@ -106,15 +105,27 @@ function autorizar() {
    todas las apps: recordatorios de comidas y del Time Report, avisos de
    pases, certificados de formaciones y caché de vacaciones. */
 function instalarDisparadores() {
-  [['comidas · recordatorios', crearTriggers],
-   ['timereport · recordatorio de evidencias', crearTriggerRecordatorioTR],
-   ['pases · avisos programados', instalarTriggerAvisos],
-   ['formaciones · sincronizar certificados (cada 5 min)', instalarSincronizacionFormaciones],
-   ['vacaciones · cambios en el Excel', instalarDisparadoresVacaciones],
-   ['vacaciones · caché precalentada', instalarPrecalentado]].forEach(function (d) {
-    try { d[1](); Logger.log('✓ ' + d[0]); } catch (e) { Logger.log('⚠ ' + d[0] + ': ' + e); }
-  });
+  _hubEjecutar([['comidas · recordatorios', 'crearTriggers', 'Comidas_Recordatorios'],
+    ['timereport · recordatorio de evidencias', 'crearTriggerRecordatorioTR', 'Codigo_TimeReport'],
+    ['pases · avisos programados', 'instalarTriggerAvisos', 'Avisos_Pases'],
+    ['formaciones · sincronizar certificados (cada 5 min)', 'instalarSincronizacionFormaciones', 'Codigo_Formaciones'],
+    ['vacaciones · cambios en el Excel', 'instalarDisparadoresVacaciones', 'Codigo_Vacaciones'],
+    ['vacaciones · caché precalentada', 'instalarPrecalentado', 'Codigo_Vacaciones']]);
   _hubListarDisparadores();
+}
+
+/* Ejecuta [etiqueta, nombre de función, fichero] uno a uno. Las funciones se
+   buscan por nombre: si falta una (fichero sin pegar o de una versión
+   anterior) se avisa y se sigue con las demás, en vez de pararlo todo. */
+function _hubEjecutar(lista) {
+  const g = globalThis;
+  lista.forEach(function (d) {
+    if (typeof g[d[1]] !== 'function') {
+      Logger.log('⚠ ' + d[0] + ': falta la función ' + d[1] + '. Pega la última versión de ' + d[2] + '.gs (apps-script/ del repositorio).');
+      return;
+    }
+    try { g[d[1]](); Logger.log('✓ ' + d[0]); } catch (e) { Logger.log('⚠ ' + d[0] + ': ' + e); }
+  });
 }
 
 /** Qué hay configurado: hojas, propiedades (solo nombres) y disparadores. */
