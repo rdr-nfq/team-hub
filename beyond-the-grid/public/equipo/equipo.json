@@ -64,6 +64,7 @@
       "coordinador": true,
       "equipos": [
         "rdr",
+        "market-abuse",
         "comms-surveillance"
       ]
     },
