@@ -708,7 +708,7 @@ export default function GestionRoute() {
                     Las evidencias de {nombreEq} aún no están configuradas: falta la clave <code className="text-sand">{EVIDENCIAS_KEY[eqTR]}</code> en{" "}
                     <code className="text-sand">links.json</code> con la URL de la carpeta raíz de Drive (compartida con el equipo), o el
                     navegador tiene una copia antigua de links.json (recarga la página). El backend crea dentro las carpetas{" "}
-                    <span className="text-sand">{et?.año}/{et?.carpeta}</span>.
+                    <span className="text-sand">{et?.ruta}</span>.
                   </EmptyCard>
                 ) : (
                   <div className="grid items-start gap-4 xl:grid-cols-[1.35fr_1fr]">

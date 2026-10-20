@@ -16,8 +16,8 @@
  *  queda en Propiedades del script).
  *
  *  Además:
- *   · EVIDENCIAS por quincena en Drive: carpeta <raíz>/<Año>/<n>_Quincena_<Mes><Año>
- *     (p.ej. 2026/2_Quincena_Junio2026). El backend crea las carpetas, dice
+ *   · EVIDENCIAS por quincena en Drive: carpeta <raíz>/<Año>/<MM. Mes>/<n>_Quincena_<Mes><Año>
+ *     (p.ej. 2026/06. Junio/2_Quincena_Junio2026). El backend crea las carpetas, dice
  *     quién ha subido ya su evidencia y quién falta, RENOMBRA los ficheros al
  *     nombre canónico (2_Quincena_Junio2026_PabloLlorente.pdf) y genera un ZIP
  *     con todas para que coordinación lo arrastre al correo del cliente.
@@ -302,6 +302,7 @@ function _infoQuincena(q, quincena) {
     q: q, quincena: n, anio: anio, mes0: mes0, mes: MESES[mes0], nMes: nMes,
     desdeDia: nMes === 1 ? 1 : 16, hastaDia: nMes === 1 ? 15 : ult,
     carpeta: nMes + '_Quincena_' + MESES[mes0] + anio,
+    carpetaMes: ('0' + (mes0 + 1)).slice(-2) + '. ' + MESES[mes0],
     etiqueta: (nMes === 1 ? '1-15' : '16-' + ult) + ' de ' + MESES[mes0].toLowerCase() + ' de ' + anio
   };
 }
@@ -375,13 +376,15 @@ function _subcarpetaTR(padre, nombre) {
   return it.hasNext() ? it.next() : padre.createFolder(nombre);
 }
 
-/* Carpeta <raíz>/<Año>/<n>_Quincena_<Mes><Año>; se crea si no existe. */
+/* Carpeta <raíz>/<Año>/<MM. Mes>/<n>_Quincena_<Mes><Año>
+   (p.ej. 2026/10. Octubre/2_Quincena_Octubre2026); se crea si no existe. */
 function _carpetaQuincena(info, raiz, eq) {
   eq = eq || 'rdr';
   var rootId = _evidenciasRootId(raiz, eq);
   if (!rootId) throw new Error('Evidencias de ' + TR_EQUIPOS[eq].nombre + ' sin configurar: falta la clave "' + TR_EQUIPOS[eq].evidencias + '" (carpeta raíz de Drive) en links.json (ejecuta diagnosticarEvidencias en el editor).');
   var root = DriveApp.getFolderById(rootId);
-  return _subcarpetaTR(_subcarpetaTR(root, String(info.anio)), info.carpeta);
+  var mes = _subcarpetaTR(_subcarpetaTR(root, String(info.anio)), info.carpetaMes);
+  return _subcarpetaTR(mes, info.carpeta);
 }
 
 function carpetaEvidencias(q, quincena, raiz, eq) {

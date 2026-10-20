@@ -168,7 +168,7 @@ export default function MiTimeReportRoute() {
         </div>
         {evid && yo && (
           <p className="-mt-3 mb-5 text-[11px] text-sand/50">
-            Carpeta de la quincena: <span className="font-bold text-sand/75">{evid.carpeta}</span> · tu fichero quedará como{" "}
+            Carpeta de la quincena: <span className="font-bold text-sand/75">{evid.ruta}</span> · tu fichero quedará como{" "}
             <span className="font-bold tabular-nums text-sand/75">{evid.carpeta}_{nombreFichero(yo.nombre)}.pdf</span> (se renombra solo al subirlo).
           </p>
         )}

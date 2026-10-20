@@ -22,16 +22,16 @@
     "note": "Drive BBVA del equipo Comms Surveillance (hub · columna de proyectos · Repositorio)"
   },
   "evidenciasDrive": {
-    "url": "https://drive.google.com/drive/folders/1OSXGGscVkXiXUhTUwmoFq5vUOVlC_LoE",
-    "note": "Carpeta RAÍZ de las evidencias del Time Report de RDR (Drive «Time Report BBVA»). apps-script/timereport/Codigo_TimeReport.gs crea dentro <Año>/<n>_Quincena_<Mes><Año>. Debe estar compartida (editor) con el equipo."
+    "url": "https://drive.google.com/drive/folders/122tzJG5GcA-bBFp8OS03l5ktfEbPrhu3",
+    "note": "Carpeta RAÍZ «RDR» de las evidencias del Time Report de RDR. apps-script/timereport/Codigo_TimeReport.gs crea dentro <Año>/<MM. Mes>/<n>_Quincena_<Mes><Año> (p.ej. 2026/10. Octubre/2_Quincena_Octubre2026). Debe estar compartida (editor) con el equipo. Las evidencias anteriores al 20/10/2026 siguen en la raíz antigua (1OSXGGscVkXiXUhTUwmoFq5vUOVlC_LoE)."
   },
   "evidenciasDriveMarketAbuse": {
-    "url": "PEGAR_AQUI_URL_CARPETA_DRIVE",
-    "note": "Carpeta RAÍZ de las evidencias del Time Report de Market Abuse (separada de la de RDR). Mientras no tenga URL, ese equipo no tiene evidencias ni recordatorio quincenal. Debe estar compartida (editor) con su equipo."
+    "url": "https://drive.google.com/drive/folders/1WETaMuI37Nn79B0O5XZwEht-GCDTpAbK",
+    "note": "Carpeta RAÍZ «MAR» de las evidencias del Time Report de Market Abuse (separada de la de RDR). El backend crea dentro <Año>/<MM. Mes>/<n>_Quincena_<Mes><Año>. Sin URL, ese equipo no tiene evidencias ni recordatorio quincenal. Debe estar compartida (editor) con su equipo."
   },
   "evidenciasDriveCommsSurveillance": {
-    "url": "PEGAR_AQUI_URL_CARPETA_DRIVE",
-    "note": "Carpeta RAÍZ de las evidencias del Time Report de Comms Surveillance (separada de la de RDR). Mientras no tenga URL, ese equipo no tiene evidencias ni recordatorio quincenal. Debe estar compartida (editor) con su equipo."
+    "url": "https://drive.google.com/drive/folders/1dlu_Qoaj0XT2iaTInNT6hVn8bf65vbTJ",
+    "note": "Carpeta RAÍZ «COM» de las evidencias del Time Report de Comms Surveillance (separada de la de RDR). El backend crea dentro <Año>/<MM. Mes>/<n>_Quincena_<Mes><Año>. Sin URL, ese equipo no tiene evidencias ni recordatorio quincenal. Debe estar compartida (editor) con su equipo."
   },
   "driveCertificados": {
     "url": "https://drive.google.com/drive/folders/1e5zysoDRyBIj30VrKtC6jLPhDzpRQDgl",

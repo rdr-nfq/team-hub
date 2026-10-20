@@ -100,15 +100,18 @@ export function quincenaDe(q, iso) {
 const MES_LARGO = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
 /* Quincena "de mes" (1 = días 1-15, 2 = 16-fin) y nombre canónico de la
-   carpeta de evidencias: "2_Quincena_Junio2026". Misma convención que el
-   backend (Codigo_TimeReport.gs) y que el nombre de los ficheros
+   carpeta de evidencias: "2_Quincena_Junio2026", dentro de
+   <Año>/<MM. Mes> ("2026/06. Junio/2_Quincena_Junio2026"). Misma convención
+   que el backend (Codigo_TimeReport.gs) y que el nombre de los ficheros
    ("2_Quincena_Junio2026_PabloLlorente.pdf"). */
 export function etiquetaEvidencias(q, quincena) {
   const qn = quincenasDeQ(q).find((x) => x.n === quincena);
   if (!qn) return null;
   const nMes = quincena % 2 === 1 ? 1 : 2;
   const año = Number(String(q).slice(0, 4));
-  return { nMes, mes: MES_LARGO[qn.mes], año, carpeta: `${nMes}_Quincena_${MES_LARGO[qn.mes]}${año}` };
+  const carpeta = `${nMes}_Quincena_${MES_LARGO[qn.mes]}${año}`;
+  const carpetaMes = `${String(qn.mes + 1).padStart(2, "0")}. ${MES_LARGO[qn.mes]}`;
+  return { nMes, mes: MES_LARGO[qn.mes], año, carpeta, carpetaMes, ruta: `${año}/${carpetaMes}/${carpeta}` };
 }
 
 /* Nombre de fichero canónico de una persona: sin espacios ni acentos. */
