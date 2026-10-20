@@ -330,29 +330,51 @@ export function capacidadMaxima({ q, personas, festivos, hoy }) {
 
 /* ── Portapapeles para el TR de BBVA ──
    Columnas: SDATOOL | Nombre | (vacío) | CIBRDR | Otras Tec | N1 | N2 | N3 |
-   vacío | vacío | vacío | día 1 .. último día de la quincena.
+   vacío | vacío | vacío | días.
    Soporte: vacío | vacío | "Soporte usuarios" | vacío | vacío | N1 sin código |
-   "Análisis y diseño…" | - | … (nunca Nivel 3). */
+   "Análisis y diseño…" | - | … (nunca Nivel 3).
+   El TR de BBVA tiene los días del MES seguidos (1..31). En la 1ª quincena
+   se copian los días 1-15; en la 2ª, el MES ENTERO: cada fila con sus horas
+   de la 1ª quincena (las ya pegadas) y de la 2ª, incluidas las filas que
+   solo tenían horas en la 1ª. Pegado en la misma celda que la 1ª quincena,
+   reescribe esas filas con lo mismo y no borra nada (antes los días 16-31
+   caían en las columnas 1-16 y machacaban, p.ej., el Soporte de la 1ª).
+   `filas`: todas las filas de reparto de la persona (cualquier quincena). */
 export function filasTR({ q, quincena, filas, proyectosPorId }) {
-  const qn = quincenasDeQ(q).find((x) => x.n === quincena);
+  const qs = quincenasDeQ(q);
+  const qn = qs.find((x) => x.n === quincena);
   if (!qn) return [];
-  const orden = [...filas].sort((a, b) =>
-    a.proyectoId === SOPORTE_ID ? 1 : b.proyectoId === SOPORTE_ID ? -1 : String(a.proyectoId).localeCompare(String(b.proyectoId))
-  );
-  return orden.map((r) => {
-    const dias = qn.dias.map((d) => (num(r.dias?.[d]) > 0 ? String(Math.round(num(r.dias[d]))) : ""));
-    if (r.proyectoId === SOPORTE_ID)
-      return ["", "", "Soporte usuarios", "", "", NIVEL1_SOPORTE, NIVEL2_ANALISIS, "-", "", "", "", ...dias];
+  const ns = quincena % 2 === 0 ? [quincena - 1, quincena] : [quincena];
+  const dias = ns.flatMap((n) => qs.find((x) => x.n === n).dias);
+  const cabecera = (r, n) => {
+    if (r.proyectoId === SOPORTE_ID) return ["", "", "Soporte usuarios", "", "", NIVEL1_SOPORTE, NIVEL2_ANALISIS, "-", "", "", ""];
     const p = proyectosPorId[r.proyectoId] || {};
-    const n2 = (p.estados || {})[quincena] || NIVEL2_ANALISIS;
+    const n2 = (p.estados || {})[n] || NIVEL2_ANALISIS;
     const conOtras = n2 === "Codificación" || n2 === "Pruebas";
     return [
       p.sdatool || "", p.nombre || "", "", p.feature || "",
       conOtras ? OTRAS_TEC : "",
       NIVEL1_PROYECTO, n2, conOtras ? NIVEL3_OTRAS : "-",
-      "", "", "", ...dias,
+      "", "", "",
     ];
-  });
+  };
+  // Una fila por proyecto y estado (Nivel 2): si cambia de fase entre
+  // quincenas son dos líneas distintas en el TR.
+  const lineas = new Map();
+  for (const r of filas || []) {
+    if (!ns.includes(r.quincena)) continue;
+    const cab = cabecera(r, r.quincena);
+    const clave = cab.join("\t");
+    const l = lineas.get(clave) || { proyectoId: r.proyectoId, cab, horas: {} };
+    for (const d of dias) if (num(r.dias?.[d]) > 0) l.horas[d] = (l.horas[d] || 0) + num(r.dias[d]);
+    lineas.set(clave, l);
+  }
+  const orden = [...lineas.values()]
+    .filter((l) => Object.keys(l.horas).length)
+    .sort((a, b) =>
+      a.proyectoId === SOPORTE_ID ? 1 : b.proyectoId === SOPORTE_ID ? -1 : String(a.proyectoId).localeCompare(String(b.proyectoId)) || a.cab[6].localeCompare(b.cab[6])
+    );
+  return orden.map((l) => [...l.cab, ...dias.map((d) => (l.horas[d] > 0 ? String(Math.round(l.horas[d])) : ""))]);
 }
 
 export const tsvTR = (filas) => filas.map((f) => f.join("\t")).join("\n");

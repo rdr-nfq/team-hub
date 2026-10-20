@@ -63,14 +63,19 @@ export default function MiTimeReportRoute() {
     [data]
   );
   const qn = qs.find((x) => x.n === quincena);
+  const segundaQuincena = quincena % 2 === 0;
   const totalQuincena = misFilas.reduce((a, r) => a + horasDe(r.dias), 0);
 
   const copiarImputacion = async () => {
-    const filas = filasTR({ q, quincena, filas: misFilas, proyectosPorId });
-    if (!filas.length) return showToast("No hay imputación en esta quincena");
+    if (!misFilas.length) return showToast("No hay imputación en esta quincena");
+    const todas = (data?.reparto || []).filter((r) => r.persona === yo?.nombre);
+    const filas = filasTR({ q, quincena, filas: todas, proyectosPorId });
     try {
       await navigator.clipboard.writeText(tsvTR(filas));
-      showToast(`Imputación copiada (${filas.length} fila${filas.length === 1 ? "" : "s"}): pégala en el TR de BBVA`);
+      const n = `${filas.length} fila${filas.length === 1 ? "" : "s"}`;
+      showToast(segundaQuincena
+        ? `Mes completo copiado (${n}, días 1-${qn.dias.length + 15}): pégalo en la MISMA celda que la 1ª quincena`
+        : `Imputación copiada (${n}): pégala en el TR de BBVA`);
     } catch {
       showToast("No se pudo copiar al portapapeles");
     }
@@ -157,7 +162,7 @@ export default function MiTimeReportRoute() {
             type="button" onClick={copiarImputacion} disabled={!misFilas.length}
             className="inline-flex items-center gap-1.5 rounded-lg bg-[#FFB56B] px-3 py-2 text-xs font-bold text-[#001391] transition hover:brightness-95 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Copiar mi imputación (pegar en el TR)
+            {segundaQuincena ? "Copiar mi imputación del mes (pegar en el TR)" : "Copiar mi imputación (pegar en el TR)"}
           </button>
           <button
             type="button" onClick={subirEvidencias} disabled={!snap?.data || abriendo}
@@ -166,6 +171,12 @@ export default function MiTimeReportRoute() {
             <IconExternal size={13} /> {abriendo ? "Abriendo carpeta…" : "Subir evidencias (Drive)"}
           </button>
         </div>
+        {segundaQuincena && misFilas.length > 0 && (
+          <p className="-mt-3 mb-4 text-[11px] text-sand/50">
+            2ª quincena: se copia el <span className="font-bold text-sand/75">mes entero</span> (días 1-15 con lo ya imputado y la quincena actual),
+            para que al pegarlo en la misma celda que la 1ª quincena no se borre nada.
+          </p>
+        )}
         {evid && yo && (
           <p className="-mt-3 mb-5 text-[11px] text-sand/50">
             Carpeta de la quincena: <span className="font-bold text-sand/75">{evid.ruta}</span> · tu fichero quedará como{" "}
