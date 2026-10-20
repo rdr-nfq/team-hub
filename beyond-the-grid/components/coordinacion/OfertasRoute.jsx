@@ -44,10 +44,20 @@ const hoyDDMMYYYY = () => {
   return `${dd(d.getDate())}/${dd(d.getMonth() + 1)}/${d.getFullYear()}`;
 };
 
+/* Redondeo a céntimos COMO EXCEL: primero a 15 cifras significativas (así
+   79019.65499999999, que es 1275 h × 51,22 × 1,21 = 79.019,655 en coma
+   flotante, vuelve a ser 79019.655) y luego medio céntimo hacia arriba.
+   Con toFixed(2) a secas salía 79.019,65 y en el Excel 79.019,66. */
+const redondea2 = (v) => {
+  const x = Number(v || 0);
+  const c = Number((Math.abs(x) * 100).toPrecision(15));
+  return (Math.sign(x) * Math.round(c)) / 100;
+};
+
 /* Dinero es-ES con 2 decimales y punto de miles SIEMPRE (7994.916 ->
    "7.994,92"; Intl es-ES no agrupa los números de 4 cifras). */
 const eurTxt = (v) => {
-  const [ent, dec] = Number(v || 0).toFixed(2).split(".");
+  const [ent, dec] = redondea2(v).toFixed(2).split(".");
   return ent.replace(/\B(?=(\d{3})+(?!\d))/g, ".") + "," + dec;
 };
 
@@ -131,7 +141,7 @@ export default function OfertasRoute() {
   /* ── Calculadora: horas es la fuente de verdad ──
      Escribir horas -> sin IVA = horas × tarifa; con IVA = × 1,21.
      Escribir el importe CON IVA -> horas redondas más cercanas y de ahí
-     los importes exactos (8000 -> 129 h -> 7.994,92). */
+     los importes exactos (8000 -> 129 h -> 7.994,93). */
   const horas = Math.max(0, Math.round(num(horasTxt)));
   const sinIva = horas * num(tarifa);
   const conIva = sinIva * IVA;
