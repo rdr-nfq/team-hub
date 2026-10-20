@@ -24,7 +24,7 @@ la URL (`lib/links.js`).
 | `pases/` | `Codigo_Pases.gs`, `Avisos_Pases.gs` | `pases` | `/pases` | `pasesBackend` |
 | `retrospectiva/` | `Codigo_Retrospectiva.gs` | `retro` | `/retro` | `retroBackend` |
 | `seguimiento/` | `Codigo_Seguimiento.gs` | `seguimiento` | `/seguimiento` | `seguimientoBackend` |
-| `timereport/` | `Codigo_TimeReport.gs` | `timereport` | `/timereport`, `/timereport-gestion` | `timereportBackend` |
+| `timereport/` | `Codigo_TimeReport.gs` (un Time Report por equipo: `equipo` = rdr · market-abuse · comms-surveillance; evidencias en `evidenciasDrive`, `evidenciasDriveMarketAbuse`, `evidenciasDriveCommsSurveillance`) | `timereport` | `/timereport`, `/timereport-gestion` | `timereportBackend` |
 | `vacaciones/` | `Codigo_Vacaciones.gs`, `Migracion_2026.gs` | `vacaciones` | `/vacaciones`, `/vacaciones-gestion` | `vacacionesV2Backend`, `vacacionesBackend` |
 
 `appsscript.json` es el manifiesto del proyecto (zona horaria, V8, web app

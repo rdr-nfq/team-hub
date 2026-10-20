@@ -5,7 +5,9 @@ import { PALETTE } from "@/lib/palette";
 import { useLinks } from "@/lib/links";
 import { GLASS, FIELD, TEXT, Kpi, EmptyCard, PanelSkeleton } from "../coordinacion/ui";
 import { IconClock, IconAlert, IconPlus, IconX, IconReload, IconExternal } from "../coordinacion/icons";
-import { useTimeReport, useFestivos, useEquipo } from "./datos";
+import { useTimeReport, useFestivos, useEquipo, EVIDENCIAS_KEY, equipoValido } from "./datos";
+import { EQUIPOS, EQUIPO, equiposDe } from "@/lib/equipos";
+import { useAuth } from "../chrome/AuthGate";
 import {
   num, curQ, hoyISO, quincenasDeQ, quincenaDe, horasDe, horasProyecto, esFinde, esLaborable,
   repartir, capacidadMaxima, NIVELES2, NIVEL2_ANALISIS, SOPORTE_ID, MAX_DIA, etiquetaEvidencias,
@@ -22,7 +24,12 @@ import { abrirResumenPdf } from "./resumenPdf";
    IMPUTACIÓN: todas las personas en una quincena; EDITABLE para corregir lo
      que alguien imputó de verdad y recalcular las quincenas siguientes.
    EVIDENCIAS: estado de la carpeta de Drive de la quincena (quién ha subido
-     su evidencia y quién falta), ZIP con todas y enlace a la carpeta. */
+     su evidencia y quién falta), ZIP con todas y enlace a la carpeta.
+   Un Time Report POR EQUIPO (RDR · Market Abuse · Comms Surveillance): el
+   selector de arriba cambia de «mundo»; proyectos, reparto, bloqueos,
+   personas (las de ese equipo en equipo.json) y evidencias son de cada uno. */
+
+const CLAVE_EQUIPO_TR = "rdr_tr_equipo";
 
 const ACCENT = PALETTE.canary;
 
@@ -91,8 +98,14 @@ function PreviewReparto({ preview, qs, nombreProy, onConfirm, onDiscard }) {
 
 export default function GestionRoute() {
   const { showToast, getUrl } = useLinks();
+  const { equipos: misEquipos } = useAuth();
   const [q, setQ] = useState(curQ());
-  const { snap, reload, post } = useTimeReport(q);
+  // Equipo («mundo») del Time Report: el último elegido, o el primero de quien entra.
+  const [eqTR, setEqTRRaw] = useState(() => {
+    try { const g = localStorage.getItem(CLAVE_EQUIPO_TR); if (g) return equipoValido(g); } catch {}
+    return equipoValido((misEquipos || [])[0]);
+  });
+  const { snap, reload, post } = useTimeReport(q, eqTR);
   const festivos = useFestivos();
   const equipo = useEquipo();
   const [tab, setTabRaw] = useState("resumen"); // resumen | proyectos | imputacion | evidencias
@@ -113,7 +126,13 @@ export default function GestionRoute() {
 
   const setTab = (t) => { setPreview(null); setTabRaw(t); };
 
-  const personas = useMemo(() => (equipo || []).map((m) => m.nombre), [equipo]);
+  // Personas del Time Report: las del equipo elegido (quien está en dos, sale en los dos).
+  const personas = useMemo(
+    () => (equipo || []).filter((m) => m.activo !== false && m.baja !== true && equiposDe(m).includes(eqTR)).map((m) => m.nombre),
+    [equipo, eqTR]
+  );
+  const raizEvidencias = getUrl(EVIDENCIAS_KEY[eqTR]);
+  const nombreEq = EQUIPO[eqTR]?.nombre || "RDR";
   const qs = quincenasDeQ(q);
   const hoy = hoyISO();
   const hoyQ = quincenaDe(q, hoy); // 0 = Q futuro, 7 = Q ya terminado
@@ -128,7 +147,7 @@ export default function GestionRoute() {
   const seeded = useRef(null);
   useEffect(() => {
     if (!snap?.data) return;
-    const key = q + "|" + (snap.data.generadoEn || "");
+    const key = q + "|" + eqTR + "|" + (snap.data.generadoEn || "");
     if (seeded.current === key) return;
     seeded.current = key;
     setProyectos(snap.data.proyectos || []);
@@ -136,7 +155,19 @@ export default function GestionRoute() {
     setBloqueadas(new Set(snap.data.bloqueadas || []));
     setDirtyQ(null);
     editBackup.current = null;
-  }, [snap, q]);
+  }, [snap, q, eqTR]);
+
+  const cambiaEquipoTR = (id) => {
+    if (id === eqTR) return;
+    try { localStorage.setItem(CLAVE_EQUIPO_TR, id); } catch {}
+    setPreview(null);
+    setProyectos(null);
+    setReparto([]);
+    setBloqueadas(new Set());
+    setEvid({ estado: "idle", data: null, error: "" });
+    seeded.current = null;
+    setEqTRRaw(id);
+  };
 
   const cargando = !snap || festivos == null || equipo == null || proyectos == null;
 
@@ -210,7 +241,9 @@ export default function GestionRoute() {
   // Se puede pegar el código completo ("SDATOOL-49780" / "CIBRDR-1088"):
   // se queda el código y el prefijo lo pone la web, sin cortar nada.
   const limpiaSdatool = (v) => String(v).replace(/^\s*sdatool[\s-]*/i, "").trim();
-  const limpiaFeature = (v) => String(v).replace(/^\s*cibrdr[\s-]*/i, "").trim();
+  // Prefijo de la feature: CIBRDR- en RDR; en los otros equipos, tal cual se escriba.
+  const prefijoFeature = eqTR === "rdr" ? "CIBRDR-" : "";
+  const limpiaFeature = (v) => (prefijoFeature ? String(v).replace(/^\s*cibrdr[\s-]*/i, "").trim() : String(v).trim());
 
   const altaProyecto = () => {
     const estados = {};
@@ -219,7 +252,7 @@ export default function GestionRoute() {
       id: "p" + Date.now(),
       nombre: nuevo.nombre.trim(),
       sdatool: "SDATOOL-" + limpiaSdatool(nuevo.sdatool),
-      feature: nuevo.feature.trim() ? "CIBRDR-" + limpiaFeature(nuevo.feature) : "",
+      feature: nuevo.feature.trim() ? prefijoFeature + limpiaFeature(nuevo.feature) : "",
       horas: Math.round(num(nuevo.horas)),
       estados,
       personas: [],
@@ -240,7 +273,7 @@ export default function GestionRoute() {
               ...p,
               nombre: e.nombre.trim(),
               sdatool: "SDATOOL-" + limpiaSdatool(e.sdatool),
-              feature: e.feature.trim() ? "CIBRDR-" + limpiaFeature(e.feature) : "",
+              feature: e.feature.trim() ? prefijoFeature + limpiaFeature(e.feature) : "",
               horas: Math.round(num(e.horas)),
             }
           : p
@@ -348,21 +381,21 @@ export default function GestionRoute() {
     if (tab !== "evidencias" || !snap?.data) return;
     let vivo = true;
     setEvid({ estado: "cargando", data: null, error: "" });
-    post("estadoEvidencias", { q, quincena: quincenaVista, raiz: getUrl("evidenciasDrive") })
+    post("estadoEvidencias", { q, quincena: quincenaVista, raiz: raizEvidencias })
       .then((d) => vivo && setEvid({ estado: "ok", data: d, error: "" }))
       .catch((e) => vivo && setEvid({ estado: "error", data: null, error: String(e.message || e) }));
     return () => { vivo = false; };
-  }, [tab, q, quincenaVista, snap, post, getUrl]);
+  }, [tab, q, quincenaVista, snap, post, raizEvidencias]);
   const recargaEvidencias = () => {
     setEvid({ estado: "cargando", data: null, error: "" });
-    post("estadoEvidencias", { q, quincena: quincenaVista, raiz: getUrl("evidenciasDrive") })
+    post("estadoEvidencias", { q, quincena: quincenaVista, raiz: raizEvidencias })
       .then((d) => setEvid({ estado: "ok", data: d, error: "" }))
       .catch((e) => setEvid({ estado: "error", data: null, error: String(e.message || e) }));
   };
   const descargarZip = () => {
     const w = window.open("", "_blank"); // abrir YA para que no lo bloquee el navegador
     setZip("generando");
-    post("descargarEvidencias", { q, quincena: quincenaVista, raiz: getUrl("evidenciasDrive") })
+    post("descargarEvidencias", { q, quincena: quincenaVista, raiz: raizEvidencias })
       .then((d) => {
         if (w) w.location = d.url;
         setZip("");
@@ -377,7 +410,7 @@ export default function GestionRoute() {
   };
 
   const descargarPdf = () => {
-    const ok = abrirResumenPdf({ q, resumen, qs, qActualN, hoy, personas: personas.length });
+    const ok = abrirResumenPdf({ q, resumen, qs, qActualN, hoy, personas: personas.length, equipo: EQUIPO[eqTR] });
     showToast(ok ? "Resumen abierto: elige «Guardar como PDF» en el diálogo de imprimir" : "El navegador bloqueó la ventana del PDF");
   };
 
@@ -413,12 +446,26 @@ export default function GestionRoute() {
         <header className="mb-6">
           <p className="font-sans text-xs font-bold uppercase tracking-[0.4em] text-canary/80">Coordinación</p>
           <h1 className="mt-2 flex items-center gap-3 font-display text-4xl font-bold leading-none tracking-tight text-sand sm:text-5xl">
-            <IconClock size={34} className="text-canary" /> Time Report
+            <IconClock size={34} className="text-canary" /> Time Report <span className="text-canary">{nombreEq}</span>
           </h1>
           <p className="mt-3 max-w-2xl text-pretty text-sm text-sand/65">
             Proyectos del trimestre, reparto de horas por quincena, corrección de imputaciones y evidencias del equipo.
-            Los miembros ven su imputación en la página Time Report del hub.
+            Los miembros ven su imputación en la página Time Report del hub. Cada equipo tiene su propio Time Report.
           </p>
+          <div role="tablist" aria-label="Equipo del Time Report" className="mt-4 inline-flex flex-wrap gap-1 rounded-full border border-white/12 bg-white/[0.055] p-1">
+            {EQUIPOS.map((e) => (
+              <button
+                key={e.id} role="tab" aria-selected={eqTR === e.id} disabled={dirtyQ != null && eqTR !== e.id}
+                title={dirtyQ != null && eqTR !== e.id ? "Guarda o descarta los cambios de la quincena antes de cambiar de equipo" : e.largo}
+                onClick={() => cambiaEquipoTR(e.id)}
+                className={`rounded-full px-4 py-2 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                  eqTR === e.id ? "bg-lime text-[#001391]" : "text-sand/70 hover:text-sand"
+                }`}
+              >
+                {e.nombre}
+              </button>
+            ))}
+          </div>
           {snap?.error && (
             <p className="mt-3 inline-flex items-center gap-2 rounded-lg border border-canary/40 bg-canary/10 px-3 py-1.5 text-xs font-bold text-canary">
               <IconAlert size={13} /> {snap.error}
@@ -652,13 +699,13 @@ export default function GestionRoute() {
             const et = etiquetaEvidencias(q, quincenaVista);
             const d = evid.data;
             const total = d ? d.entregados.length + d.pendientes.length : 0;
-            const sinConfig = !getUrl("evidenciasDrive") || snap?.data?.evidenciasConfiguradas === false || /sin configurar/.test(evid.error);
+            const sinConfig = !raizEvidencias || snap?.data?.evidenciasConfiguradas === false || /sin configurar/.test(evid.error);
             return (
               <>
                 {selectorQuincena(false)}
                 {sinConfig ? (
                   <EmptyCard>
-                    Las evidencias aún no están configuradas: falta la clave <code className="text-sand">evidenciasDrive</code> en{" "}
+                    Las evidencias de {nombreEq} aún no están configuradas: falta la clave <code className="text-sand">{EVIDENCIAS_KEY[eqTR]}</code> en{" "}
                     <code className="text-sand">links.json</code> con la URL de la carpeta raíz de Drive (compartida con el equipo), o el
                     navegador tiene una copia antigua de links.json (recarga la página). El backend crea dentro las carpetas{" "}
                     <span className="text-sand">{et?.año}/{et?.carpeta}</span>.
@@ -768,8 +815,8 @@ export default function GestionRoute() {
                         className="w-full bg-transparent py-2 focus:outline-none" />
                     </div>
                     <div className={`${FIELD} flex min-w-[160px] flex-1 items-center gap-0 !py-0`}>
-                      <span className="shrink-0 py-2 text-sand/45">CIBRDR-</span>
-                      <input type="text" placeholder="1088" aria-label="Feature CIBRDR" value={nuevo.feature}
+                      {prefijoFeature && <span className="shrink-0 py-2 text-sand/45">{prefijoFeature}</span>}
+                      <input type="text" placeholder={prefijoFeature ? "1088" : "Feature (código completo)"} aria-label="Feature" value={nuevo.feature}
                         onChange={(e) => setNuevo({ ...nuevo, feature: limpiaFeature(e.target.value) })}
                         className="w-full bg-transparent py-2 focus:outline-none" />
                     </div>
@@ -802,7 +849,7 @@ export default function GestionRoute() {
                             className="w-full bg-transparent py-2 focus:outline-none" />
                         </div>
                         <div className={`${FIELD} flex min-w-[160px] flex-1 items-center gap-0 !py-0`}>
-                          <span className="shrink-0 py-2 text-sand/45">CIBRDR-</span>
+                          {prefijoFeature && <span className="shrink-0 py-2 text-sand/45">{prefijoFeature}</span>}
                           <input type="text" value={editando.feature} aria-label="Editar Feature"
                             onChange={(e) => setEditando({ ...editando, feature: limpiaFeature(e.target.value) })}
                             className="w-full bg-transparent py-2 focus:outline-none" />
@@ -898,7 +945,7 @@ export default function GestionRoute() {
                   {/* Personas del proyecto: si se selecciona alguna, el reparto
                       SOLO usa esas (menos las bloqueadas). Sin selección = todas. */}
                   <p className="mb-1.5 mt-3 text-[10px] font-bold uppercase tracking-wide text-sand/45">
-                    Repartir solo entre… <span className="font-normal normal-case text-sand/40">(sin selección = todo el equipo)</span>
+                    Repartir entre… <span className="font-normal normal-case text-sand/40">(2 o más elegidas: a partes iguales · sin selección = el mínimo de personas del equipo)</span>
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {personas.map((n) => {
@@ -962,7 +1009,7 @@ export default function GestionRoute() {
               <div className={`${GLASS} p-4`}>
                 <h2 className="mb-1 font-display text-base font-bold text-sand">Repartir horas</h2>
                 <p className="mb-3 text-[11px] text-sand/50">
-                  Reparte lo pendiente entre las personas no bloqueadas (mínimo de personas por proyecto), dentro de la
+                  Reparte lo pendiente entre las personas no bloqueadas (a partes iguales entre las elegidas de cada proyecto; si no hay elegidas, el mínimo de personas), dentro de la
                   ventana de cada proyecto (por defecto, hasta el 15 del último mes), y rellena la jornada con Soporte a
                   Usuarios. La última quincena se deja a Soporte salvo que sea la única que queda o que un proyecto
                   termine en ella. Antes de guardar verás quién queda afectado; después, todo se puede corregir a mano

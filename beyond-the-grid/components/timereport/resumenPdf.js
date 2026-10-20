@@ -10,7 +10,9 @@ const fmt = (n) => Number(n || 0).toLocaleString("es-ES");
 const pct = (a, b) => (b > 0 ? Math.min(100, Math.round((a / b) * 100)) : 0);
 
 /* Devuelve el HTML completo del resumen (también se usa en las pruebas). */
-export function htmlResumen({ q, resumen, qs, qActualN, hoy, personas }) {
+export function htmlResumen({ q, resumen, qs, qActualN, hoy, personas, equipo }) {
+  const eqCorto = (equipo && equipo.nombre) || "RDR";
+  const eqLargo = (equipo && equipo.largo) || "Reference Data Repository";
   const base = typeof window !== "undefined" ? window.location.origin + "/team-hub" : "/team-hub";
   const totHoras = resumen.reduce((a, p) => a + Number(p.horas || 0), 0);
   const totImp = resumen.reduce((a, p) => a + Number(p.imputadas || 0), 0);
@@ -51,7 +53,7 @@ export function htmlResumen({ q, resumen, qs, qActualN, hoy, personas }) {
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Resumen_TimeReport_${esc(q)}</title>
+<title>Resumen_TimeReport_${esc(eqCorto.replace(/\s+/g, ""))}_${esc(q)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,700&family=Lato:wght@400;700&display=swap" rel="stylesheet">
@@ -119,7 +121,7 @@ export function htmlResumen({ q, resumen, qs, qActualN, hoy, personas }) {
 <div class="page">
   <header>
     <div>
-      <p class="crumb">Time Report RDR / Resumen del trimestre</p>
+      <p class="crumb">Time Report ${esc(eqCorto)} / Resumen del trimestre</p>
       <h1>Time Report · ${esc(qLabel)}</h1>
       <p class="lead"><strong>${resumen.length}</strong> proyecto${resumen.length === 1 ? "" : "s"} · <strong>${fmt(totHoras)} h</strong> planificadas · ${esc(personas)} personas · generado el ${esc(fecha)}</p>
     </div>
@@ -151,7 +153,7 @@ export function htmlResumen({ q, resumen, qs, qActualN, hoy, personas }) {
   </section>
 
   <footer>
-    <span>Reference Data Repository · equipo RDR · resumen generado desde el hub del equipo</span>
+    <span>${esc(eqLargo)} · equipo ${esc(eqCorto)} · resumen generado desde el hub del equipo</span>
     <span class="nfq">Hecho por <img src="${base}/logos/nfq-black.png" alt="NFQ"></span>
   </footer>
 </div>

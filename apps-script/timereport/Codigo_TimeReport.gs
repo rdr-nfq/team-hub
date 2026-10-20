@@ -3,6 +3,12 @@
  *  TIME REPORT WEB  ·  Apps Script (backend de /timereport y /timereport-gestion)
  * ============================================================================
  *
+ *  UN Time Report POR EQUIPO (param. `equipo`: rdr · market-abuse ·
+ *  comms-surveillance; sin él, rdr): proyectos, reparto, bloqueos, cálculos y
+ *  evidencias completamente separados. Quien está en dos equipos (equipo.json,
+ *  "equipos") sale en los dos. Las filas de las hojas llevan la columna
+ *  «Equipo» (vacía = rdr: lo guardado antes de separarlos).
+ *
  *  Almacén del Time Report del equipo: proyectos del trimestre, reparto de
  *  horas por quincena/persona/día, estados (Nivel 2) por quincena, horas
  *  incurridas (manuales) y personas bloqueadas. Los datos viven en un Google
@@ -18,10 +24,8 @@
  *   · RECORDATORIO por email (9:00, Europe/Madrid) los días 1 y 15 de cada mes
  *     —o el siguiente laborable si caen en finde/festivo— a todo el equipo:
  *     "mañana es el día de enviar las evidencias", con enlace a la web y a la
- *     carpeta de la quincena. UN solo correo desde la cuenta del script, con
- *     el equipo en copia oculta (como el de comidas): con noReply:true
- *     Workspace lo retenía y no llegaba a nadie. Se envía con MailApp para
- *     que los emojis del asunto lleguen bien (GmailApp los rompe).
+ *     carpeta de la quincena DE SU EQUIPO. Uno por equipo (con carpeta de
+ *     evidencias configurada) y persona, desde el grupo (_comun/Correo.gs).
  *     enviarRecordatorioTRAhora() lo manda en el momento, sin esperar al 1/15.
  *
  *  DESPLIEGUE (proyecto Apps Script INDEPENDIENTE):
@@ -35,7 +39,7 @@
  *      "Nueva versión" en cada cambio. Pegar la URL /exec en links.json ->
  *      "timereportBackend".
  *
- *  API (GET query o POST text/plain JSON):
+ *  API (GET query o POST text/plain JSON; todas aceptan `equipo`):
  *   ?action=snapshot&q=2026Q3 -> { proyectos, reparto, bloqueadas, qs }
  *   POST { action:'guardarProyectos', q, proyectos:[{id,sdatool,nombre,feature,horas,estados,personas,incurridas,inicio,fin}] }
  *        (inicio/fin: quincenas 1..6 que acotan el reparto del proyecto; fin 0 = automático)
@@ -65,15 +69,42 @@ var TR_CONFIG = {
   PRUEBA_TO: ''
 };
 
+/* Equipos con Time Report propio y la clave de links.json con la carpeta raíz
+   de sus evidencias (carpetas distintas por equipo). */
+var TR_EQUIPOS = {
+  'rdr': { nombre: 'RDR', evidencias: 'evidenciasDrive' },
+  'market-abuse': { nombre: 'Market Abuse', evidencias: 'evidenciasDriveMarketAbuse' },
+  'comms-surveillance': { nombre: 'Comms Surveillance', evidencias: 'evidenciasDriveCommsSurveillance' }
+};
+function _eqTR(v) {
+  var e = String(v || '').trim().toLowerCase();
+  if (!e) return 'rdr';
+  if (!TR_EQUIPOS[e]) throw new Error('Equipo desconocido: ' + v);
+  return e;
+}
+/* Equipos de un miembro de equipo.json (como lib/equipos.js: sin «equipos» = rdr). */
+function _equiposDeTR(m) {
+  var v = m && m.equipos;
+  var lista = Array.isArray(v) ? v : (typeof v === 'string' && v ? v.split(/[,;]/) : []);
+  var ids = lista.map(function (x) { return String(x).trim().toLowerCase(); }).filter(function (x) { return TR_EQUIPOS[x]; });
+  return ids.length ? ids : ['rdr'];
+}
+
 var MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
 var HOJAS = {
   // 'Personas', 'Incurridas', 'Inicio' y 'Fin' van al FINAL para no romper hojas
   // creadas con versiones previas (las filas antiguas no tienen esas celdas).
-  proyectos: ['TR_Proyectos', ['Q', 'Id', 'SDATOOL', 'Nombre', 'Feature', 'Horas', 'Estados', 'Actualizado', 'Personas', 'Incurridas', 'Inicio', 'Fin']],
-  reparto: ['TR_Reparto', ['Q', 'Quincena', 'Persona', 'ProyectoId', 'Dias', 'Actualizado']],
-  bloqueadas: ['TR_Bloqueadas', ['Q', 'Personas', 'Actualizado']]
+  // 'Equipo', la última: vacía = rdr (filas de antes de separar los equipos).
+  proyectos: ['TR_Proyectos', ['Q', 'Id', 'SDATOOL', 'Nombre', 'Feature', 'Horas', 'Estados', 'Actualizado', 'Personas', 'Incurridas', 'Inicio', 'Fin', 'Equipo']],
+  reparto: ['TR_Reparto', ['Q', 'Quincena', 'Persona', 'ProyectoId', 'Dias', 'Actualizado', 'Equipo']],
+  bloqueadas: ['TR_Bloqueadas', ['Q', 'Personas', 'Actualizado', 'Equipo']]
 };
+/* Equipo de una fila leída (columna «Equipo»; vacía = rdr). */
+function _eqFila(r, clave) {
+  var col = HOJAS[clave][1].length - 1;
+  return String(r[col] || '').trim().toLowerCase() || 'rdr';
+}
 
 /* Ejecutar UNA vez desde el editor para conceder los permisos que usan las
    evidencias (Drive), el recordatorio (Gmail) y la lectura de equipo.json
@@ -98,6 +129,9 @@ function _hojaTR(clave) {
   if (!sh) {
     sh = ss.insertSheet(def[0]);
     sh.getRange(1, 1, 1, def[1].length).setValues([def[1]]);
+  } else if (sh.getLastColumn() < def[1].length) {
+    // Hojas de versiones previas: cabecera de las columnas nuevas (Equipo…).
+    sh.getRange(1, 1, 1, def[1].length).setValues([def[1]]);
   }
   return sh;
 }
@@ -117,13 +151,13 @@ function _serveTR(e) {
     var data;
     switch (action) {
       case 'ping': data = { ok: 1 }; break;
-      case 'snapshot': data = getSnapshotTR(p.q); break;
-      case 'guardarProyectos': data = guardarProyectos(p.q, p.proyectos); break;
-      case 'guardarReparto': data = guardarReparto(p.q, p.desdeQuincena, p.filas); break;
-      case 'guardarBloqueadas': data = guardarBloqueadas(p.q, p.personas); break;
-      case 'carpetaEvidencias': data = carpetaEvidencias(p.q, p.quincena, p.raiz); break;
-      case 'estadoEvidencias': data = estadoEvidencias(p.q, p.quincena, p.raiz); break;
-      case 'descargarEvidencias': data = descargarEvidencias(p.q, p.quincena, p.raiz); break;
+      case 'snapshot': data = getSnapshotTR(p.q, _eqTR(p.equipo)); break;
+      case 'guardarProyectos': data = guardarProyectos(p.q, _eqTR(p.equipo), p.proyectos); break;
+      case 'guardarReparto': data = guardarReparto(p.q, _eqTR(p.equipo), p.desdeQuincena, p.filas); break;
+      case 'guardarBloqueadas': data = guardarBloqueadas(p.q, _eqTR(p.equipo), p.personas); break;
+      case 'carpetaEvidencias': data = carpetaEvidencias(p.q, p.quincena, p.raiz, _eqTR(p.equipo)); break;
+      case 'estadoEvidencias': data = estadoEvidencias(p.q, p.quincena, p.raiz, _eqTR(p.equipo)); break;
+      case 'descargarEvidencias': data = descargarEvidencias(p.q, p.quincena, p.raiz, _eqTR(p.equipo)); break;
       default: throw new Error('Acción desconocida: ' + action);
     }
     return _jsonTR({ ok: true, action: action, data: data });
@@ -147,11 +181,13 @@ function _q(v) { return String(v || '').replace(/[_\s]+/g, '').toUpperCase(); }
 
 /* ────────────────────────── Snapshot y guardados ────────────────────────── */
 
-function getSnapshotTR(q) {
+function getSnapshotTR(q, eq) {
   q = _q(q);
+  eq = eq || 'rdr';
   var qsSet = {};
   var proyectos = [];
   _filasTR(_hojaTR('proyectos')).forEach(function (r) {
+    if (_eqFila(r, 'proyectos') !== eq) return;
     var rq = _q(r[0]);
     if (rq) qsSet[rq] = 1;
     if (rq !== q) return;
@@ -167,6 +203,7 @@ function getSnapshotTR(q) {
   });
   var reparto = [];
   _filasTR(_hojaTR('reparto')).forEach(function (r) {
+    if (_eqFila(r, 'reparto') !== eq) return;
     var rq = _q(r[0]);
     if (rq) qsSet[rq] = 1;
     if (rq !== q) return;
@@ -176,68 +213,75 @@ function getSnapshotTR(q) {
   });
   var bloqueadas = [];
   _filasTR(_hojaTR('bloqueadas')).forEach(function (r) {
-    if (_q(r[0]) !== q) return;
+    if (_eqFila(r, 'bloqueadas') !== eq || _q(r[0]) !== q) return;
     try { bloqueadas = JSON.parse(r[1] || '[]'); } catch (e4) {}
   });
   return {
     generadoEn: new Date().toISOString(),
-    q: q, proyectos: proyectos, reparto: reparto, bloqueadas: bloqueadas,
+    q: q, equipo: eq, proyectos: proyectos, reparto: reparto, bloqueadas: bloqueadas,
     qs: Object.keys(qsSet).sort(),
-    evidenciasConfiguradas: !!_evidenciasRootId()
+    evidenciasConfiguradas: !!_evidenciasRootId('', eq)
   };
 }
 
-function _borrarDelQ(sh, q, filtroExtra) {
+/* Borra las filas de un Q y un equipo (y que cumplan filtroExtra). */
+function _borrarDelQ(sh, clave, q, eq, filtroExtra) {
   var last = sh.getLastRow();
   if (last < 2) return;
-  var vals = sh.getRange(2, 1, last - 1, 2).getValues();
+  var vals = sh.getRange(2, 1, last - 1, HOJAS[clave][1].length).getValues();
   for (var i = vals.length - 1; i >= 0; i--) {
-    if (_q(vals[i][0]) !== q) continue;
+    if (_q(vals[i][0]) !== q || _eqFila(vals[i], clave) !== eq) continue;
     if (filtroExtra && !filtroExtra(vals[i])) continue;
     sh.deleteRow(i + 2);
   }
 }
 
-function guardarProyectos(q, proyectos) {
+function guardarProyectos(q, eq, proyectos) {
   q = _q(q);
   if (!q) throw new Error('Falta el Q.');
   var sh = _hojaTR('proyectos');
-  // Hojas creadas con versiones previas: añadir la cabecera de las columnas nuevas.
   var cab = HOJAS.proyectos[1];
-  if (sh.getLastColumn() < cab.length) sh.getRange(1, 1, 1, cab.length).setValues([cab]);
-  _borrarDelQ(sh, q);
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+  _borrarDelQ(sh, 'proyectos', q, eq);
   var now = new Date();
   var rows = (proyectos || []).map(function (p) {
     return [q, String(p.id), String(p.sdatool || ''), String(p.nombre || ''), String(p.feature || ''), Number(p.horas) || 0,
       JSON.stringify(p.estados || {}), now, JSON.stringify(p.personas || []), Number(p.incurridas) || 0,
-      Number(p.inicio) || 1, Number(p.fin) || 0];
+      Number(p.inicio) || 1, Number(p.fin) || 0, eq];
   });
   if (rows.length) sh.getRange(sh.getLastRow() + 1, 1, rows.length, cab.length).setValues(rows);
   return { n: rows.length };
+  } finally { lock.releaseLock(); }
 }
 
-function guardarReparto(q, desdeQuincena, filas) {
+function guardarReparto(q, eq, desdeQuincena, filas) {
   q = _q(q);
   if (!q) throw new Error('Falta el Q.');
   var desde = Number(desdeQuincena) || 1;
   var sh = _hojaTR('reparto');
-  _borrarDelQ(sh, q, function (fila) { return (Number(fila[1]) || 0) >= desde; });
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+  _borrarDelQ(sh, 'reparto', q, eq, function (fila) { return (Number(fila[1]) || 0) >= desde; });
   var now = new Date();
   var rows = (filas || [])
     .filter(function (f) { return (Number(f.quincena) || 0) >= desde; })
     .map(function (f) {
-      return [q, Number(f.quincena) || 0, String(f.persona || ''), String(f.proyectoId || ''), JSON.stringify(f.dias || {}), now];
+      return [q, Number(f.quincena) || 0, String(f.persona || ''), String(f.proyectoId || ''), JSON.stringify(f.dias || {}), now, eq];
     });
-  if (rows.length) sh.getRange(sh.getLastRow() + 1, 1, rows.length, 6).setValues(rows);
+  if (rows.length) sh.getRange(sh.getLastRow() + 1, 1, rows.length, 7).setValues(rows);
   return { n: rows.length, desde: desde };
+  } finally { lock.releaseLock(); }
 }
 
-function guardarBloqueadas(q, personas) {
+function guardarBloqueadas(q, eq, personas) {
   q = _q(q);
   if (!q) throw new Error('Falta el Q.');
   var sh = _hojaTR('bloqueadas');
-  _borrarDelQ(sh, q);
-  sh.getRange(sh.getLastRow() + 1, 1, 1, 3).setValues([[q, JSON.stringify(personas || []), new Date()]]);
+  _borrarDelQ(sh, 'bloqueadas', q, eq);
+  sh.getRange(sh.getLastRow() + 1, 1, 1, 4).setValues([[q, JSON.stringify(personas || []), new Date(), eq]]);
   return { n: (personas || []).length };
 }
 
@@ -287,22 +331,24 @@ function _idDeUrl(url) {
   var m = /\/folders\/([A-Za-z0-9_-]+)/.exec(url);
   return m ? m[1] : url;
 }
-function _evidenciasRootId(raiz) {
+function _evidenciasRootId(raiz, eq) {
+  eq = eq || 'rdr';
   var directo = _idDeUrl(raiz);
   if (directo) return directo;
   var cache = CacheService.getScriptCache();
-  var hit = cache.get('evidenciasRootId');
+  var ck = 'tr:evidencias:' + eq;
+  var hit = cache.get(ck);
   if (hit) return hit;
   var id = '';
   try {
     var resp = UrlFetchApp.fetch(TR_CONFIG.LINKS_JSON_URL, { muteHttpExceptions: true });
     if (resp.getResponseCode() !== 200) throw new Error('HTTP ' + resp.getResponseCode());
     var links = JSON.parse(resp.getContentText());
-    var e = links.evidenciasDrive;
+    var e = links[TR_EQUIPOS[eq].evidencias];
     id = _idDeUrl(e ? (typeof e === 'string' ? e : e.url) : '');
   } catch (err) { Logger.log('links.json: ' + err); }
-  if (!id) id = PropertiesService.getScriptProperties().getProperty('EVIDENCIAS_FOLDER_ID') || '';
-  if (id) cache.put('evidenciasRootId', id, 600);
+  if (!id && eq === 'rdr') id = PropertiesService.getScriptProperties().getProperty('EVIDENCIAS_FOLDER_ID') || '';
+  if (id) cache.put(ck, id, 600);
   return id;
 }
 
@@ -312,14 +358,16 @@ function diagnosticarEvidencias() {
   var resp = UrlFetchApp.fetch(TR_CONFIG.LINKS_JSON_URL, { muteHttpExceptions: true });
   Logger.log('links.json HTTP ' + resp.getResponseCode() + ' (' + TR_CONFIG.LINKS_JSON_URL + ')');
   var links = JSON.parse(resp.getContentText());
-  Logger.log('evidenciasDrive en links.json: ' + JSON.stringify(links.evidenciasDrive || null));
-  CacheService.getScriptCache().remove('evidenciasRootId');
-  var id = _evidenciasRootId();
-  Logger.log('Id de la raíz: ' + (id || '(ninguno)'));
-  if (id) {
-    var f = DriveApp.getFolderById(id);
-    Logger.log('Carpeta raíz: "' + f.getName() + '" ' + f.getUrl());
-  }
+  Object.keys(TR_EQUIPOS).forEach(function (eq) {
+    var clave = TR_EQUIPOS[eq].evidencias;
+    CacheService.getScriptCache().remove('tr:evidencias:' + eq);
+    var id = _evidenciasRootId('', eq);
+    Logger.log(TR_EQUIPOS[eq].nombre + ' · ' + clave + ': ' + JSON.stringify(links[clave] || null) + ' → id ' + (id || '(ninguno)'));
+    if (id) {
+      var f = DriveApp.getFolderById(id);
+      Logger.log('   Carpeta raíz: "' + f.getName() + '" ' + f.getUrl());
+    }
+  });
 }
 
 function _subcarpetaTR(padre, nombre) {
@@ -328,16 +376,17 @@ function _subcarpetaTR(padre, nombre) {
 }
 
 /* Carpeta <raíz>/<Año>/<n>_Quincena_<Mes><Año>; se crea si no existe. */
-function _carpetaQuincena(info, raiz) {
-  var rootId = _evidenciasRootId(raiz);
-  if (!rootId) throw new Error('Evidencias sin configurar: falta la clave "evidenciasDrive" (carpeta raíz de Drive) en links.json (ejecuta diagnosticarEvidencias en el editor).');
+function _carpetaQuincena(info, raiz, eq) {
+  eq = eq || 'rdr';
+  var rootId = _evidenciasRootId(raiz, eq);
+  if (!rootId) throw new Error('Evidencias de ' + TR_EQUIPOS[eq].nombre + ' sin configurar: falta la clave "' + TR_EQUIPOS[eq].evidencias + '" (carpeta raíz de Drive) en links.json (ejecuta diagnosticarEvidencias en el editor).');
   var root = DriveApp.getFolderById(rootId);
   return _subcarpetaTR(_subcarpetaTR(root, String(info.anio)), info.carpeta);
 }
 
-function carpetaEvidencias(q, quincena, raiz) {
+function carpetaEvidencias(q, quincena, raiz, eq) {
   var info = _infoQuincena(q, quincena);
-  var f = _carpetaQuincena(info, raiz);
+  var f = _carpetaQuincena(info, raiz, eq);
   return { id: f.getId(), url: f.getUrl(), nombre: info.carpeta, etiqueta: info.etiqueta };
 }
 
@@ -373,10 +422,12 @@ function _identificar(file, team) {
 
 /* Estado de la carpeta de una quincena: renombra al nombre canónico lo que
    haga falta y dice quién ha entregado y quién falta. */
-function estadoEvidencias(q, quincena, raiz) {
+function estadoEvidencias(q, quincena, raiz, eq) {
+  eq = eq || 'rdr';
   var info = _infoQuincena(q, quincena);
-  var folder = _carpetaQuincena(info, raiz);
-  var team = _equipoTR();
+  var folder = _carpetaQuincena(info, raiz, eq);
+  // Solo las personas de ese equipo (quien está en dos, entrega en las dos carpetas).
+  var team = _equipoTR().filter(function (p) { return p.activo !== false && p.baja !== true && _equiposDeTR(p).indexOf(eq) >= 0; });
   var entregados = [], sinIdentificar = [], zip = null;
   var usados = {}; // nombre canónico ya asignado en esta carpeta -> nº de ficheros
   var it = folder.getFiles();
@@ -410,9 +461,9 @@ function estadoEvidencias(q, quincena, raiz) {
 /* ZIP con todas las evidencias de la quincena (los Docs/Sheets nativos van
    exportados a PDF). Se deja en la propia carpeta (reemplazando el anterior) y
    se devuelve el enlace de descarga directa. */
-function descargarEvidencias(q, quincena, raiz) {
+function descargarEvidencias(q, quincena, raiz, eq) {
   var info = _infoQuincena(q, quincena);
-  var folder = _carpetaQuincena(info, raiz);
+  var folder = _carpetaQuincena(info, raiz, eq);
   var zipName = 'Evidencias_' + info.carpeta + '.zip';
   var blobs = [];
   var it = folder.getFiles();
@@ -507,13 +558,17 @@ function enviarRecordatorioTRAhora() {
   _recordarATodos(_quincenaEnCurso(), true);
 }
 
-/* Prueba: el mismo correo, solo a PRUEBA_TO (o a quien ejecuta). */
+/* Prueba: el correo de cada equipo con carpeta configurada, solo al
+   responsable del hub (PRUEBA_TO si se rellena). */
 function enviarRecordatorioTRPrueba() {
   var info = _quincenaEnCurso();
-  var to = TR_CONFIG.PRUEBA_TO || Session.getActiveUser().getEmail();
-  var c = _correoRecordatorio(info, _urlCarpeta(info), true);
-  MailApp.sendEmail(to, '[PRUEBA] ' + c.asunto, c.texto, { htmlBody: c.html, name: TR_CONFIG.REMITE });
-  Logger.log('Prueba enviada a ' + to + ' (' + info.carpeta + ').');
+  var to = TR_CONFIG.PRUEBA_TO || _hubResponsable();
+  Object.keys(TR_EQUIPOS).forEach(function (eq) {
+    if (!_evidenciasRootId('', eq)) { Logger.log(TR_EQUIPOS[eq].nombre + ': sin carpeta de evidencias, no se prueba.'); return; }
+    var c = _correoRecordatorio(info, _urlCarpeta(info, eq), true, eq);
+    var r = _correoEnviar(to, '[PRUEBA] ' + c.asunto, c.texto, c.html, { nombre: c.remite });
+    Logger.log(TR_EQUIPOS[eq].nombre + ': prueba ' + (r.enviados.length ? 'enviada' : 'FALLIDA') + ' a ' + to + ' (' + info.carpeta + ').');
+  });
 }
 
 function _quincenaEnCurso() {
@@ -522,53 +577,40 @@ function _quincenaEnCurso() {
   return _infoQuincena(q, ((p[1] - 1) % 3) * 2 + (p[2] <= 15 ? 1 : 2));
 }
 
-function _urlCarpeta(info) {
-  try { return _carpetaQuincena(info).getUrl(); } catch (e) { Logger.log('carpeta: ' + e); return ''; }
+function _urlCarpeta(info, eq) {
+  try { return _carpetaQuincena(info, '', eq).getUrl(); } catch (e) { Logger.log('carpeta: ' + e); return ''; }
 }
 
-/* UN correo para todo el equipo (equipo.json), desde la cuenta del script:
-   en el PARA un coordinador, el resto en copia oculta, y las respuestas a
-   coordinación. Si el envío conjunto falla (una dirección que ya no existe
-   puede tumbarlo), se reintenta persona a persona y se anota quién falla. */
+/* Un recordatorio por EQUIPO, a cada persona de ese equipo por separado y
+   desde el grupo (Correo.gs). Solo para los equipos con carpeta de
+   evidencias en links.json: así Market Abuse y Comms Surveillance empiezan a
+   recibirlo cuando se configure la suya. Quien está en dos equipos recibe
+   los dos (cada uno con su carpeta). Las respuestas van a coordinación. */
 function _recordarATodos(info, manual) {
   var team = _equipoTR().filter(function (p) { return p.email && p.activo !== false && p.baja !== true; });
-  var emails = team.map(function (p) { return String(p.email).trim(); });
-  if (!emails.length) { Logger.log('equipo.json sin emails: no se envía nada.'); return; }
   var coord = team.filter(function (p) { return p.coordinador === true; }).map(function (p) { return String(p.email).trim(); });
-  var c = _correoRecordatorio(info, _urlCarpeta(info), manual);
-  var opts = function () {
-    var o = { htmlBody: c.html, name: TR_CONFIG.REMITE };
-    if (coord.length) o.replyTo = coord.join(',');
-    return o;
-  };
-  var enviar = function (destinos) {
-    var para = coord.filter(function (e) { return destinos.indexOf(e) >= 0; })[0] || destinos[0];
-    var o = opts();
-    var resto = destinos.filter(function (e) { return e !== para; });
-    if (resto.length) o.bcc = resto.join(',');
-    MailApp.sendEmail(para, c.asunto, c.texto, o);
-  };
-  try {
-    enviar(emails);
-    Logger.log(info.carpeta + ': 1 correo a ' + emails.length + ' personas → ' + emails.join(', '));
-  } catch (e) {
-    Logger.log('Envío conjunto fallido (' + e + '). Se reintenta persona a persona.');
-    var ok = 0, fallidos = [];
-    emails.forEach(function (em) {
-      try { enviar([em]); ok++; } catch (e2) { fallidos.push(em + ' (' + e2 + ')'); }
-    });
-    Logger.log(info.carpeta + ': enviado a ' + ok + ' personas' + (fallidos.length ? ' · FALLAN: ' + fallidos.join(' | ') : ''));
-  }
+  Object.keys(TR_EQUIPOS).forEach(function (eq) {
+    if (!_evidenciasRootId('', eq)) { Logger.log(TR_EQUIPOS[eq].nombre + ': sin carpeta de evidencias en links.json, no se envía.'); return; }
+    var emails = team.filter(function (p) { return _equiposDeTR(p).indexOf(eq) >= 0; }).map(function (p) { return String(p.email).trim(); });
+    if (!emails.length) { Logger.log(TR_EQUIPOS[eq].nombre + ': nadie en el equipo.'); return; }
+    var c = _correoRecordatorio(info, _urlCarpeta(info, eq), manual, eq);
+    var r = _correoEnviar(emails, c.asunto, c.texto, c.html, { nombre: c.remite, replyTo: coord.join(',') });
+    Logger.log(TR_EQUIPOS[eq].nombre + ' · ' + info.carpeta + ': enviado a ' + r.enviados.length + ' de ' + emails.length
+      + (r.fallidos.length ? ' · FALLAN: ' + r.fallidos.join(' | ') : ''));
+  });
   Logger.log('Cuota de correo restante hoy: ' + MailApp.getRemainingDailyQuota());
 }
 
 /* Asunto, texto y HTML del recordatorio. manual=true: "toca enviar" (envío a
    mano en cualquier momento); false: "mañana toca enviar" (disparador 1/15). */
-function _correoRecordatorio(info, carpetaUrl, manual) {
+function _correoRecordatorio(info, carpetaUrl, manual, eq) {
+  eq = eq || 'rdr';
+  var nombreEq = TR_EQUIPOS[eq].nombre;
+  var web = TR_CONFIG.WEB_URL + (eq === 'rdr' ? '' : '?equipo=' + eq);
   var cuando = manual ? 'Toca enviar las evidencias' : 'Mañana toca enviar las evidencias';
-  var asunto = '⏰📎 Time Report · ' + cuando.toLowerCase() + ' (' + info.etiqueta + ')';
-  var texto = 'Hola equipo,\n\n' + cuando + ' del Time Report de la quincena ' + info.etiqueta + '.\n\n'
-    + '📊 Tu imputación: ' + TR_CONFIG.WEB_URL + '\n'
+  var asunto = '⏰📎 Time Report ' + nombreEq + ' · ' + cuando.toLowerCase() + ' (' + info.etiqueta + ')';
+  var texto = 'Hola equipo,\n\n' + cuando + ' del Time Report ' + nombreEq + ' de la quincena ' + info.etiqueta + '.\n\n'
+    + '📊 Tu imputación: ' + web + '\n'
     + (carpetaUrl ? '📁 Carpeta de evidencias: ' + carpetaUrl + '\n' : '')
     + (carpetaUrl ? '\nEl fichero se renombra solo a ' + info.carpeta + '_TuNombre.pdf.' : '');
   var btn = function (href, label, bg) {
@@ -576,19 +618,19 @@ function _correoRecordatorio(info, carpetaUrl, manual) {
   };
   var html = '<div style="font-family:Lato,Arial,sans-serif;max-width:520px;margin:0 auto;color:#070E46;">'
     + '<div style="background:#001391;color:#F7F8F8;border-radius:14px 14px 0 0;padding:20px 24px;">'
-    +   '<div style="font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#85C8FF;">Time Report RDR · BBVA × NFQ</div>'
+    +   '<div style="font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#85C8FF;">Time Report ' + nombreEq + ' · BBVA × NFQ</div>'
     +   '<div style="font-family:Georgia,\'Source Serif 4\',serif;font-size:22px;font-weight:bold;margin-top:4px;">⏰ ' + cuando + '</div></div>'
     + '<div style="border:1px solid #E2E6EA;border-top:0;border-radius:0 0 14px 14px;padding:22px 24px;background:#FFFFFF;">'
     +   '<p style="margin:0 0 14px;font-size:15px;">👋 Hola <strong>equipo</strong>,</p>'
-    +   '<p style="margin:0 0 14px;font-size:15px;line-height:1.55;">📅 <strong>' + cuando + '</strong> del Time Report de la quincena <strong>' + info.etiqueta + '</strong>.</p>'
+    +   '<p style="margin:0 0 14px;font-size:15px;line-height:1.55;">📅 <strong>' + cuando + '</strong> del Time Report ' + nombreEq + ' de la quincena <strong>' + info.etiqueta + '</strong>.</p>'
     +   '<p style="margin:0 0 18px;font-size:15px;line-height:1.55;">'
     +     '✅ Comprueba tu imputación en la web<br>'
     +     '📋 Copia las filas al TR de BBVA<br>'
     +     '📎 Sube tu evidencia a la carpeta de la quincena'
     +     (carpetaUrl ? ' (se renombra sola a <code>' + info.carpeta + '_TuNombre.pdf</code>)' : '') + '</p>'
-    +   btn(TR_CONFIG.WEB_URL, '📊 Ver mi Time Report →', '#FFB56B')
+    +   btn(web, '📊 Ver mi Time Report →', '#FFB56B')
     +   (carpetaUrl ? btn(carpetaUrl, '📁 Subir evidencias', '#85C8FF') : '')
-    +   '<p style="margin:14px 0 0;font-size:12px;color:#46536D;">Si los botones no van: <a href="' + TR_CONFIG.WEB_URL + '" style="color:#001391;">' + TR_CONFIG.WEB_URL + '</a>'
+    +   '<p style="margin:14px 0 0;font-size:12px;color:#46536D;">Si los botones no van: <a href="' + web + '" style="color:#001391;">' + web + '</a>'
     +   (carpetaUrl ? ' · <a href="' + carpetaUrl + '" style="color:#001391;">carpeta de evidencias</a>' : '') + '</p></div></div>';
-  return { asunto: asunto, texto: texto, html: html };
+  return { asunto: asunto, texto: texto, html: html, remite: 'Time Report ' + nombreEq };
 }

@@ -18,9 +18,12 @@
      anterior (reescribe lo ya imputado; se avisa en la previsualización).
    - Personas BLOQUEADAS: su imputación existente se congela; el reparto no
      les añade ni les quita nada.
-   - Cada proyecto se reparte entre el MENOR número de personas posible
-     (best-fit decreciente: el proyecto más grande primero, a la persona con
-     más capacidad libre; si no cabe en una, se completa con la siguiente).
+   - Sin personas elegidas, cada proyecto se reparte entre el MENOR número
+     de personas posible (best-fit decreciente: el proyecto más grande
+     primero, a la persona con más capacidad libre; si no cabe en una, se
+     completa con la siguiente).
+   - Con 2 o más personas elegidas en el proyecto, se reparte A PARTES
+     IGUALES entre ellas (lo que a una no le quepa pasa a las demás).
    - La jornada mínima se garantiza rellenando con Soporte a Usuarios. */
 
 export const NIVEL1_PROYECTO = "Servicios prestados a proyectos con código";
@@ -231,11 +234,39 @@ export function repartir({ q, proyectos, repartoActual, personas, bloqueadas, fe
     const candidatas = p.personas && p.personas.length
       ? libres.filter((x) => p.personas.includes(x))
       : libres;
+    const capDe = (per) => p.dias.reduce((a, d) => a + (MAX_DIA - (usado[per][d] || 0)), 0);
+    // Coloca `meter` horas del proyecto a `per` y lo trocea por quincena.
+    const asignar = (per, meter) => {
+      const { asignado } = colocar(meter, p.dias, usado[per]);
+      for (const qn of p.ventana) {
+        const dias = {};
+        qn.dias.forEach((d) => { if (asignado[d]) dias[d] = asignado[d]; });
+        if (Object.keys(dias).length) nuevas.push({ quincena: qn.n, persona: per, proyectoId: p.id, dias });
+      }
+    };
+    if (p.personas && p.personas.length > 1 && candidatas.length > 1) {
+      // A PARTES IGUALES entre las elegidas: cada vuelta reparte lo que queda
+      // entre las que aún tienen hueco (a quien no le cabe su parte, el resto
+      // se lo llevan las demás en la vuelta siguiente).
+      let quedan = candidatas.filter((per) => capDe(per) > 0);
+      while (resto > 0 && quedan.length) {
+        const cuota = Math.ceil(resto / quedan.length);
+        for (const per of quedan) {
+          if (resto <= 0) break;
+          const meter = Math.min(cuota, capDe(per), resto);
+          if (meter > 0) { asignar(per, meter); resto -= meter; }
+        }
+        quedan = quedan.filter((per) => capDe(per) > 0);
+      }
+      if (resto > 0)
+        sinHueco.push({ proyecto: p.nombre, horas: resto, motivo: "las personas elegidas no tienen más capacidad" });
+      continue;
+    }
     while (resto > 0) {
       // Candidata con MÁS capacidad restante (menos personas por proyecto).
       let mejor = null, mejorCap = 0;
       for (const per of candidatas) {
-        const cap = p.dias.reduce((a, d) => a + (MAX_DIA - (usado[per][d] || 0)), 0);
+        const cap = capDe(per);
         if (cap > mejorCap) { mejorCap = cap; mejor = per; }
       }
       if (!mejor || mejorCap <= 0) {
@@ -243,14 +274,8 @@ export function repartir({ q, proyectos, repartoActual, personas, bloqueadas, fe
         break;
       }
       const meter = Math.min(resto, mejorCap);
-      const { asignado } = colocar(meter, p.dias, usado[mejor]);
+      asignar(mejor, meter);
       resto -= meter;
-      // Trocear lo asignado por quincena.
-      for (const qn of p.ventana) {
-        const dias = {};
-        qn.dias.forEach((d) => { if (asignado[d]) dias[d] = asignado[d]; });
-        if (Object.keys(dias).length) nuevas.push({ quincena: qn.n, persona: mejor, proyectoId: p.id, dias });
-      }
     }
   }
 

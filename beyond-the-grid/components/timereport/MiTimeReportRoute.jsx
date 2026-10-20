@@ -6,7 +6,8 @@ import { useLinks } from "@/lib/links";
 import { useAuth } from "../chrome/AuthGate";
 import { GLASS, FIELD, TEXT, EmptyCard, PanelSkeleton } from "../coordinacion/ui";
 import { IconClock, IconAlert, IconExternal } from "../coordinacion/icons";
-import { useTimeReport, useEquipo } from "./datos";
+import { useTimeReport, useEquipo, EVIDENCIAS_KEY } from "./datos";
+import { EQUIPO, equiposDe } from "@/lib/equipos";
 import { mismoEmail } from "@/lib/email";
 import {
   num, curQ, hoyISO, quincenasDeQ, quincenaDe, horasDe,
@@ -19,7 +20,9 @@ import {
    copias al portapapeles: el enlace del TR de BBVA y la imputación en el
    orden EXACTO de columnas del TR (para pegarla tal cual). Además, el botón
    "Subir evidencias" abre la carpeta de Drive de ESA quincena (el backend la
-   crea si no existe y renombra los ficheros al nombre canónico). */
+   crea si no existe y renombra los ficheros al nombre canónico).
+   Cada equipo tiene su propio Time Report: quien está en dos elige cuál ver
+   (por defecto, el del enlace ?equipo=… del recordatorio, o el primero). */
 
 const ACCENT = PALETTE.mandarin;
 
@@ -35,15 +38,21 @@ export default function MiTimeReportRoute() {
   const { getUrl, copyLink, showToast } = useLinks();
   const equipo = useEquipo();
   const [q, setQ] = useState(curQ());
-  const { snap, post } = useTimeReport(q);
+  const yo = useMemo(() => {
+    return (equipo || []).find((m) => mismoEmail(m.email, email)) || null;
+  }, [equipo, email]);
+  const misEquipos = useMemo(() => (yo ? equiposDe(yo) : ["rdr"]), [yo]);
+  const [eqPedido] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get("equipo") || ""; } catch { return ""; }
+  });
+  const [eqElegido, setEqElegido] = useState("");
+  const eqTR = [eqElegido, eqPedido].find((x) => x && misEquipos.includes(x)) || misEquipos[0];
+  const { snap, post } = useTimeReport(q, eqTR);
   const [abriendo, setAbriendo] = useState(false);
   const qs = quincenasDeQ(q);
   const [quincena, setQuincena] = useState(() => Math.min(6, Math.max(1, quincenaDe(curQ(), hoyISO()) || 1)));
 
   const data = snap?.data;
-  const yo = useMemo(() => {
-    return (equipo || []).find((m) => mismoEmail(m.email, email)) || null;
-  }, [equipo, email]);
 
   const misFilas = useMemo(
     () => (data?.reparto || []).filter((r) => r.persona === yo?.nombre && r.quincena === quincena),
@@ -73,7 +82,7 @@ export default function MiTimeReportRoute() {
     const w = window.open("", "_blank");
     setAbriendo(true);
     try {
-      const d = await post("carpetaEvidencias", { q, quincena, raiz: getUrl("evidenciasDrive") });
+      const d = await post("carpetaEvidencias", { q, quincena, raiz: getUrl(EVIDENCIAS_KEY[eqTR]) });
       if (w) w.location = d.url;
       else window.open(d.url, "_blank");
       showToast(`Carpeta ${d.nombre} abierta: sube tu evidencia (se renombra sola)`);
@@ -109,6 +118,7 @@ export default function MiTimeReportRoute() {
           <p className="font-sans text-xs font-bold uppercase tracking-[0.4em] text-mandarin/80">Equipo</p>
           <h1 className="mt-2 flex items-center gap-3 font-display text-4xl font-bold leading-none tracking-tight text-sand sm:text-5xl">
             <IconClock size={34} className="text-mandarin" /> Mi Time Report
+            {misEquipos.length > 1 && <span className="text-mandarin">{EQUIPO[eqTR]?.nombre}</span>}
           </h1>
           <p className="mt-3 max-w-2xl text-pretty text-sm text-sand/65">
             Tu imputación de la quincena según el reparto de coordinación: proyectos, horas por día y copia
@@ -120,6 +130,20 @@ export default function MiTimeReportRoute() {
             </p>
           )}
         </header>
+
+        {/* Quien está en varios equipos: un Time Report por equipo */}
+        {misEquipos.length > 1 && (
+          <div role="tablist" aria-label="Equipo" className="mb-5 inline-flex flex-wrap gap-1 rounded-full border border-white/12 bg-white/[0.055] p-1">
+            {misEquipos.map((id) => (
+              <button
+                key={id} role="tab" aria-selected={eqTR === id} onClick={() => setEqElegido(id)}
+                className={`rounded-full px-4 py-2 text-xs font-bold transition ${eqTR === id ? "bg-lime text-[#001391]" : "text-sand/70 hover:text-sand"}`}
+              >
+                {EQUIPO[id]?.nombre || id}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Acciones: enlace TR + copiar imputación */}
         <div className="mb-5 flex flex-wrap items-center gap-2">

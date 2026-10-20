@@ -6,8 +6,18 @@
 // POST text/plain JSON para escribir (simple request, sin preflight).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLinks } from "@/lib/links";
+import { EQUIPOS, EQUIPO_DEFECTO } from "@/lib/equipos";
 
-export function useTimeReport(q) {
+/* Un Time Report por equipo (proyectos, reparto, bloqueos y evidencias
+   separados). Clave de links.json con la carpeta raíz de evidencias de cada uno. */
+export const EVIDENCIAS_KEY = {
+  rdr: "evidenciasDrive",
+  "market-abuse": "evidenciasDriveMarketAbuse",
+  "comms-surveillance": "evidenciasDriveCommsSurveillance",
+};
+export const equipoValido = (id) => (EQUIPOS.some((e) => e.id === id) ? id : EQUIPO_DEFECTO);
+
+export function useTimeReport(q, equipo = EQUIPO_DEFECTO) {
   const { getUrl, error: linksError } = useLinks();
   const [snap, setSnap] = useState(null); // { data, error }
   const urlRef = useRef(null);
@@ -23,14 +33,14 @@ export function useTimeReport(q) {
     if (!q) return;
     setSnap(null);
     try {
-      const u = url + (url.indexOf("?") < 0 ? "?" : "&") + "action=snapshot&q=" + encodeURIComponent(q);
+      const u = url + (url.indexOf("?") < 0 ? "?" : "&") + "action=snapshot&q=" + encodeURIComponent(q) + "&equipo=" + encodeURIComponent(equipo);
       const res = await fetch(u, { cache: "no-store", signal: AbortSignal.timeout(60000) }).then((r) => r.json());
       if (!res || !res.ok) throw new Error((res && res.error) || "respuesta inesperada");
       setSnap({ data: res.data, error: "" });
     } catch (e) {
       setSnap({ data: null, error: String(e.message || e) });
     }
-  }, [getUrl, linksError, q]);
+  }, [getUrl, linksError, q, equipo]);
 
   useEffect(() => {
     const ready = linksError || getUrl("timereportBackend") != null || getUrl("_updated") != null || getUrl("_comment") != null;
@@ -44,11 +54,11 @@ export function useTimeReport(q) {
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ action, ...params }),
+      body: JSON.stringify({ action, equipo, ...params }),
     }).then((r) => r.json());
     if (!res || !res.ok) throw new Error((res && res.error) || "error del backend");
     return res.data;
-  }, []);
+  }, [equipo]);
 
   return { snap, reload: load, post };
 }
