@@ -55,6 +55,10 @@ const PROYECTOS = {
     ] },
   ],
   "market-abuse": [
+    { label: "Planificación", desc: "Planificación del equipo", icon: IconCalendar, action: "open", target: "planificacionMarketAbuse" },
+    { label: "Repositorio", desc: "Documentación del equipo", icon: IconFolder, actions: [
+      { label: "Drive", action: "copy", target: "driveMarketAbuse", icon: IconFolder },
+    ] },
     { label: "Proyectos", desc: "Proyectos y pases de Market Abuse", icon: IconRocket, enProgreso: true },
     { label: "Recursos", desc: "Biblioteca de referencia de Market Abuse", icon: IconBook, enProgreso: true },
   ],
@@ -237,15 +241,14 @@ function FeatureCard({ item, accent, delay }) {
   );
 }
 
-function TypeColumn({ sec, delay, cabecera }) {
+function TypeColumn({ sec, delay, selector }) {
   const mapAccent = useAccentMap();
   return (
     <section aria-labelledby={`col-${sec.id}`} className="flex min-h-0 flex-col rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 backdrop-blur-sm" style={{ boxShadow: `inset 0 2px 0 ${rgba(sec.color, 0.7)}` }}>
       <div className="mb-4 flex items-center gap-2 px-1">
         <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: sec.color }} />
         <span className="font-display text-xs font-bold tabular-nums" style={{ color: mapAccent(sec.color) }}>{sec.n}</span>
-        <h2 id={`col-${sec.id}`} className="font-display text-sm font-bold uppercase tracking-[0.15em] text-sand">{sec.title}</h2>
-        {cabecera}
+        {selector || <h2 id={`col-${sec.id}`} className="font-display text-sm font-bold uppercase tracking-[0.15em] text-sand">{sec.title}</h2>}
       </div>
       <div className="flex flex-1 flex-col gap-3 lg:min-h-0">
         {sec.items.map((item, i) =>
@@ -258,23 +261,22 @@ function TypeColumn({ sec, delay, cabecera }) {
   );
 }
 
-/* Quien está en varios equipos elige cuál ver en la columna de proyectos. */
-function SelectorEquipos({ equipos, actual, onCambio }) {
-  const mapAccent = useAccentMap();
+/* Quien está en varios equipos elige cuál ver en la columna de proyectos: el
+   propio título es el selector (un <select> nativo invisible encima), así
+   cabe en una línea con cualquier nombre (antes las pills RDR/MA/CS se
+   salían de la columna con «Comms Surveillance»). */
+function SelectorEquipos({ id, equipos, actual, onCambio }) {
   return (
-    <div className="ml-auto flex gap-1" role="tablist" aria-label="Equipo">
-      {equipos.map((id) => {
-        const on = id === actual;
-        const e = EQUIPO[id];
-        return (
-          <button key={id} type="button" role="tab" aria-selected={on} onClick={() => onCambio(id)} title={e.nombre}
-            className="rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene"
-            style={on ? { borderColor: rgba(e.color, 0.7), background: rgba(e.color, 0.16), color: mapAccent(e.color) } : { borderColor: "rgba(255,255,255,.15)" }}>
-            <span className={on ? "" : "text-sand/55"}>{e.corto}</span>
-          </button>
-        );
-      })}
-    </div>
+    <h2 id={id} title={EQUIPO[actual].nombre} className={`relative flex min-w-0 items-center gap-1.5 rounded-md font-display text-sm font-bold uppercase text-sand transition hover:text-white focus-within:ring-2 focus-within:ring-serene ${EQUIPO[actual].nombre.length > 14 ? "tracking-[0.06em]" : "tracking-[0.15em]"}`}>
+      <span className="truncate">{EQUIPO[actual].nombre}</span>
+      <svg aria-hidden="true" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-70"><path d="m6 9 6 6 6-6" /></svg>
+      <select
+        aria-label="Equipo" value={actual} onChange={(e) => onCambio(e.target.value)}
+        className="absolute inset-0 cursor-pointer appearance-none opacity-0" style={{ colorScheme: "dark" }}
+      >
+        {equipos.map((eq) => <option key={eq} value={eq}>{EQUIPO[eq].nombre}</option>)}
+      </select>
+    </h2>
   );
 }
 
@@ -304,7 +306,7 @@ export default function BentoHub() {
           {sections.map((sec, i) => (
             <TypeColumn
               key={sec.id} sec={sec} delay={i * 60}
-              cabecera={sec.id === "proy" && misEquipos.length > 1 ? <SelectorEquipos equipos={misEquipos} actual={equipoActual} onCambio={cambiarEquipo} /> : null}
+              selector={sec.id === "proy" && misEquipos.length > 1 ? <SelectorEquipos id={`col-${sec.id}`} equipos={misEquipos} actual={equipoActual} onCambio={cambiarEquipo} /> : null}
             />
           ))}
         </div>
