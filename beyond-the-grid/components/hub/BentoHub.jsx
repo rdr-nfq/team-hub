@@ -55,12 +55,11 @@ const PROYECTOS = {
     ] },
   ],
   "market-abuse": [
-    { label: "Planificación", desc: "Planificación del equipo", icon: IconCalendar, action: "open", target: "planificacionMarketAbuse" },
+    // Hoja en el Google de BBVA: se copia el enlace (como el Drive), no se abre.
+    { label: "Planificación", desc: "Planificación del equipo", icon: IconCalendar, action: "copy", target: "planificacionMarketAbuse" },
     { label: "Repositorio", desc: "Documentación del equipo", icon: IconFolder, actions: [
       { label: "Drive", action: "copy", target: "driveMarketAbuse", icon: IconFolder },
     ] },
-    { label: "Proyectos", desc: "Proyectos y pases de Market Abuse", icon: IconRocket, enProgreso: true },
-    { label: "Recursos", desc: "Biblioteca de referencia de Market Abuse", icon: IconBook, enProgreso: true },
   ],
   "comms-surveillance": [
     { label: "Planificación", desc: "Planificación del equipo", icon: IconCalendar, enProgreso: true },
