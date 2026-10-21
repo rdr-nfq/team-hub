@@ -1722,9 +1722,11 @@ function _crearHoras(ss, anio) {
   sh.getRange(1, 1).setValue('HORAS DE AUSENCIA ' + anio);
   sh.getRange(1, HA.MES1).setValue('Julio y agosto: 6 h por día · resto del año: 9 h de lunes a jueves y 6 h el viernes · en directo desde ' + _nombreHoja(anio));
   sh.getRange(HA.FILA_CAB, 1, 1, HA.TOTAL).setValues([['Persona'].concat(MESES_ES, ['Total'])]);
-  const totales = ['Total equipo'];
+  // El texto, aparte: setFormulas lo convertiría en «=Total equipo» (#ERROR!).
+  sh.getRange(HA.FILA_TOTAL, 1).setValue('Total equipo');
+  const totales = [];
   for (let c = HA.MES1; c <= HA.TOTAL; c++) totales.push('=SUM(' + _colLetra(c) + G.FILA_1 + ':' + _colLetra(c) + ')');
-  sh.getRange(HA.FILA_TOTAL, 1, 1, HA.TOTAL).setFormulas([totales]);
+  sh.getRange(HA.FILA_TOTAL, HA.MES1, 1, totales.length).setFormulas([totales]);
   // Códigos que cuentan (editables a mano).
   sh.getRange(HA.FILA_CAB, HA.CODIGO, 1, 2).setValues([['Cuenta', 'Código']]);
   sh.getRange(HA.FILA_TOTAL, HA.CODIGO, codigos.length, 2)
