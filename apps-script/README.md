@@ -45,7 +45,7 @@ propiedad del script `<CLAVE>_SPREADSHEET_ID`:
 | `RETRO` | Retrospectiva RDR |
 | `GUARDIAS` | RDR Guardias (datos) |
 | `TIMEREPORT` | RDR TimeReport Web (datos) |
-| (vacaciones) | «Vacaciones RDR», en `V_CONFIG.EXCEL_ID` |
+| (vacaciones) | «Vacaciones RDR», en `V_CONFIG.EXCEL_ID` (por año: `Vacas_`, `Festivos_`, `Solicitudes_` y `Horas_` — horas de ausencia por persona y mes; `crearHorasAusencia()` la crea para los años que ya existen) |
 
 Seguimiento, ofertas y timereport (evidencias) trabajan con carpetas de Drive
 (ids en su `CONFIG` o en `links.json`).

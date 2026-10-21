@@ -35,6 +35,10 @@
  *   · Festivos_<año>: grupos y festivos en la misma pestaña, lado a lado.
  *       A:B  Grupo · País (ES/MX)            p. ej. Madrid/ES, México DC/MX
  *       D:F  Fecha · Grupo · Nombre          un festivo por grupo y día
+ *   · Horas_<año>: horas de ausencia por persona y mes, en directo (fórmulas
+ *       sobre Vacas_<año>). Julio y agosto 6 h/día; resto del año 9 h L-J y
+ *       6 h V. Los códigos que cuentan, en la columna P (editables a mano).
+ *       No escribir en ella: crearHorasAusencia() la rehace.
  *   Las pestañas antiguas ("Vacaciones 2026", "2026_Calendario") quedan solo
  *   como registro: migrar2026() (Migracion_2026.gs) copia una vez a Vacas_2026.
  *
@@ -60,7 +64,8 @@
  *      persona). Pegar la URL /exec en links.json -> "vacacionesV2Backend" y
  *      "vacacionesBackend".
  *   Desde el editor también: aplicarFormatoVacas (rehacer formato y fórmulas),
- *   verMesActual, ocultarMesesPasados, mostrarTodosLosMeses.
+ *   verMesActual, ocultarMesesPasados, mostrarTodosLosMeses,
+ *   crearHorasAusencia (crea o rehace Horas_<año> de cada Vacas_<año>).
  *
  *  CACHÉ (velocidad de carga)
  *   La lectura común (rejilla, festivos, solicitudes) se guarda comprimida en
@@ -1224,6 +1229,7 @@ function _anadirFila(ss, anio, f) {
       .map(function (r) { return String(r[0] || '').trim(); }).indexOf(f.nombre);
     if (k >= 0) enlazado = _anterioresEnDirecto(ss, sig, anio + 1, _soloFila(G.FILA_1 + k, f.nombre)) > 0;
   }
+  _asegurarHoras(ss, anio, fila);
   return { anio: anio, persona: f.nombre, fila: fila, grupo: f.grupo, festivos: Object.keys(fxg[f.grupo] || {}).length, enlazadoSiguiente: enlazado };
 }
 
@@ -1396,6 +1402,7 @@ function crearAnio(p) {
     Object.keys(fxg[f.grupo] || {}).forEach(function (iso) { f.codigos[iso] = 'FE'; });
   });
   _crearRejilla(ss, anio, filas);
+  _crearHoras(ss, anio);
   _hojaSolicitudes(ss, anio);
   return { anio: anio, personas: filas.length, grupos: copiar.length, rehecho: !!existente };
 }
@@ -1638,6 +1645,138 @@ function aplicarFormatoVacas() {
     Logger.log('Formato y fórmulas aplicados a ' + _nombreHoja(a));
   });
   _invalidar();
+}
+
+// ── Horas de ausencia (Horas_<año>) ─────────────────────────────────────────
+/* Una pestaña por año con las horas de ausencia de cada persona y mes, EN
+   DIRECTO: son fórmulas sobre Vacas_<año>, así que cambian solas al aprobar
+   días o al editar la rejilla a mano. Cada día con un código que cuenta suma
+   su jornada (la misma del Time Report): julio y agosto 6 h; el resto del año
+   9 h de lunes a jueves y 6 h el viernes. Fines de semana: 0.
+   Los códigos que cuentan están en la propia pestaña (columna P): se pueden
+   quitar o añadir a mano y las horas se recalculan. Por defecto, todos menos
+   FE (festivo) y FT (festivo trabajado).
+   Fila 2 cabecera · fila 3 total del equipo · desde la fila 4, la MISMA fila
+   que en Vacas_<año>: cada fila lee la suya con INDEX(…, ROW()), así que
+   añadir o quitar personas en Vacas_<año> no la descuadra.
+   Se crea sola con crearAnio y empezarDeCero; para los años que ya existen:
+   crearHorasAusencia() desde el editor. */
+const PREFIJO_HORAS = 'Horas_';
+const HA = { FILA_CAB: 2, FILA_TOTAL: 3, PERSONA: 1, MES1: 2, TOTAL: 14, CODIGO: 16, TEXTO: 17 };
+const CODIGOS_AUSENCIA = ['VA', 'VP', 'FO', 'ES', 'BA', 'RE', 'VE'];
+function _nombreHoras(anio) { return PREFIJO_HORAS + anio; }
+
+/* EJECUTAR DESDE EL EDITOR: crea (o rehace) Horas_<año> para cada
+   Vacas_<año> que exista. Conserva los códigos que cuentan si ya estaba. */
+function crearHorasAusencia() {
+  const ss = _ss();
+  _anios(ss).forEach(function (a) {
+    const r = _crearHoras(ss, a);
+    Logger.log(_nombreHoras(a) + ' creada: ' + r.filas + ' filas · códigos que cuentan: ' + r.codigos.join(', '));
+  });
+}
+
+/** Fórmulas de una fila de Horas_<año> (fila = la misma de Vacas_<año>). */
+function _formulasHoras(anio, fila, sep) {
+  const ref = "'" + _nombreHoja(anio) + "'!";
+  const pc = _colLetra(G.PERSONA);
+  const codigos = '$' + _colLetra(HA.CODIGO) + '$' + HA.FILA_TOTAL + ':$' + _colLetra(HA.CODIGO) + '$60';
+  const out = ['=IF(INDEX(' + ref + '$' + pc + ':$' + pc + sep + 'ROW())=""' + sep + '""' + sep + 'INDEX(' + ref + '$' + pc + ':$' + pc + sep + 'ROW()))'];
+  for (let m = 0; m < 12; m++) {
+    const r = _colsMes(anio, m);
+    const a = _colLetra(r.col), b = _colLetra(r.col + r.n - 1);
+    const d = 'INDEX(' + ref + '$' + a + ':$' + b + sep + 'ROW()' + sep + '0)';
+    const s = ref + '$' + a + '$' + G.FILA_SEM + ':$' + b + '$' + G.FILA_SEM;
+    const jornada = (m === 6 || m === 7) ? '6' : '(9-3*(' + s + '="V"))';
+    out.push('=IF($A' + fila + '=""' + sep + '""' + sep + 'SUMPRODUCT((' + d + '<>"")*ISNUMBER(MATCH(' + d + sep + codigos + sep + '0))'
+      + '*(' + s + '<>"S")*(' + s + '<>"D")*' + jornada + '))');
+  }
+  const b1 = _colLetra(HA.MES1), b12 = _colLetra(HA.MES1 + 11);
+  out.push('=IF($A' + fila + '=""' + sep + '""' + sep + 'SUM(' + b1 + fila + ':' + b12 + fila + '))');
+  return out;
+}
+
+/** Crea Horas_<anio> desde cero (si ya existía, la rehace conservando su
+ *  lista de códigos que cuentan). Cubre todas las filas de Vacas_<anio>. */
+function _crearHoras(ss, anio) {
+  const vacas = ss.getSheetByName(_nombreHoja(anio));
+  if (!vacas) throw new Error('No existe ' + _nombreHoja(anio) + '.');
+  const nombre = _nombreHoras(anio);
+  let codigos = CODIGOS_AUSENCIA;
+  const vieja = ss.getSheetByName(nombre);
+  if (vieja) {
+    const n = vieja.getLastRow();
+    if (n >= HA.FILA_TOTAL) {
+      const prev = vieja.getRange(HA.FILA_TOTAL, HA.CODIGO, n - HA.FILA_TOTAL + 1, 1).getValues()
+        .map(function (r) { return String(r[0] || '').trim().toUpperCase(); }).filter(function (c) { return /^[A-Z]{2}$/.test(c); });
+      if (prev.length) codigos = prev;
+    }
+    ss.deleteSheet(vieja);
+  }
+  const ultima = Math.max(vacas.getLastRow(), G.FILA_1) + 30; // margen para altas
+  const nFilas = ultima - G.FILA_1 + 1;
+  const sh = ss.insertSheet(nombre, vacas.getIndex()); // justo detrás de Vacas_<anio>
+  if (sh.getMaxRows() < ultima) sh.insertRowsAfter(sh.getMaxRows(), ultima - sh.getMaxRows());
+
+  const ELECTRIC = '#001391', SAND = '#F7F8F8', LINEA = '#CAD1D8';
+  sh.getRange(1, 1).setValue('HORAS DE AUSENCIA ' + anio);
+  sh.getRange(1, HA.MES1).setValue('Julio y agosto: 6 h por día · resto del año: 9 h de lunes a jueves y 6 h el viernes · en directo desde ' + _nombreHoja(anio));
+  sh.getRange(HA.FILA_CAB, 1, 1, HA.TOTAL).setValues([['Persona'].concat(MESES_ES, ['Total'])]);
+  const totales = ['Total equipo'];
+  for (let c = HA.MES1; c <= HA.TOTAL; c++) totales.push('=SUM(' + _colLetra(c) + G.FILA_1 + ':' + _colLetra(c) + ')');
+  sh.getRange(HA.FILA_TOTAL, 1, 1, HA.TOTAL).setFormulas([totales]);
+  // Códigos que cuentan (editables a mano).
+  sh.getRange(HA.FILA_CAB, HA.CODIGO, 1, 2).setValues([['Cuenta', 'Código']]);
+  sh.getRange(HA.FILA_TOTAL, HA.CODIGO, codigos.length, 2)
+    .setValues(codigos.map(function (c) { return [c, (CODIGOS[c] || {}).texto || '']; }));
+
+  // Fórmulas por persona: sintaxis inglesa con «,»; si el Excel diera
+  // #ERROR! (no debería con setFormulas), se reescriben con «;».
+  const escribir = function (sep) {
+    const filas = [];
+    for (let k = 0; k < nFilas; k++) filas.push(_formulasHoras(anio, G.FILA_1 + k, sep));
+    sh.getRange(G.FILA_1, 1, nFilas, HA.TOTAL).setFormulas(filas);
+    SpreadsheetApp.flush();
+    return !/^#(ERROR|NAME|NOMBRE)/i.test(String(sh.getRange(G.FILA_1, HA.MES1).getDisplayValue()));
+  };
+  if (!escribir(',')) escribir(';');
+
+  // Formato (texto Electric; cabecera Electric con texto claro).
+  const alto = ultima, ancho = HA.TEXTO;
+  sh.setHiddenGridlines(true);
+  sh.getRange(1, 1, alto, ancho).setFontColor(ELECTRIC).setFontFamily('Lato').setVerticalAlignment('middle');
+  sh.getRange(1, 1).setFontWeight('bold').setFontSize(13).setFontFamily('Source Serif 4');
+  sh.getRange(1, HA.MES1).setFontSize(9).setFontStyle('italic');
+  [sh.getRange(HA.FILA_CAB, 1, 1, HA.TOTAL), sh.getRange(HA.FILA_CAB, HA.CODIGO, 1, 2)].forEach(function (r) {
+    r.setBackground(ELECTRIC).setFontColor(SAND).setFontWeight('bold').setHorizontalAlignment('center');
+  });
+  // Julio y agosto (6 h) en Serene para que se vea que cambia la jornada.
+  sh.getRange(HA.FILA_CAB, HA.MES1 + 6, 1, 2).setBackground('#85C8FF').setFontColor(ELECTRIC);
+  sh.getRange(HA.FILA_TOTAL, 1, 1, HA.TOTAL).setBackground('#E6F3FF').setFontWeight('bold');
+  sh.getRange(HA.FILA_TOTAL, HA.MES1, alto - HA.FILA_TOTAL + 1, HA.TOTAL - 1).setNumberFormat('0').setHorizontalAlignment('center');
+  sh.getRange(HA.FILA_TOTAL, HA.TOTAL, alto - HA.FILA_TOTAL + 1, 1).setBackground(SAND).setFontWeight('bold');
+  sh.getRange(HA.FILA_TOTAL, 1, nFilas + 1, HA.TOTAL)
+    .setBorder(null, null, true, null, null, true, LINEA, SpreadsheetApp.BorderStyle.SOLID);
+  sh.getRange(HA.FILA_TOTAL, HA.CODIGO, alto - HA.FILA_TOTAL + 1, 1).setHorizontalAlignment('center').setFontWeight('bold');
+  sh.setColumnWidth(HA.PERSONA, 230);
+  sh.setColumnWidths(HA.MES1, 12, 82);
+  sh.setColumnWidth(HA.TOTAL, 90);
+  sh.setColumnWidth(HA.TOTAL + 1, 30);
+  sh.setColumnWidth(HA.CODIGO, 64);
+  sh.setColumnWidth(HA.TEXTO, 170);
+  sh.setFrozenRows(HA.FILA_TOTAL);
+  sh.setFrozenColumns(1);
+  sh.getRange(HA.FILA_CAB, HA.CODIGO).setNote('Códigos de ' + _nombreHoja(anio) + ' que suman horas de ausencia. Añade o quita filas aquí y las horas se recalculan.');
+  sh.getRange(HA.FILA_CAB, 1).setNote('No escribas aquí: todo son fórmulas sobre ' + _nombreHoja(anio)
+    + ' (misma fila). Si se descuadra, crearHorasAusencia() desde el editor la rehace.');
+  return { filas: nFilas, codigos: codigos };
+}
+
+/** Tras añadir una persona en Vacas_<anio>: si su fila queda fuera de
+ *  Horas_<anio>, se rehace para cubrirla (si no existe, no se crea aquí). */
+function _asegurarHoras(ss, anio, fila) {
+  const sh = ss.getSheetByName(_nombreHoras(anio));
+  if (sh && sh.getLastRow() < fila + 5) _crearHoras(ss, anio);
 }
 
 // ── Correos (MailApp: los emojis del asunto llegan bien) ────────────────────

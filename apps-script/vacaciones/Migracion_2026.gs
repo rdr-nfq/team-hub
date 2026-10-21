@@ -132,6 +132,7 @@ function migrar2026(forzar) {
   filas.forEach(function (f) { f.grupo = grupos.dePersona[f.nombre] || ''; });
 
   _crearRejilla(ss, MIG.ANIO, filas);
+  _crearHoras(ss, MIG.ANIO);
   _hojaSolicitudes(ss, MIG.ANIO);
 
   // Informe.
