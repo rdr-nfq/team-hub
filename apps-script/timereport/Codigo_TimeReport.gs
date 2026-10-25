@@ -185,7 +185,7 @@ function getSnapshotTR(q, eq) {
   q = _q(q);
   eq = eq || 'rdr';
   var qsSet = {};
-  var proyectos = [];
+  var proyectos = [], posId = {};
   _filasTR(_hojaTR('proyectos')).forEach(function (r) {
     if (_eqFila(r, 'proyectos') !== eq) return;
     var rq = _q(r[0]);
@@ -194,13 +194,18 @@ function getSnapshotTR(q, eq) {
     var estados = {}, personasProy = [];
     try { estados = JSON.parse(r[6] || '{}'); } catch (e2) {}
     try { personasProy = JSON.parse(r[8] || '[]'); } catch (e5) {}
+    // Un proyecto guardado dos veces (guardados que se pisaron): la última fila gana.
+    var id = String(r[1]);
+    if (posId[id] != null) proyectos.splice(posId[id], 1, null);
+    posId[id] = proyectos.length;
     proyectos.push({
-      id: String(r[1]), sdatool: String(r[2] || ''), nombre: String(r[3] || ''), feature: String(r[4] || ''),
+      id: id, sdatool: String(r[2] || ''), nombre: String(r[3] || ''), feature: String(r[4] || ''),
       horas: Number(r[5]) || 0, estados: estados, personas: personasProy,
       incurridas: Number(r[9]) || 0,
       inicio: Number(r[10]) || 1, fin: Number(r[11]) || 0
     });
   });
+  proyectos = proyectos.filter(Boolean);
   var reparto = [];
   _filasTR(_hojaTR('reparto')).forEach(function (r) {
     if (_eqFila(r, 'reparto') !== eq) return;
@@ -246,12 +251,19 @@ function guardarProyectos(q, eq, proyectos) {
   try {
   _borrarDelQ(sh, 'proyectos', q, eq);
   var now = new Date();
-  var rows = (proyectos || []).map(function (p) {
+  var vistos = {};
+  var rows = (proyectos || []).filter(function (p) {
+    var id = String(p && p.id);
+    if (vistos[id]) return false;
+    vistos[id] = 1;
+    return true;
+  }).map(function (p) {
     return [q, String(p.id), String(p.sdatool || ''), String(p.nombre || ''), String(p.feature || ''), Number(p.horas) || 0,
       JSON.stringify(p.estados || {}), now, JSON.stringify(p.personas || []), Number(p.incurridas) || 0,
       Number(p.inicio) || 1, Number(p.fin) || 0, eq];
   });
   if (rows.length) sh.getRange(sh.getLastRow() + 1, 1, rows.length, cab.length).setValues(rows);
+  SpreadsheetApp.flush(); // antes de soltar el bloqueo: si no, el siguiente guardado lee la hoja sin estos cambios y duplica filas
   return { n: rows.length };
   } finally { lock.releaseLock(); }
 }
@@ -272,6 +284,7 @@ function guardarReparto(q, eq, desdeQuincena, filas) {
       return [q, Number(f.quincena) || 0, String(f.persona || ''), String(f.proyectoId || ''), JSON.stringify(f.dias || {}), now, eq];
     });
   if (rows.length) sh.getRange(sh.getLastRow() + 1, 1, rows.length, 7).setValues(rows);
+  SpreadsheetApp.flush();
   return { n: rows.length, desde: desde };
   } finally { lock.releaseLock(); }
 }
@@ -280,9 +293,14 @@ function guardarBloqueadas(q, eq, personas) {
   q = _q(q);
   if (!q) throw new Error('Falta el Q.');
   var sh = _hojaTR('bloqueadas');
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
   _borrarDelQ(sh, 'bloqueadas', q, eq);
   sh.getRange(sh.getLastRow() + 1, 1, 1, 4).setValues([[q, JSON.stringify(personas || []), new Date(), eq]]);
+  SpreadsheetApp.flush();
   return { n: (personas || []).length };
+  } finally { lock.releaseLock(); }
 }
 
 /* ─────────────────────────── Quincenas (utilidades) ─────────────────────────

@@ -37,8 +37,10 @@ export function useTimeReport(q, equipo = EQUIPO_DEFECTO) {
       const u = url + (url.indexOf("?") < 0 ? "?" : "&") + "action=snapshot&q=" + encodeURIComponent(q) + "&equipo=" + encodeURIComponent(equipo);
       const res = await fetch(u, { cache: "no-store", signal: AbortSignal.timeout(60000) }).then((r) => r.json());
       if (!res || !res.ok) throw new Error((res && res.error) || "respuesta inesperada");
-      // Filas repetidas de un mismo proyecto (repartos antiguos): una sola.
-      setSnap({ data: { ...res.data, reparto: fusionarReparto(res.data.reparto) }, error: "" });
+      // Proyectos guardados dos veces (guardados que se pisaron): uno por id,
+      // el último. Filas repetidas de un mismo proyecto en el reparto: una sola.
+      const proyectos = [...new Map((res.data.proyectos || []).map((p) => [p.id, p])).values()];
+      setSnap({ data: { ...res.data, proyectos, reparto: fusionarReparto(res.data.reparto) }, error: "" });
     } catch (e) {
       setSnap({ data: null, error: String(e.message || e) });
     }

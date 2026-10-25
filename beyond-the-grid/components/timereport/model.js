@@ -228,7 +228,8 @@ export function repartir({ q, proyectos, repartoActual, personas, bloqueadas, fe
   // Pendiente de cada proyecto = horas − lo ya fijado (pasado + bloqueadas).
   // Primero los de ventana más corta (los más difíciles de encajar); a igual
   // ventana, el más grande primero.
-  const pendientes = (proyectos || [])
+  const unicos = [...new Map((proyectos || []).map((p) => [p.id, p])).values()];
+  const pendientes = unicos
     .map((p) => {
       const ventana = ventanaDe(p);
       const dias = ventana.flatMap((x) => x.dias).filter((d) => esLaborable(d, festivos));

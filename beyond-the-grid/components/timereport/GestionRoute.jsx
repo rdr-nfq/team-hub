@@ -213,10 +213,15 @@ export default function GestionRoute() {
 
   /* Guardado en SEGUNDO PLANO: no recarga nada; si falla, resincroniza. */
   const pendientesRef = useRef(0);
+  /* Los guardados van EN COLA, uno detrás de otro: si iban a la vez (varios
+     clics seguidos), el backend podía leer la hoja sin el anterior y dejar los
+     proyectos duplicados (y el reparto, el doble de horas). */
+  const colaRef = useRef(Promise.resolve());
   const salva = (fn) => {
     pendientesRef.current++;
     setEstado("guardando");
-    Promise.resolve()
+    colaRef.current = colaRef.current
+      .catch(() => {})
       .then(fn)
       .then(() => {
         if (--pendientesRef.current === 0) {
