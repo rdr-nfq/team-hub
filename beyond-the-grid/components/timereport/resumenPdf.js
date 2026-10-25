@@ -19,8 +19,7 @@ export function htmlResumen({ q, resumen, qs, qActualN, hoy, personas, equipo })
   const totPend = resumen.reduce((a, p) => a + Number(p.pendientes || 0), 0);
   const porQ = [0, 0, 0, 0, 0, 0];
   resumen.forEach((p) => (p.porQ || []).forEach((h, i) => (porQ[i] += Number(h || 0))));
-  const maxQ = Math.max(1, ...porQ);
-  const fecha = new Date().toLocaleDateString("es-ES", { day: "2-digit", month: "long", year: "numeric" });
+    const fecha = new Date().toLocaleDateString("es-ES", { day: "2-digit", month: "long", year: "numeric" });
   const m = /^(\d{4})Q([1-4])$/.exec(q);
   const qLabel = m ? `${m[1]} · Q${m[2]}` : q;
 
@@ -42,13 +41,14 @@ export function htmlResumen({ q, resumen, qs, qActualN, hoy, personas, equipo })
     .join("");
 
   const cabQ = qs.map((x) => `<th class="num q ${x.n === qActualN ? "q--hoy" : ""}">${esc(x.label)}</th>`).join("");
-  const barrasQ = qs.map((x, i) => `
-      <div class="qbar ${x.n === qActualN ? "qbar--hoy" : ""}">
-        <div class="qbar__col"><div class="qbar__fill" style="height:${Math.round((porQ[i] / maxQ) * 100)}%"></div></div>
-        <span class="qbar__h">${fmt(porQ[i])} h</span>
-        <span class="qbar__l">${esc(x.label)}</span>
-      </div>`).join("");
+  // Fila de totales: sustituye al gráfico de horas por quincena.
+  const totQ = qs.map((x, i) => `<td class="num q ${x.n === qActualN ? "q--hoy" : ""}">${porQ[i] ? fmt(porQ[i]) : "<span class='mute'>·</span>"}</td>`).join("");
+  const pcTot = pct(totImp, totHoras);
 
+  /* UNA hoja A4 apaisada, con los proyectos como protagonistas: tabla a todo
+     el ancho nada más empezar; las cifras, en una franja pequeña. Si hay
+     tantos proyectos que no caben, el script de abajo reduce la escala de
+     todo (sin cortar la tabla en dos hojas). */
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -63,62 +63,52 @@ export function htmlResumen({ q, resumen, qs, qActualN, hoy, personas, equipo })
         --display:"Source Serif 4",Georgia,"Times New Roman",serif;--body:"Lato","Helvetica Neue",Arial,sans-serif}
   @page{size:A4 landscape;margin:0}
   *{box-sizing:border-box}
-  html,body{margin:0;background:var(--sand);color:var(--electric);font-family:var(--body);font-size:11px;line-height:1.45;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .page{width:297mm;min-height:210mm;margin:0 auto;padding:12mm 14mm 10mm;display:flex;flex-direction:column;gap:16px;background:var(--sand)}
+  html,body{margin:0;background:var(--sand);color:var(--electric);font-family:var(--body);font-size:11px;line-height:1.4;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .page{width:297mm;height:210mm;margin:0 auto;padding:10mm 12mm 8mm;overflow:hidden;background:var(--sand)}
+  .fit{display:flex;flex-direction:column;gap:12px;transform-origin:top left}
   header{display:flex;justify-content:space-between;align-items:flex-start;gap:24px}
-  .crumb{font-size:9px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--gray5)}
-  h1{font-family:var(--display);font-weight:700;font-size:34px;line-height:1;margin:6px 0 0}
-  .lead{margin-top:6px;font-size:12px;color:var(--gray5)}
+  .crumb{margin:0;font-size:8.5px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--gray5)}
+  h1{font-family:var(--display);font-weight:700;font-size:26px;line-height:1;margin:5px 0 0}
+  .lead{margin:5px 0 0;font-size:11px;color:var(--gray5)}
   .lead strong{color:var(--electric)}
-  .bbva{height:26px;mix-blend-mode:multiply}
-  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
-  .kpi{border-radius:16px;padding:14px 16px;color:var(--electric);background:var(--white);border:1px solid var(--gray2)}
+  .bbva{height:24px;mix-blend-mode:multiply}
+  .kpis{display:flex;gap:8px}
+  .kpi{display:flex;align-items:baseline;gap:8px;border-radius:999px;padding:5px 14px;background:var(--white);border:1px solid var(--gray2)}
   .kpi--serene{background:var(--serene);border-color:var(--serene)}
   .kpi--lime{background:var(--lime);border-color:var(--lime)}
   .kpi--canary{background:var(--canary);border-color:var(--canary)}
-  .kpi__l{font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase}
-  .kpi__v{font-family:var(--display);font-size:30px;line-height:1;margin-top:6px}
-  .kpi__s{font-size:10px;margin-top:4px;color:var(--gray5)}
-  .kpi--serene .kpi__s,.kpi--lime .kpi__s,.kpi--canary .kpi__s{color:var(--electric);opacity:.75}
-  .grid{display:grid;grid-template-columns:1fr 210px;gap:16px;align-items:start}
-  .card{background:var(--white);border:1px solid var(--gray2);border-radius:16px;padding:12px 14px}
-  .card h2{font-family:var(--display);font-size:15px;margin:0 0 8px}
+  .kpi__l{font-size:8.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+  .kpi__v{font-family:var(--display);font-size:16px;line-height:1}
+  .kpi__s{font-size:9px;opacity:.75}
+  .card{background:var(--white);border:1px solid var(--gray2);border-radius:14px;padding:8px 12px}
   table{width:100%;border-collapse:collapse;font-size:10.5px}
-  thead{display:table-header-group}
-  th{font-size:8.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--gray5);text-align:left;padding:6px 6px;border-bottom:1px solid var(--gray3)}
-  td{padding:7px 6px;border-bottom:1px solid var(--gray2);vertical-align:middle}
-  tr{page-break-inside:avoid}
-  tr:last-child td{border-bottom:0}
+  th{font-size:8px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--gray5);text-align:left;padding:5px 6px;border-bottom:1px solid var(--gray3)}
+  td{padding:5px 6px;border-bottom:1px solid var(--gray2);vertical-align:middle}
+  tbody tr:last-child td{border-bottom:0}
+  tfoot td{border-top:2px solid var(--electric);border-bottom:0;font-weight:700;padding-top:6px}
   .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-  .proy strong{display:block;font-size:11.5px}
-  .sub{display:block;font-size:9px;color:var(--gray5)}
+  .proy{width:34%}
+  .proy strong{font-size:11px}
+  .sub{margin-left:8px;font-size:9px;color:var(--gray5);white-space:nowrap}
   .pend{font-weight:700;color:var(--midnight)}
   .ok{color:var(--gray5)}
   .mute{color:var(--gray3)}
-  .bar{width:120px}
-  .track{height:8px;border-radius:999px;background:var(--gray2);overflow:hidden;display:inline-block;width:80px;vertical-align:middle}
+  .bar{width:110px;white-space:nowrap}
+  .track{height:7px;border-radius:999px;background:var(--gray2);overflow:hidden;display:inline-block;width:64px;vertical-align:middle}
   .fill{height:100%;background:var(--electric);border-radius:999px}
-  .pc{display:inline-block;width:32px;text-align:right;font-size:9.5px;font-weight:700;margin-left:6px;vertical-align:middle}
-  th.q,td.q{background:transparent}
+  .pc{display:inline-block;width:30px;text-align:right;font-size:9px;font-weight:700;margin-left:4px;vertical-align:middle}
   .q--hoy{background:rgba(133,200,255,.28)}
   th.q--hoy{color:var(--electric)}
-  .qbars{display:flex;gap:6px;align-items:flex-end;height:150px;margin-top:6px}
-  .qbar{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;height:100%}
-  .qbar__col{width:100%;flex:1;display:flex;align-items:flex-end;background:var(--sand);border-radius:8px;overflow:hidden}
-  .qbar__fill{width:100%;background:var(--serene);border-radius:8px 8px 0 0;min-height:2px}
-  .qbar--hoy .qbar__fill{background:var(--electric)}
-  .qbar__h{font-size:8.5px;font-weight:700;font-variant-numeric:tabular-nums}
-  .qbar__l{font-size:7.5px;color:var(--gray5);text-align:center;line-height:1.1}
-  .leg{margin-top:10px;font-size:9px;color:var(--gray5);line-height:1.5}
-  .leg b{color:var(--electric)}
-  footer{margin-top:auto;display:flex;justify-content:space-between;align-items:center;gap:16px;padding-top:8px;border-top:1px solid var(--gray3);font-size:9px;color:var(--gray5)}
-  .nfq{display:flex;align-items:center;gap:8px}
+  footer{margin-top:auto;display:flex;justify-content:space-between;align-items:center;gap:16px;padding-top:6px;border-top:1px solid var(--gray3);font-size:8.5px;color:var(--gray5)}
+  footer b{color:var(--electric)}
+  .nfq{display:flex;align-items:center;gap:8px;white-space:nowrap}
   .nfq img{height:16px;mix-blend-mode:multiply}
   @media screen{body{padding:24px}.page{box-shadow:0 12px 40px rgba(7,14,70,.15);border-radius:8px}}
+  @media print{html,body{width:297mm;height:210mm;overflow:hidden}}
 </style>
 </head>
 <body>
-<div class="page">
+<div class="page"><div class="fit">
   <header>
     <div>
       <p class="crumb">Time Report ${esc(eqCorto)} / Resumen del trimestre</p>
@@ -129,37 +119,54 @@ export function htmlResumen({ q, resumen, qs, qActualN, hoy, personas, equipo })
   </header>
 
   <section class="kpis">
-    <div class="kpi kpi--serene"><p class="kpi__l">Proyectos</p><p class="kpi__v">${resumen.length}</p><p class="kpi__s">con código SDATOOL en ${esc(q)}</p></div>
-    <div class="kpi"><p class="kpi__l">Horas planificadas</p><p class="kpi__v">${fmt(totHoras)}</p><p class="kpi__s">total del trimestre</p></div>
-    <div class="kpi kpi--lime"><p class="kpi__l">Imputadas</p><p class="kpi__v">${fmt(totImp)}</p><p class="kpi__s">${pct(totImp, totHoras)}% del total hasta hoy</p></div>
-    <div class="kpi kpi--canary"><p class="kpi__l">Por imputar</p><p class="kpi__v">${fmt(totPend)}</p><p class="kpi__s">hasta el 15 del último mes</p></div>
+    <div class="kpi kpi--serene"><span class="kpi__l">Proyectos</span><span class="kpi__v">${resumen.length}</span></div>
+    <div class="kpi"><span class="kpi__l">Planificadas</span><span class="kpi__v">${fmt(totHoras)} h</span></div>
+    <div class="kpi kpi--lime"><span class="kpi__l">Imputadas</span><span class="kpi__v">${fmt(totImp)} h</span><span class="kpi__s">${pcTot}%</span></div>
+    <div class="kpi kpi--canary"><span class="kpi__l">Por imputar</span><span class="kpi__v">${fmt(totPend)} h</span></div>
   </section>
 
-  <section class="grid">
-    <div class="card">
-      <h2>Proyectos</h2>
-      <table>
-        <thead><tr>
-          <th>Proyecto</th><th class="num">Horas</th><th class="num">Imputadas</th><th class="num">Por imputar</th><th>Avance</th>${cabQ}
-        </tr></thead>
-        <tbody>${filas || `<tr><td colspan="${5 + qs.length}" class="mute">Sin proyectos en este trimestre.</td></tr>`}</tbody>
-      </table>
-    </div>
-    <div class="card">
-      <h2>Horas por quincena</h2>
-      <div class="qbars">${barrasQ}</div>
-      <p class="leg"><b>Imputadas</b>: horas del reparto ya pasadas a fecha de hoy (${esc(hoy)}).<br><b>Por imputar</b>: horas planificadas que quedan hasta el cierre del Q. La quincena en curso va resaltada.</p>
-    </div>
+  <section class="card">
+    <table>
+      <thead><tr>
+        <th>Proyecto</th><th class="num">Horas</th><th class="num">Imputadas</th><th class="num">Por imputar</th><th>Avance</th>${cabQ}
+      </tr></thead>
+      <tbody>${filas || `<tr><td colspan="${5 + qs.length}" class="mute">Sin proyectos en este trimestre.</td></tr>`}</tbody>
+      ${resumen.length ? `<tfoot><tr>
+        <td>Total</td><td class="num">${fmt(totHoras)}</td><td class="num">${fmt(totImp)}</td><td class="num">${fmt(totPend)}</td>
+        <td class="bar"><div class="track"><div class="fill" style="width:${pcTot}%"></div></div><span class="pc">${pcTot}%</span></td>${totQ}
+      </tr></tfoot>` : ""}
+    </table>
   </section>
 
   <footer>
-    <span>${esc(eqLargo)} · equipo ${esc(eqCorto)} · resumen generado desde el hub del equipo</span>
+    <span><b>Imputadas</b>: horas del reparto ya pasadas a fecha de hoy (${esc(hoy)}) · <b>Por imputar</b>: lo que queda hasta el cierre del Q · quincena en curso resaltada · ${esc(eqLargo)}</span>
     <span class="nfq">Hecho por <img src="${base}/logos/nfq-black.png" alt="NFQ"></span>
   </footer>
-</div>
+</div></div>
 <script>
-(function(){var hecho=false;function ir(){if(hecho)return;hecho=true;setTimeout(function(){window.print()},400)}
-if(document.readyState==="complete")ir();window.addEventListener("load",ir);setTimeout(ir,2500)})()
+(function(){
+  // Encaja todo en la hoja: si no cabe, se reduce la escala y se ensancha en
+  // proporción para aprovechar el ancho (al ensanchar, los nombres largos
+  // ocupan menos líneas). Se busca la escala MÁS GRANDE con la que cabe.
+  function encajar(){
+    var page=document.querySelector(".page"),fit=document.querySelector(".fit");
+    var cs=getComputedStyle(page);
+    var w=page.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight);
+    var h=page.clientHeight-parseFloat(cs.paddingTop)-parseFloat(cs.paddingBottom);
+    function cabe(s){fit.style.width=(w/s)+"px";fit.style.minHeight=(h/s)+"px";return fit.scrollHeight<=h/s+0.5}
+    var s=1;
+    if(!cabe(1)){
+      var lo=0.2,hi=1;
+      for(var i=0;i<14;i++){var m=(lo+hi)/2;if(cabe(m))lo=m;else hi=m}
+      s=lo;cabe(s);
+    }
+    fit.style.transform=s<1?"scale("+s+")":"";
+  }
+  var hecho=false;
+  function ir(){if(hecho)return;hecho=true;encajar();setTimeout(function(){encajar();window.print()},400)}
+  window.addEventListener("beforeprint",encajar);
+  if(document.readyState==="complete")ir();window.addEventListener("load",ir);setTimeout(ir,2500);
+})()
 </script>
 </body>
 </html>`;
