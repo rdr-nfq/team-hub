@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLinks } from "@/lib/links";
 import { EQUIPOS, EQUIPO_DEFECTO } from "@/lib/equipos";
+import { fusionarReparto } from "./model";
 
 /* Un Time Report por equipo (proyectos, reparto, bloqueos y evidencias
    separados). Clave de links.json con la carpeta raíz de evidencias de cada uno. */
@@ -36,7 +37,8 @@ export function useTimeReport(q, equipo = EQUIPO_DEFECTO) {
       const u = url + (url.indexOf("?") < 0 ? "?" : "&") + "action=snapshot&q=" + encodeURIComponent(q) + "&equipo=" + encodeURIComponent(equipo);
       const res = await fetch(u, { cache: "no-store", signal: AbortSignal.timeout(60000) }).then((r) => r.json());
       if (!res || !res.ok) throw new Error((res && res.error) || "respuesta inesperada");
-      setSnap({ data: res.data, error: "" });
+      // Filas repetidas de un mismo proyecto (repartos antiguos): una sola.
+      setSnap({ data: { ...res.data, reparto: fusionarReparto(res.data.reparto) }, error: "" });
     } catch (e) {
       setSnap({ data: null, error: String(e.message || e) });
     }

@@ -126,6 +126,28 @@ export const horasProyecto = (reparto, proyectoId, filtroQuincena = null) =>
     .filter((r) => r.proyectoId === proyectoId && (filtroQuincena == null || filtroQuincena(r.quincena)))
     .reduce((a, r) => a + horasDe(r.dias), 0);
 
+/* Una sola fila por quincena + persona + proyecto, sumando sus días. El
+   reparto a partes iguales da varias vueltas (cuando a alguien se le acaba la
+   capacidad, lo que falta se reparte entre las demás) y antes cada vuelta
+   creaba una fila NUEVA: el proyecto salía repetido en Mi Time Report y en la
+   copia para el TR de BBVA. Se aplica también a lo ya guardado al leerlo. */
+export function fusionarReparto(filas) {
+  const out = [];
+  const idx = new Map();
+  for (const r of filas || []) {
+    const k = `${r.quincena}|${r.persona}|${r.proyectoId}`;
+    const i = idx.get(k);
+    if (i == null) {
+      idx.set(k, out.length);
+      out.push({ ...r, dias: { ...(r.dias || {}) } });
+      continue;
+    }
+    const dias = out[i].dias;
+    for (const [d, h] of Object.entries(r.dias || {})) dias[d] = num(dias[d]) + num(h);
+  }
+  return out;
+}
+
 /* Reparte `h` horas ENTERAS entre los días dados, lo más uniforme posible,
    respetando el hueco libre de cada día. Muta `usado` y devuelve {dia: horas}. */
 function colocar(h, dias, usado) {
@@ -297,7 +319,7 @@ export function repartir({ q, proyectos, repartoActual, personas, bloqueadas, fe
     }
   }
 
-  const reparto = [...fijas, ...nuevas];
+  const reparto = fusionarReparto([...fijas, ...nuevas]);
 
   // ¿A quién hay que NOTIFICAR? Personas (no bloqueadas) cuya imputación en la
   // ventana cambia respecto a lo que había guardado.
@@ -308,7 +330,8 @@ export function repartir({ q, proyectos, repartoActual, personas, bloqueadas, fe
         .map((r) => [r.quincena, r.proyectoId, r.dias])
         .sort((a, b) => (JSON.stringify(a) < JSON.stringify(b) ? -1 : 1))
     );
-  const notificar = libres.filter((per) => firma(previas, per) !== firma(nuevas, per));
+  const nuevasF = fusionarReparto(nuevas);
+  const notificar = libres.filter((per) => firma(previas, per) !== firma(nuevasF, per));
 
   return { reparto, desde, pasadas: hoyQ > desde, finDefecto, notificar, sinHueco };
 }
