@@ -86,7 +86,7 @@ export function htmlResumen({ q, resumen, qs, qActualN, hoy, personas, equipo })
   td{padding:5px 6px;border-bottom:1px solid var(--gray2);vertical-align:middle}
   tbody tr:last-child td{border-bottom:0}
   tfoot td{border-top:2px solid var(--electric);border-bottom:0;font-weight:700;padding-top:6px}
-  .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .num{text-align:center;font-variant-numeric:tabular-nums;white-space:nowrap}
   .proy{width:34%}
   .proy strong{font-size:11px}
   .sub{margin-left:8px;font-size:9px;color:var(--gray5);white-space:nowrap}
