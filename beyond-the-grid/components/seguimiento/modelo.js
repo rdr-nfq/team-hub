@@ -354,7 +354,7 @@ export const combinarDocs = (docs, { fechaReunion, trimestreGantt: trim } = {}) 
 export const qTimeReport = (trimestre) => String(trimestre || "").replace("-", "");
 
 /* Quincena (1..6) del Q en la que cae una fecha; 0 antes del Q, 7 después. */
-const quincenaEnQ = (q, iso) => {
+export const quincenaEnQ = (q, iso) => {
   const m = /^(\d{4})Q([1-4])$/.exec(q);
   const d = parseISO(iso);
   if (!m || !d) return 0;
@@ -365,18 +365,41 @@ const quincenaEnQ = (q, iso) => {
 };
 const NIVEL2_CORTO = (n2v) => String(n2v || "").replace(/\s*\(.*\)\s*$/, "") || "—";
 
-/** Filas del resumen del Time Report del Q a fecha de la reunión:
-    [{ nombre, codigo, estado, horas, imputadas, porImputar }]. El estado es el
-    Nivel 2 de la quincena de la reunión; "imputadas" = horas del reparto con
-    día <= fecha de la reunión. */
+/* Etiquetas de las 6 quincenas de un Q ("1-15 Oct", "16-31 Oct"…), como en
+   el resumen en PDF del Time Report. */
+const MES_TR = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+export const quincenasTR = (q) => {
+  const m = /^(\d{4})Q([1-4])$/.exec(q);
+  if (!m) return [];
+  const out = [];
+  for (let k = 0; k < 3; k++) {
+    const mes = (Number(m[2]) - 1) * 3 + k;
+    const ult = new Date(Number(m[1]), mes + 1, 0).getDate();
+    out.push(`1-15 ${MES_TR[mes]}`, `16-${ult} ${MES_TR[mes]}`);
+  }
+  return out;
+};
+
+/** Filas del resumen del Time Report del Q a fecha de la reunión (las mismas
+    columnas que el resumen en PDF de la gestión del Time Report):
+    [{ nombre, codigo, estado, horas, imputadas, porImputar, porQ:[6] }]. El
+    estado es el Nivel 2 de la quincena de la reunión; "imputadas" = horas del
+    reparto con día <= fecha de la reunión; porQ = horas repartidas en cada
+    quincena. Un proyecto guardado dos veces cuenta una sola (el último). */
 export const resumenTimeReport = (snapshot, q, fechaISO) => {
   const reparto = snapshot?.reparto || [];
   const nq = Math.min(6, Math.max(1, quincenaEnQ(q, fechaISO) || 1));
-  return (snapshot?.proyectos || []).map((p) => {
+  const proyectos = [...new Map((snapshot?.proyectos || []).map((p) => [p.id, p])).values()];
+  return proyectos.map((p) => {
     let imputadas = 0;
-    for (const r of reparto)
-      if (r.proyectoId === p.id)
-        for (const [dia, h] of Object.entries(r.dias || {})) if (dia <= fechaISO) imputadas += Number(h) || 0;
+    const porQ = [0, 0, 0, 0, 0, 0];
+    for (const r of reparto) {
+      if (r.proyectoId !== p.id) continue;
+      for (const [dia, h] of Object.entries(r.dias || {})) {
+        if (dia <= fechaISO) imputadas += Number(h) || 0;
+        if (r.quincena >= 1 && r.quincena <= 6) porQ[r.quincena - 1] += Number(h) || 0;
+      }
+    }
     const horas = Math.round(Number(p.horas) || 0);
     return {
       nombre: p.nombre || "",
@@ -385,6 +408,7 @@ export const resumenTimeReport = (snapshot, q, fechaISO) => {
       horas,
       imputadas: Math.round(imputadas),
       porImputar: Math.max(0, horas - Math.round(imputadas)),
+      porQ: porQ.map(Math.round),
     };
   });
 };

@@ -7,7 +7,7 @@
      01 Planificación del equipo  -> Gantt derivado de las tareas
      02 Seguimiento de proyectos  -> 1 slide por proyecto (pagina si no cabe)
      03 Incidencias y traspasos   -> tarjetas de incidencias/tareas + tabla
-     04 Time Report del trimestre -> proyectos del Q: estado, horas, por imputar
+     04 Time Report del trimestre -> el resumen del PDF del Time Report, 1 slide
      Gracias · Anexo (proyectos con anexo: true, ocultos)
 
    opts.autor: nombre del coordinador (presentación de su pestaña); sin autor
@@ -23,7 +23,7 @@ import {
   COLOR as C, FASE, FASES_GANTT, EN_ESPERA, ESTADO, TIPO_TRASPASO, TIPOS_TRASPASO, TIPOS_INCIDENCIA,
   fechaLarga, fechaTarea, etiquetaFase, colorFase, nombreCorto, resumenProyecto,
   gruposPorInterno, cifras, enumerar, numTexto, semanasGantt, trimestreGantt, tramosGantt, rangoGantt,
-  etiquetaSemana, nombreMes, mesSemana, parseISO, addDays, completa,
+  etiquetaSemana, nombreMes, mesSemana, parseISO, addDays, completa, quincenasTR, quincenaEnQ,
 } from "./modelo.js";
 
 const HEAD = "Source Serif 4";
@@ -163,7 +163,7 @@ export function generarPresentacion(PptxGenJS, datos, assets, opts = {}) {
     { n: "03", t: "Incidencias y traspasos", color: C.canary,
       d: "Incidencias, tareas abiertas o bloqueadas y traspasos pendientes de cerrar." },
     ...(tr ? [{ n: "04", t: "Time Report del trimestre", color: C.aqua,
-      d: "Proyectos del trimestre: estado, horas totales y horas por imputar." }] : []),
+      d: "Proyectos del trimestre: horas, imputadas, por imputar y reparto por quincena." }] : []),
   ];
   add((s, page, total) => {
     s.background = { color: C.midnight };
@@ -573,67 +573,120 @@ export function generarPresentacion(PptxGenJS, datos, assets, opts = {}) {
   );
 
   // ── 04 · Time Report del trimestre ────────────────────────────────────────
+  /* El mismo resumen que el PDF de la gestión del Time Report: TODOS los
+     proyectos en una sola slide (horas, imputadas, por imputar, avance y
+     horas por quincena, con la de la reunión resaltada y fila de total), y
+     las cifras en una franja de píldoras. Si hay muchos proyectos, la letra
+     baja lo justo para que quepan; nunca se parte en dos slides. */
   if (tr) {
     const qm = /^(\d{4})Q([1-4])$/.exec(tr.q || "");
     const qLabel = qm ? `Q${qm[2]} ${qm[1]}` : tr.q;
     const filasTR = tr.filas || [];
-    // Sin proyectos en el Q: todo el equipo en Soporte a Usuarios.
     const soloSoporte = !filasTR.length;
-    const TRC = [["PROYECTO", 0.79, 4.6], ["ESTADO", 5.6, 2.1], ["HORAS TOTALES", 7.85, 1.45], ["POR IMPUTAR", 9.45, 1.35], ["IMPUTADO", 10.95, 1.6]];
-    const POR_PAG = 8;
-    const PITCH = 0.5;
-    const pags = [];
-    for (let i = 0; i < Math.max(1, filasTR.length); i += POR_PAG) pags.push(filasTR.slice(i, i + POR_PAG));
-    const tot = filasTR.reduce((a, f) => ({ horas: a.horas + f.horas, imputadas: a.imputadas + f.imputadas, porImputar: a.porImputar + f.porImputar }), { horas: 0, imputadas: 0, porImputar: 0 });
+    const etiquetasQ = quincenasTR(tr.q);
+    const qHoy = quincenaEnQ(tr.q, fecha);
     const fmt = (n) => Number(n || 0).toLocaleString("es-ES");
-    const barra = (s, x, y, pct) => {
-      txt(s, `${pct} %`, { x, y, w: 0.5, h: 0.3, size: 9, bold: true, valign: "middle" });
-      rect(s, x + 0.55, y + 0.115, 1.0, 0.07, C.gray2, 0.035);
-      if (pct > 0) rect(s, x + 0.55, y + 0.115, Math.max(0.07, pct / 100), 0.07, C.electric, 0.035);
+    const pctDe = (a, b) => (b > 0 ? Math.min(100, Math.round((a / b) * 100)) : 0);
+    const tot = filasTR.reduce((a, f) => ({ horas: a.horas + f.horas, imputadas: a.imputadas + f.imputadas, porImputar: a.porImputar + f.porImputar }), { horas: 0, imputadas: 0, porImputar: 0 });
+    const totQ = [0, 1, 2, 3, 4, 5].map((i) => filasTR.reduce((a, f) => a + ((f.porQ || [])[i] || 0), 0));
+
+    // Columnas: [etiqueta, x, ancho]; números centrados.
+    const XP = 0.75, WP = 4.2;
+    const COLS = [["HORAS", 5.0, 0.7], ["IMPUTADAS", 5.7, 0.85], ["POR IMPUTAR", 6.55, 0.9]];
+    const XA = 7.55, WA = 1.2; // avance: barra + %
+    const XQ = 8.8, WQ = (12.6 - 8.8) / 6;
+    const Y0 = 2.38, YMAX = 6.88, CAB = 0.32;
+
+    // Letra más grande con la que caben todas las filas (los nombres largos
+    // ocupan 2 líneas; el código va en la misma línea, más pequeño).
+    const lineas = (f, size) => {
+      const porLinea = Math.max(10, Math.floor(WP / (size * 0.0066)));
+      return Math.max(1, Math.ceil((f.nombre.length + 2 + (f.codigo || "").length * 0.85) / porLinea));
     };
-    pags.forEach((items, pi) =>
-      add((s, page, total) => {
-        s.background = { color: C.sand };
-        marco(s, { kicker: "04 · Time Report del trimestre", pie: `04 · Time Report — ${qLabel}`, page, total });
-        cabecera(s, {
-          sobre: `${qLabel} · ${cap(semanaTxt)}`,
-          titulo: `Time Report del trimestre${pags.length > 1 ? ` (${pi + 1}/${pags.length})` : ""}`,
-          sub: soloSoporte
-            ? "Sin proyectos con código en el trimestre: el equipo se dedica a Soporte a Usuarios."
-            : `${filasTR.length} ${filasTR.length === 1 ? "proyecto" : "proyectos"} · ${fmt(tot.horas)} h en total · ${fmt(tot.porImputar)} h por imputar.`,
-        });
-        const ultima = pi === pags.length - 1;
-        const n = soloSoporte ? 1 : items.length + (ultima ? 1 : 0);
-        tarjeta(s, MX, 2.19, CW, 0.46 + n * PITCH + 0.1);
-        rect(s, MX, 2.19, CW, 0.36, C.gray2, 0.12);
-        rect(s, MX, 2.37, CW, 0.18, C.gray2);
-        for (const [label, x, w] of TRC) txt(s, label, { x, y: 2.19, w, h: 0.36, size: 7.5, bold: true, valign: "middle", align: x > 7 && x < 10.9 ? "right" : "left" });
-        let y = 2.65;
-        if (soloSoporte) {
-          txt(s, "Soporte a Usuarios", { x: 0.79, y, w: 4.6, h: 0.3, size: 10, bold: true, valign: "middle" });
-          txt(s, "100 % del equipo", { x: 5.6, y, w: 4.5, h: 0.3, size: 10, bold: true, valign: "middle" });
-        }
-        items.forEach((f, i) => {
-          txt(s, f.nombre, { x: 0.79, y: y - 0.03, w: 4.6, h: 0.22, size: 9.5, bold: true, valign: "middle" });
-          if (f.codigo) txt(s, f.codigo, { x: 0.79, y: y + 0.19, w: 4.6, h: 0.17, size: 7.5, color: C.gray5, valign: "middle" });
-          txt(s, f.estado, { x: 5.6, y, w: 2.1, h: 0.3, size: 9, valign: "middle" });
-          txt(s, fmt(f.horas), { x: 7.85, y, w: 1.45, h: 0.3, size: 9.5, bold: true, align: "right", valign: "middle" });
-          txt(s, fmt(f.porImputar), { x: 9.45, y, w: 1.35, h: 0.3, size: 9.5, bold: true, align: "right", valign: "middle" });
-          barra(s, 10.95, y, f.horas > 0 ? Math.min(100, Math.round((f.imputadas / f.horas) * 100)) : 0);
-          if (i < items.length - 1 || ultima) linea(s, 0.72, y + PITCH - 0.1, 11.9, 0, C.gray2);
-          y += PITCH;
-        });
-        if (!soloSoporte && ultima) {
-          txt(s, "TOTAL", { x: 0.79, y, w: 4.6, h: 0.3, size: 9, bold: true, valign: "middle" });
-          txt(s, fmt(tot.horas), { x: 7.85, y, w: 1.45, h: 0.3, size: 10, bold: true, align: "right", valign: "middle" });
-          txt(s, fmt(tot.porImputar), { x: 9.45, y, w: 1.35, h: 0.3, size: 10, bold: true, align: "right", valign: "middle" });
-          barra(s, 10.95, y, tot.horas > 0 ? Math.min(100, Math.round((tot.imputadas / tot.horas) * 100)) : 0);
-        }
-        s.addNotes(soloSoporte
-          ? `Time Report ${qLabel}: sin proyectos con código; Soporte a Usuarios, 100 % del equipo.`
-          : `Time Report ${qLabel}: ${items.map((f) => `${f.nombre} (${f.estado}, ${f.horas} h, ${f.porImputar} h por imputar)`).join("; ")}.`);
-      }),
-    );
+    let apretar = 1; // < 1 solo si ni con la letra más pequeña caben
+    const altoFila = (f, size) => (lineas(f, size) * size * 0.0175 + size * 0.016) * apretar;
+    const altoTodo = (t) => CAB + filasTR.reduce((a, f) => a + altoFila(f, t), 0) + altoFila({ nombre: "Total" }, t) + 0.1;
+    let size = 9.5;
+    for (const t of [9.5, 9, 8.5, 8, 7.5, 7, 6.5, 6]) {
+      size = t;
+      if (Y0 + altoTodo(t) <= YMAX) break;
+    }
+    if (Y0 + altoTodo(size) > YMAX) apretar = (YMAX - Y0 - CAB - 0.1) / (altoTodo(size) - CAB - 0.1);
+
+    add((s, page, total) => {
+      s.background = { color: C.sand };
+      marco(s, { kicker: "04 · Time Report del trimestre", pie: `04 · Time Report — ${qLabel}`, page, total });
+      cabecera(s, { sobre: `${qLabel} · ${cap(semanaTxt)}`, titulo: "Time Report del trimestre" });
+
+      // Franja de cifras (píldoras).
+      const kpis = soloSoporte
+        ? [["SOPORTE A USUARIOS", "100 % del equipo", C.serene]]
+        : [
+            ["PROYECTOS", String(filasTR.length), C.serene],
+            ["PLANIFICADAS", `${fmt(tot.horas)} h`, C.white],
+            ["IMPUTADAS", `${fmt(tot.imputadas)} h · ${pctDe(tot.imputadas, tot.horas)} %`, C.lime],
+            ["POR IMPUTAR", `${fmt(tot.porImputar)} h`, C.canary],
+          ];
+      let kx = MX;
+      for (const [l, v, color] of kpis) {
+        const w = 0.42 + l.length * 0.066 + v.length * 0.085;
+        rect(s, kx, 1.84, w, 0.34, color, 0.17, color === C.white ? { line: { color: C.gray2, width: 0.75 } } : {});
+        s.addText([
+          { text: l, options: { fontSize: 7.5, bold: true, charSpacing: 1.2 } },
+          { text: `   ${v}`, options: { fontSize: 12, bold: true, fontFace: HEAD } },
+        ], { x: kx, y: 1.84, w, h: 0.34, fontFace: BODY, color: C.electric, align: "center", valign: "middle", margin: 0 });
+        kx += w + 0.14;
+      }
+      if (soloSoporte) {
+        s.addNotes(`Time Report ${qLabel}: sin proyectos con código; Soporte a Usuarios, 100 % del equipo.`);
+        return;
+      }
+
+      // Tabla.
+      const filasAlto = filasTR.map((f) => altoFila(f, size));
+      const altoTot = altoFila({ nombre: "Total" }, size);
+      const altoTabla = CAB + filasAlto.reduce((a, h) => a + h, 0) + altoTot + 0.06;
+      tarjeta(s, MX, Y0, CW, altoTabla + 0.08);
+      // Quincena de la reunión resaltada (toda la columna).
+      if (qHoy >= 1 && qHoy <= 6)
+        rect(s, XQ + (qHoy - 1) * WQ, Y0 + 0.04, WQ, altoTabla, C.serene, 0, { fill: { color: C.serene, transparency: 72 } });
+      const cab = (label, x, w, align = "center") =>
+        txt(s, label, { x, y: Y0 + 0.04, w, h: CAB, size: 6.8, bold: true, color: C.gray5, align, valign: "middle", charSpacing: 0.6 });
+      cab("PROYECTO", XP, WP, "left");
+      for (const [l, x, w] of COLS) cab(l, x, w);
+      cab("AVANCE", XA, WA, "left");
+      etiquetasQ.forEach((l, i) => cab(l.toUpperCase(), XQ + i * WQ, WQ));
+      linea(s, 0.72, Y0 + 0.04 + CAB, 11.9, 0, C.gray3);
+
+      const celdas = (y, h, f, bold) => {
+        const num = (v, x, w, b = bold) => txt(s, v ? fmt(v) : "·", { x, y, w, h, size, bold: b, align: "center", valign: "middle", color: v ? C.electric : C.gray3 });
+        num(f.horas, COLS[0][1], COLS[0][2]);
+        num(f.imputadas, COLS[1][1], COLS[1][2]);
+        num(f.porImputar, COLS[2][1], COLS[2][2], true);
+        const pc = pctDe(f.imputadas, f.horas);
+        const bh = Math.min(0.08, h * 0.25);
+        rect(s, XA, y + (h - bh) / 2, 0.72, bh, C.gray2, bh / 2);
+        if (pc > 0) rect(s, XA, y + (h - bh) / 2, Math.max(bh, 0.72 * pc / 100), bh, C.electric, bh / 2);
+        txt(s, `${pc} %`, { x: XA + 0.8, y, w: 0.4, h, size: size * 0.85, bold: true, valign: "middle" });
+        (f.porQ || []).forEach((v, i) => num(v, XQ + i * WQ, WQ));
+      };
+      let y = Y0 + 0.04 + CAB;
+      filasTR.forEach((f, i) => {
+        const h = filasAlto[i];
+        s.addText([
+          { text: f.nombre, options: { bold: true } },
+          ...(f.codigo ? [{ text: `  ${f.codigo}`, options: { fontSize: size * 0.8, color: C.gray5 } }] : []),
+        ], { x: XP, y, w: WP, h, fontFace: BODY, fontSize: size, color: C.electric, valign: "middle", margin: 0 });
+        celdas(y, h, f, false);
+        y += h;
+        if (i < filasTR.length - 1) linea(s, 0.72, y, 11.9, 0, C.gray2);
+      });
+      s.addShape(S.LINE, { x: 0.72, y, w: 11.9, h: 0, line: { color: C.electric, width: 1.5 } });
+      txt(s, "Total", { x: XP, y, w: WP, h: altoTot, size, bold: true, valign: "middle" });
+      celdas(y, altoTot, { ...tot, porQ: totQ }, true);
+
+      s.addNotes(`Time Report ${qLabel}: ${filasTR.map((f) => `${f.nombre} (${f.estado}, ${f.horas} h, ${f.imputadas} h imputadas, ${f.porImputar} h por imputar)`).join("; ")}.`);
+    });
   }
 
   // ── Gracias ───────────────────────────────────────────────────────────────

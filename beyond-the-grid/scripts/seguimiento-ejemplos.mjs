@@ -88,8 +88,26 @@ const ejemplos = [
   ["Ejemplo 2 (semana siguiente, con cambios)", semanaSiguiente()],
 ];
 
+// Time Report del Q (bloque 04), con las columnas del resumen en PDF.
+const fila = (nombre, codigo, estado, horas, imputadas, porQ) => ({ nombre, codigo, estado, horas, imputadas, porImputar: horas - imputadas, porQ });
+const timeReport = {
+  q: "2026Q4",
+  filas: [
+    fila("FCM 26Q4", "SDATOOL-49780 · CIBRDR-1190", "Análisis y diseño", 242, 44, [0, 74, 59, 59, 50, 0]),
+    fila("BSI 2.0 - Repos con clientes", "SDATOOL-49629 · CIBRDR-762", "Análisis y diseño", 403, 143, [0, 173, 78, 78, 74, 0]),
+    fila("Strategic Boost. Desarrollos 26Q4", "SDATOOL-42226 · CIBRDR-1206", "Codificación", 1275, 210, [0, 240, 320, 320, 395, 0]),
+    fila("Institutional Clients: Onboarding 26Q4", "SDATOOL-46848 · CIBRDR-1222", "Codificación", 135, 24, [0, 54, 33, 33, 15, 0]),
+    fila("Mitigación vulnerabilidades Java del Core de RDR 26Q4", "SDATOOL-43151 · CIBRDR-1207", "Codificación", 548, 90, [0, 120, 137, 137, 154, 0]),
+    fila("Mitigación vulnerabilidades Java del Core de RDR 26Q4_2", "SDATOOL-43151 · CIBRDR-1215", "Codificación", 322, 60, [0, 90, 79, 79, 74, 0]),
+    fila("Eventos Corporativos 26Q4", "SDATOOL-51827 · CIBRDR-1210", "Codificación", 445, 80, [0, 110, 110, 110, 115, 0]),
+    fila("Sec Lending Architecture Model", "SDATOOL-49629 · CIBRDR-1221", "Análisis y diseño", 104, 20, [0, 50, 25, 25, 4, 0]),
+    fila("Security Lending Undisclosed", "SDATOOL-38779 · CIBRDR-980", "Análisis y diseño", 161, 30, [0, 60, 39, 39, 23, 0]),
+    fila("Gobierno Global del Fixing", "SDATOOL-56612 · CIBRDR-1226", "Análisis y diseño", 161, 24, [0, 54, 41, 41, 25, 0]),
+  ],
+};
+
 for (const [desc, datos] of ejemplos) {
-  const pres = generarPresentacion(PptxGenJS, datos, assets);
+  const pres = generarPresentacion(PptxGenJS, datos, assets, { timeReport });
   // En Drive el nombre lleva DD/MM/YY; en disco la barra no es válida.
   const fichero = join(salida, nombreFichero(datos.fechaReunion).replaceAll("/", "-"));
   // writeFile() en Node ignora `compression` (bug de pptxgenjs 4); stream() sí comprime.
