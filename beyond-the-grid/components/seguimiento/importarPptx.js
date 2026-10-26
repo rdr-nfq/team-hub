@@ -13,9 +13,15 @@
      "Traspasos"                            + tabla Responsable Interno | Responsable NFQ | Proyecto | Comentarios
      "Gracias." y lo que va detrás, o diapositivas ocultas -> anexo
 
+   Y las AUTOGENERADAS por la web ("Seguimiento RDR - 13/10/26 - Autogenerado.pptx",
+   plantillaPptx.js): no tienen tablas, cada dato es un cuadro de texto en su
+   columna. El backend devuelve además los cuadros con su posición (cajas) y se
+   leen por columnas (docDesdeAutogenerada). Las subidas desde que se guardan
+   sus datos llegan ya como { doc } y se copian tal cual.
+
    Es código puro (sin React): se prueba en Node. */
 
-import { parseISO, toISO } from "./modelo.js";
+import { parseISO, toISO, FASES, ESTADOS, TIPOS_TRASPASO } from "./modelo.js";
 
 const MES = { ene: 0, feb: 1, mar: 2, abr: 3, may: 4, jun: 5, jul: 6, ago: 7, sep: 8, set: 8, oct: 9, nov: 10, dic: 11 };
 const norm = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
@@ -105,6 +111,8 @@ function tablaTareas(tablas) {
 
 /** { slides } del backend -> { proyectos, incidencias, traspasos } (formato del modelo). */
 export function docDesdePptx(raw, refISO) {
+  if (raw?.doc) return { proyectos: raw.doc.proyectos || [], incidencias: raw.doc.incidencias || [], traspasos: raw.doc.traspasos || [] };
+  if (esAutogenerada(raw)) return docDesdeAutogenerada(raw, refISO);
   const out = { proyectos: [], incidencias: [], traspasos: [] };
   let interno = "";
   let anexo = false;
@@ -175,6 +183,149 @@ export function docDesdePptx(raw, refISO) {
         out.incidencias.push({ id: nid("i"), tipo, estado: "en_curso", titulo: tit, detalle: c.co >= 0 ? lineasDe(r[c.co]) : [] });
       }
     }
+  }
+  return out;
+}
+
+// ── Presentaciones autogeneradas (plantillaPptx.js) ─────────────────────────
+/* Cada slide interior lleva su pie abajo a la izquierda ("02 · Seguimiento de
+   proyectos — Lucía Garrido") y los datos en cuadros alineados con las
+   cabeceras de columna (TAREA, FECHA LÍMITE…). Las píldoras (fase de la tarea,
+   tipo de incidencia, código de traspaso) son un cuadro de color con el texto
+   encima, en la misma posición: su color dice el tipo de traspaso. */
+const PIE_Y = 6.9;
+const cerca = (a, b, d = 0.03) => Math.abs(a - b) <= d;
+const pieDe = (s) => ((s.cajas || []).find((c) => c.y > PIE_Y && c.texto && c.x < 8 && !/^p\.\s*\d/.test(c.texto)) || {}).texto || "";
+export const esAutogenerada = (raw) =>
+  (raw?.slides || []).some((s) => /^0[1-4] · /.test(pieDe(s)) && (s.cajas || []).length > 0);
+
+/** ¿Es el texto de una píldora? (hay un cuadro de color justo debajo) */
+const esPildora = (c, cajas) => !!c.texto && cajas.some((r) => !r.texto && r.relleno && cerca(r.x, c.x) && cerca(r.y, c.y) && r.w <= c.w + 0.05);
+const rellenoDe = (c, cajas) => (cajas.find((r) => !r.texto && r.relleno && cerca(r.x, c.x) && cerca(r.y, c.y)) || {}).relleno || "";
+
+/** Cabeceras de una tabla: [{ k, x }] ordenadas, a partir de la que casa con `re`. */
+function cabeceras(textos, re, claves) {
+  const h = textos.find((c) => re.test(norm(c.texto)) && c.y < PIE_Y);
+  if (!h) return null;
+  const fila = textos.filter((c) => cerca(c.y, h.y, 0.02) && c.y < PIE_Y).sort((a, b) => a.x - b.x);
+  return { y: h.y, cols: fila.map((c) => ({ k: (claves.find(([r]) => r.test(norm(c.texto))) || [null, "?"])[1], x: c.x })) };
+}
+const colDe = (cab, x) => {
+  let k = null;
+  for (const c of cab.cols) if (c.x <= x + 0.05) k = c.k;
+  return k;
+};
+const sinGuion = (t) => (String(t || "").trim() === "—" ? "" : String(t || "").trim());
+const FASE_POR_LABEL = Object.fromEntries(FASES.map((f) => [norm(f.label), f.id]));
+const ESTADO_POR_LABEL = Object.fromEntries(ESTADOS.map((e) => [norm(e.label), e.id]));
+const TRASPASO_POR_COLOR = Object.fromEntries(TIPOS_TRASPASO.map((t) => [String(t.color).toUpperCase(), t.id]));
+
+function proyectoAuto(s, pie, refISO) {
+  const cajas = s.cajas || [];
+  const textos = cajas.filter((c) => c.texto);
+  const cab = cabeceras(textos, /^tarea$/, [[/^tarea/, "tarea"], [/fecha/, "fecha"], [/coment/, "com"], [/asign/, "asig"], [/avance/, "av"], [/estado/, "est"]]);
+  if (!cab) return null;
+  const titulo = textos.find((c) => c.y >= 1.15 && c.y < 1.7 && c.w > 6);
+  const sobre = textos.find((c) => c.y >= 0.85 && c.y < 1.15 && c.w > 4);
+  const partes = String(sobre?.texto || "").split(" · ").map((x) => x.trim()).filter(Boolean);
+  const anexo = !!s.oculta || /anexo/i.test(pie);
+  const filas = textos
+    .filter((c) => c.y > cab.y + 0.2 && c.y < PIE_Y && colDe(cab, c.x) === "tarea" && esPildora(c, cajas))
+    .sort((a, b) => a.y - b.y);
+  const tareas = filas.map((f, i) => {
+    const hasta = i < filas.length - 1 ? filas[i + 1].y - 0.02 : PIE_Y;
+    const celda = (k) => textos.filter((c) => c !== f && c.y >= f.y - 0.02 && c.y < hasta && colDe(cab, c.x) === k).map((c) => c.texto);
+    const [base, ...resto] = f.texto.split(" · ").map((x) => x.trim());
+    const sufijo = resto.join(" · ");
+    const avance = avanceDe(celda("av")[0]);
+    return {
+      id: nid("t"),
+      fase: FASE_POR_LABEL[norm(base)] || faseDe(base),
+      ...(sufijo ? { sufijo } : {}),
+      nombre: celda("tarea").join(" ").replace(/\s+/g, " ").trim(),
+      fecha: fechaImportada(sinGuion(celda("fecha")[0]), refISO),
+      comentarios: celda("com").flatMap((t) => lineasDe(t)),
+      asignacion: sinGuion(celda("asig")[0]),
+      avance,
+      estado: ESTADO_POR_LABEL[norm(celda("est")[0])] || "sin_iniciar",
+    };
+  });
+  const asig = {};
+  tareas.forEach((t) => { if (t.asignacion) asig[t.asignacion] = (asig[t.asignacion] || 0) + 1; });
+  return {
+    nombre: String(titulo?.texto || "").replace(/\s*\(\d+\/\d+\)\s*$/, "").trim(),
+    // "SDATOOL-51125 · 2025-51": el código de traspaso puede llevar « · » ("BAU · 2026").
+    sdatool: /^SDATOOL/i.test(partes[0] || "") ? partes[0] : "",
+    traspaso: (/^SDATOOL/i.test(partes[0] || "") ? partes.slice(1) : partes).join(" · "),
+    interno: anexo ? "" : (pie.split(" — ")[1] || "").trim(),
+    responsable: Object.entries(asig).sort((a, b) => b[1] - a[1])[0]?.[0] || "",
+    anexo,
+    tareas,
+  };
+}
+
+function incidenciasAuto(s) {
+  const cajas = s.cajas || [];
+  const textos = cajas.filter((c) => c.texto && c.y < PIE_Y && c.y > 1.9);
+  const etiquetas = textos.filter((c) => /^(INCIDENCIA|TAREA BLOQUEADA|TAREA( · .+)?)$/.test(c.texto) && esPildora(c, cajas));
+  return etiquetas.map((e) => {
+    const siguiente = etiquetas.filter((o) => o !== e && cerca(o.x, e.x, 0.3) && o.y > e.y).sort((a, b) => a.y - b.y)[0];
+    const dentro = textos
+      .filter((c) => c !== e && c.x >= e.x - 0.05 && c.x < e.x + 3.6 && c.y > e.y + 0.1 && c.y < (siguiente ? siguiente.y - 0.1 : PIE_Y))
+      .sort((a, b) => a.y - b.y);
+    const tipo = e.texto === "INCIDENCIA" ? "incidencia" : e.texto === "TAREA BLOQUEADA" ? "bloqueada" : "tarea";
+    const estado = tipo === "tarea" ? ESTADO_POR_LABEL[norm(e.texto.split(" · ")[1])] || "en_curso" : "en_curso";
+    return {
+      id: nid("i"), tipo, estado,
+      titulo: (dentro[0]?.texto || "").replace(/\s+/g, " ").trim(),
+      detalle: dentro.slice(1).flatMap((c) => lineasDe(c.texto)),
+    };
+  }).filter((i) => i.titulo);
+}
+
+function traspasosAuto(s) {
+  const cajas = s.cajas || [];
+  const textos = cajas.filter((c) => c.texto);
+  const cab = cabeceras(textos, /^codigo$/, [[/^codigo/, "cod"], [/^proyecto/, "proy"], [/interno/, "int"], [/nfq/, "nfq"], [/pendiente/, "pend"]]);
+  if (!cab) return [];
+  const filas = textos
+    .filter((c) => c.y > cab.y + 0.2 && c.y < PIE_Y && colDe(cab, c.x) === "cod" && esPildora(c, cajas))
+    .sort((a, b) => a.y - b.y);
+  return filas.map((f) => {
+    const celda = (k) => sinGuion((textos.find((c) => c !== f && c.y >= f.y - 0.02 && c.y < f.y + 0.3 && colDe(cab, c.x) === k) || {}).texto).replace(/\s+/g, " ");
+    return {
+      id: nid("tr"),
+      codigo: sinGuion(f.texto),
+      proyecto: celda("proy"),
+      interno: celda("int"),
+      nfq: celda("nfq"),
+      pendiente: celda("pend"),
+      tipo: TRASPASO_POR_COLOR[rellenoDe(f, cajas)] || "otro",
+    };
+  }).filter((t) => t.proyecto || t.codigo);
+}
+
+/** Presentación autogenerada -> { proyectos, incidencias, traspasos }. */
+export function docDesdeAutogenerada(raw, refISO) {
+  const out = { proyectos: [], incidencias: [], traspasos: [] };
+  let previo = null;
+  for (const s of raw?.slides || []) {
+    const pie = pieDe(s);
+    if (/^02 · /.test(pie) || /^Seguimiento RDR · Anexo/.test(pie)) {
+      const p = proyectoAuto(s, pie, refISO);
+      if (!p) continue;
+      // Un proyecto con muchas tareas ocupa varias slides seguidas ("Nombre (1/2)").
+      if (previo && previo.nombre === p.nombre && previo.sdatool === p.sdatool && previo.anexo === p.anexo) {
+        previo.tareas.push(...p.tareas);
+        continue;
+      }
+      previo = { id: nid("p"), ...p };
+      out.proyectos.push(previo);
+      continue;
+    }
+    previo = null;
+    if (/Incidencias y tareas/.test(pie)) out.incidencias.push(...incidenciasAuto(s));
+    else if (/— Traspasos/.test(pie)) out.traspasos.push(...traspasosAuto(s));
   }
   return out;
 }

@@ -12,11 +12,13 @@
  *     recibe CONFLICTO en vez de pisar a la primera. Una semana sin datos de
  *     un coordinador arranca con lo de su semana anterior ("previas").
  *
- *  1b) HISTÓRICO: las presentaciones hechas a mano de años anteriores
- *     ("28/09/2026 Seguimiento_RDR_GLOBAL_2026.pptx") se pueden LEER para
- *     copiar sus proyectos: el .pptx se descomprime aquí y se devuelven los
- *     textos y tablas de cada diapositiva (la web los convierte en proyectos,
- *     tareas, incidencias y traspasos).
+ *  1b) HISTÓRICO: las presentaciones de Drive se pueden LEER para copiar sus
+ *     proyectos: las hechas a mano ("28/09/2026 Seguimiento_RDR_GLOBAL_2026.pptx")
+ *     y las autogeneradas por la web. El .pptx se descomprime aquí y se
+ *     devuelven los textos, tablas y cuadros (con su posición) de cada
+ *     diapositiva; la web los convierte en proyectos, tareas, incidencias y
+ *     traspasos. De las autogeneradas subidas desde ahora se guardan además
+ *     sus datos (presentacion_<id>.json): se copian exactas.
  *
  *  2) PRESENTACIONES que genera la web:
  *
@@ -56,10 +58,15 @@
  *    semana  { email, id, semana }           -> { doc, actualizado, por } | null   (para «Copiar de…»)
  *    guardar { email, id, semana, doc, rev, forzar? } -> { rev, actualizado, por }
  *                                               (rev = la que se leyó; si ha cambiado: error "CONFLICTO: …")
- *    historico { email }                     -> [{ id, nombre, fecha, anio }]  (.pptx hechos a mano)
- *    leerPptx  { email, id }                 -> { slides:[{ oculta, textos:[…], tablas:[[[celda]]] }] }
+ *    historico { email }                     -> [{ id, nombre, fecha, anio, autogenerado }]
+ *                                               (.pptx hechos a mano y los autogenerados por la web)
+ *    leerPptx  { email, id }                 -> { slides:[{ oculta, textos:[…], tablas:[[[celda]]],
+ *                                                 cajas:[{ x, y, w, h, texto, relleno }] }] }  (pulgadas)
+ *                                               o { doc } si es autogenerada y se guardaron sus datos al subirla
  *    estado  { fecha:'2026-09-28', quien? }  -> { existe, nombre, ruta, url?, modificado?, carpetaUrl? }
- *    subir   { fecha, email, base64, quien? } -> { accion:'creada'|'actualizada', nombre, ruta, url, carpetaUrl, modificado }
+ *    subir   { fecha, email, base64, quien?, doc? } -> { accion:'creada'|'actualizada', nombre, ruta, url, carpetaUrl, modificado }
+ *            doc = los datos con los que se generó: se guardan en _datos_web/presentacion_<id del .pptx>.json
+ *            para poder copiarla tal cual desde «Copiar de… → Presentación de Drive».
  *            quien = id del coordinador (su presentación) o vacío (la combinada).
  *            Con la combinada, borrar:[{ quien, fecha }] -> las presentaciones
  *            independientes que incluye van a la papelera (+ borradas:[nombres]).
@@ -105,7 +112,7 @@ function _serveSeguimiento(p) {
       case 'estado': data = estado(p.fecha, _quien(p.quien)); break;
       case 'subir':
         _exigirCoordinador(p.email);
-        data = subir(p.fecha, p.base64, _quien(p.quien));
+        data = subir(p.fecha, p.base64, _quien(p.quien), p.doc);
         // Al combinar, las independientes que entran en la combinada sobran.
         if (!p.quien && Array.isArray(p.borrar)) data.borradas = borrarIndependientes(p.borrar);
         break;
@@ -213,7 +220,7 @@ function estado(fechaIso, quien) {
   return out;
 }
 
-function subir(fechaIso, base64, quien) {
+function subir(fechaIso, base64, quien, doc) {
   var f = _fecha(fechaIso);
   var b64 = String(base64 || '').replace(/^data:[^,]*,/, '');
   if (!b64) throw new Error('No llega la presentación.');
@@ -239,6 +246,15 @@ function subir(fechaIso, base64, quien) {
     } else {
       fich = carpeta.createFile(blob);
       accion = 'creada';
+    }
+    // Sus datos, para poder copiarla después tal cual («Copiar de…»).
+    if (doc && typeof doc === 'object') {
+      try {
+        var datosF = _carpetaDatos(), nDatos = 'presentacion_' + fich.getId() + '.json';
+        var ya = _fichero(datosF, nDatos), txt = JSON.stringify({ doc: doc, guardado: new Date().toISOString() });
+        if (ya) ya.setContent(txt); else datosF.createFile(nDatos, txt, 'application/json');
+        CacheService.getScriptCache().remove('pptx2:' + fich.getId());
+      } catch (e) { Logger.log('Datos de la presentación: ' + e); }
     }
     return {
       accion: accion,
@@ -413,10 +429,10 @@ function guardar(id, semana, doc, rev, quien, forzar) {
 }
 
 // ── Histórico: presentaciones hechas a mano ─────────────────────────────────
-/** .pptx de las carpetas de año (y mes) que no son autogenerados (caché 10 min). */
+/** .pptx de las carpetas de año (y mes): hechos a mano y autogenerados (caché 10 min). */
 function historico() {
   var cache = CacheService.getScriptCache();
-  var c = cache.get('seg:historico');
+  var c = cache.get('seg:historico2');
   if (c) return JSON.parse(c);
   var out = [];
   var buscar = function (carpeta, prof) {
@@ -424,10 +440,11 @@ function historico() {
     while (fs.hasNext()) {
       var f = fs.next();
       var n = f.getName();
-      if (f.isTrashed() || !/\.pptx$/i.test(n) || /Autogenerado/i.test(n)) continue;
-      var m = /(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/.exec(n);
-      var fecha = m ? m[3] + '-' + _n2(Number(m[2])) + '-' + _n2(Number(m[1])) : Utilities.formatDate(f.getLastUpdated(), 'Europe/Madrid', 'yyyy-MM-dd');
-      out.push({ id: f.getId(), nombre: n, fecha: fecha, anio: Number(fecha.slice(0, 4)) });
+      if (f.isTrashed() || !/\.pptx$/i.test(n)) continue;
+      // "28/09/2026 …" (a mano) o "… - 13/10/26 - Autogenerado.pptx" (año con 2 cifras).
+      var m = /(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4}|\d{2})(?!\d)/.exec(n);
+      var fecha = m ? (m[3].length === 2 ? '20' + m[3] : m[3]) + '-' + _n2(Number(m[2])) + '-' + _n2(Number(m[1])) : Utilities.formatDate(f.getLastUpdated(), 'Europe/Madrid', 'yyyy-MM-dd');
+      out.push({ id: f.getId(), nombre: n, fecha: fecha, anio: Number(fecha.slice(0, 4)), autogenerado: /Autogenerado/i.test(n) });
     }
     if (prof < 2) {
       var ds = carpeta.getFolders();
@@ -439,7 +456,7 @@ function historico() {
   };
   buscar(DriveApp.getFolderById(S_CONFIG.CARPETA_RAIZ_ID), 0);
   out.sort(function (a, b) { return a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0; });
-  try { cache.put('seg:historico', JSON.stringify(out), 600); } catch (e) {}
+  try { cache.put('seg:historico2', JSON.stringify(out), 600); } catch (e) {}
   return out;
 }
 
@@ -447,8 +464,12 @@ function historico() {
 function leerPptx(id) {
   id = String(id || '');
   if (!historico().some(function (x) { return x.id === id; })) throw new Error('Esa presentación no está en el histórico de Seguimiento.');
+  // Autogenerada con sus datos guardados al subirla: esos datos, tal cual.
+  var datos = _fichero(_carpetaDatos(), 'presentacion_' + id + '.json');
+  var d = datos ? _leerFichero(datos) : null;
+  if (d && d.doc) return { doc: d.doc };
   var cache = CacheService.getScriptCache();
-  var c = cache.get('pptx:' + id);
+  var c = cache.get('pptx2:' + id);
   if (c) return JSON.parse(c);
   var blob = DriveApp.getFileById(id).getBlob().setContentType('application/zip');
   var partes = {};
@@ -467,7 +488,7 @@ function leerPptx(id) {
     return '';
   });
   var out = { slides: slides };
-  try { cache.put('pptx:' + id, JSON.stringify(out), 3600); } catch (e) {}
+  try { cache.put('pptx2:' + id, JSON.stringify(out), 3600); } catch (e) {}
   return out;
 }
 
@@ -514,7 +535,23 @@ function _parseSlide(xml) {
     if (t) textos.push(t);
     return '';
   });
-  return { oculta: /<p:sld\b[^>]*\sshow="0"/.test(xml), textos: textos, tablas: tablas };
+  // Cuadros con su posición (pulgadas) y relleno: las presentaciones
+  // autogeneradas no usan tablas, cada dato es un cuadro en su columna.
+  var EMU = 914400, cajas = [];
+  resto.replace(/<p:sp>([\s\S]*?)<\/p:sp>/g, function (_, sp) {
+    var off = /<a:off\b[^>]*>/.exec(sp), ext = /<a:ext\b[^>]*>/.exec(sp);
+    if (!off || !ext) return '';
+    var spPr = (/<p:spPr>([\s\S]*?)<\/p:spPr>/.exec(sp) || ['', ''])[1];
+    var relleno = (/^\s*(?:<a:xfrm[\s\S]*?<\/a:xfrm>)?\s*(?:<a:prstGeom[\s\S]*?<\/a:prstGeom>|<a:prstGeom[^>]*\/>)?\s*<a:solidFill>\s*<a:srgbClr val="([0-9A-Fa-f]{6})"/.exec(spPr) || [])[1] || '';
+    var body = /<p:txBody>([\s\S]*?)<\/p:txBody>/.exec(sp);
+    var texto = body ? _parrafos(body[1]).join('\n').trim() : '';
+    if (!texto && !relleno) return '';
+    var r2 = function (v) { return Math.round(Number(v) / EMU * 100) / 100; };
+    cajas.push({ x: r2(_attr(off[0], 'x')), y: r2(_attr(off[0], 'y')), w: r2(_attr(ext[0], 'cx')), h: r2(_attr(ext[0], 'cy')),
+      texto: texto, relleno: relleno.toUpperCase() });
+    return '';
+  });
+  return { oculta: /<p:sld\b[^>]*\sshow="0"/.test(xml), textos: textos, tablas: tablas, cajas: cajas };
 }
 
 // ── Permisos: solo coordinación ─────────────────────────────────────────────

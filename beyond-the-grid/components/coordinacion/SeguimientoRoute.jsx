@@ -522,7 +522,8 @@ function Presentacion({ datos, quien, autor, borrar, backendUrl, trUrl, email, c
       const d = await leerRespuesta(await fetch(backendUrl, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ action: "subir", fecha, email, base64, quien, ...(borrar ? { borrar } : {}) }),
+        // doc: sus datos, para poder copiarla tal cual más adelante («Copiar de…»).
+        body: JSON.stringify({ action: "subir", fecha, email, base64, quien, doc: limpiar(datos), ...(borrar ? { borrar } : {}) }),
       }));
       setGen({ fase: "drive", avisoTR, ...d });
       setDrive({ existe: true, nombre: d.nombre, ruta: d.ruta, url: d.url, carpetaUrl: d.carpetaUrl, modificado: d.modificado });
@@ -648,11 +649,12 @@ function CamposReunion({ datos, set }) {
   );
 }
 
-// ── Copiar de otra semana / presentación antigua ────────────────────────────
+// ── Copiar de otra semana / presentación de Drive ───────────────────────────
 /* Trae proyectos, incidencias y traspasos de:
      - otra semana (la tuya o la pestaña de otro coordinador),
-     - una presentación antigua de Drive (las hechas a mano, desde 2024: el
-       backend lee el .pptx e importarPptx.js lo convierte),
+     - una presentación de Drive: las hechas a mano (desde 2024) y las
+       autogeneradas por esta página (el backend lee el .pptx e importarPptx.js
+       lo convierte; de las subidas con sus datos, se copian exactas),
      - el borrador que se usaba antes en este navegador o el ejemplo del 28/09.
    Se marcan solos los proyectos y traspasos cuyo responsable NFQ coincide con
    el nombre de la pestaña. Se añaden, o sustituyen lo que hay si se marca. */
@@ -744,7 +746,7 @@ function CopiarDe({ nombre, idActual, comun, onCopiar, onCerrar }) {
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <span className="mr-1 text-[10px] font-bold uppercase tracking-wide text-sand/50">Copiar de</span>
         <Opc v="semana" disabled={!conDatos.length}>Otra semana</Opc>
-        <Opc v="drive">Presentación antigua (Drive)</Opc>
+        <Opc v="drive">Presentación de Drive</Opc>
         {viejo && <Opc v="borrador">Borrador anterior de este navegador</Opc>}
         <Opc v="ejemplo">Ejemplo 28/09/2026</Opc>
       </div>
@@ -767,7 +769,7 @@ function CopiarDe({ nombre, idActual, comun, onCopiar, onCerrar }) {
         {origen === "drive" && (
           hist?.error ? <p className="text-xs font-bold text-mandarin">No se pudo listar el histórico: {hist.error}</p>
             : !hist ? <p className="text-xs text-sand/50">Buscando presentaciones en Drive…</p>
-              : !hist.lista.length ? <p className="text-xs text-sand/50">No hay presentaciones antiguas en la carpeta de Drive.</p>
+              : !hist.lista.length ? <p className="text-xs text-sand/50">No hay presentaciones en la carpeta de Drive.</p>
                 : (
                   <>
                     <Campo etiqueta="Año">
@@ -1201,7 +1203,7 @@ export default function SeguimientoRoute() {
           </h1>
           <p className="mt-3 max-w-3xl text-pretty text-sm text-sand/65">
             Por semana de reunión, cada coordinador tiene su pestaña con sus proyectos, incidencias y traspasos, y genera su presentación .pptx (plantilla BBVA × NFQ) en la carpeta de Drive.
-            Una semana nueva arranca con lo de la anterior; con «Copiar de…» se puede traer cualquier semana o una presentación antigua de Drive.
+            Una semana nueva arranca con lo de la anterior; con «Copiar de…» se puede traer cualquier semana o una presentación de Drive (hecha a mano o autogenerada).
             En <b>Resumen</b> se combinan las de todos. Todo se guarda solo y lo ve el resto de coordinación.
           </p>
         </header>
