@@ -245,7 +245,6 @@ function TareaEditor({ t, set, quitar, subir }) {
           <BotonQuitar onClick={quitar} titulo="Quitar tarea" />
         </div>
       </div>
-      {!fechaOk && <p className="mt-1.5 text-[11px] text-mandarin">Fecha no reconocida: usa 31/07/2026, 2026-07-31 o Q4.</p>}
     </div>
   );
 }
