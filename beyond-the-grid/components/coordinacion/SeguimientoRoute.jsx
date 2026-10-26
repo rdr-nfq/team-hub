@@ -46,17 +46,8 @@ const leerBorrador = () => {
   }
 };
 
-// Fecha límite: ISO, trimestre ("Q4", "Q1 2027") o vacía. DD/MM/AAAA se convierte a ISO.
+// Fecha límite: ISO, trimestre ("Q4", "Q1 2027") o vacía.
 const RE_FECHA = /^(\d{4}-\d{2}-\d{2}|Q[1-4](\s*\d{4})?)$/i;
-const normalizarFecha = (v) => {
-  const t = String(v || "").trim();
-  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/.exec(t);
-  if (m) {
-    const anio = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
-    return toISO(new Date(anio, Number(m[2]) - 1, Number(m[1])));
-  }
-  return /^q/i.test(t) ? t.toUpperCase() : t;
-};
 
 /* Trimestres del selector del Gantt: un año antes y después del de la
    reunión. "" = automático (sigue a la fecha de la reunión). */
@@ -170,9 +161,44 @@ function BotonAnadir({ onClick, children }) {
   );
 }
 
+/* Fecha límite: selector de fecha; con el botón «Q» pasa a trimestre (Q4,
+   Q1 2027…), que el Gantt pinta «en espera» hasta que se concrete el día. */
+function FechaLimite({ value, onChange }) {
+  const v = String(value || "").trim();
+  const esQ = /^q/i.test(v);
+  const [modoQ, setModoQ] = useState(esQ);
+  useEffect(() => { if (v) setModoQ(esQ); }, [v, esQ]); // vacía: se queda en el modo elegido
+  const anio = new Date().getFullYear();
+  const trimestres = [1, 2, 3, 4].map((q) => `Q${q}`).concat([1, 2, 3, 4].map((q) => `Q${q} ${anio + 1}`));
+  if (esQ && !trimestres.includes(v.toUpperCase())) trimestres.unshift(v.toUpperCase());
+  const iso = RE_FECHA.test(v) && !esQ ? v : "";
+  const cambiaModo = () => {
+    setModoQ(!modoQ);
+    onChange("");
+  };
+  return (
+    <div className="flex gap-1">
+      {modoQ ? (
+        <select value={esQ ? v.toUpperCase() : ""} onChange={(e) => onChange(e.target.value)} className={`${FIELD} min-w-0 flex-1`}>
+          <option value="">—</option>
+          {trimestres.map((q) => <option key={q} value={q}>{q}</option>)}
+        </select>
+      ) : (
+        <input type="date" value={iso} onChange={(e) => onChange(e.target.value)} className={`${FIELD} min-w-0 flex-1`} />
+      )}
+      <button
+        type="button" onClick={cambiaModo}
+        title={modoQ ? "Poner un día" : "Poner un trimestre (sin día concreto)"}
+        className={`${FIELD} shrink-0 px-2 text-[11px] font-bold ${modoQ ? "text-serene" : "text-sand/60"} hover:text-serene`}
+      >
+        {modoQ ? "Día" : "Q"}
+      </button>
+    </div>
+  );
+}
+
 // ── Tarea ───────────────────────────────────────────────────────────────────
 function TareaEditor({ t, set, quitar, subir }) {
-  const fechaOk = !t.fecha || RE_FECHA.test(String(t.fecha).trim());
   return (
     <div className="rounded-xl border border-white/10 bg-midnight/40 p-3">
       <div className="grid gap-2 sm:grid-cols-12">
@@ -189,12 +215,7 @@ function TareaEditor({ t, set, quitar, subir }) {
           <input type="date" value={t.inicio || ""} onChange={(e) => set({ inicio: e.target.value || undefined })} className={`${FIELD} w-full`} />
         </Campo>
         <Campo etiqueta="Fecha límite" className="sm:col-span-2">
-          <Txt
-            value={t.fecha} onChange={(v) => set({ fecha: v })}
-            onBlur={(e) => set({ fecha: normalizarFecha(e.target.value) })}
-            placeholder="31/07/2026 o Q4"
-            className={fechaOk ? "" : "border-mandarin/70"}
-          />
+          <FechaLimite value={t.fecha} onChange={(v) => set({ fecha: v })} />
         </Campo>
         <Campo etiqueta="Asignación" className="sm:col-span-2">
           <Txt value={t.asignacion} onChange={(v) => set({ asignacion: v })} />
@@ -1252,7 +1273,7 @@ export default function SeguimientoRoute() {
         )}
 
         <p className="mt-8 text-[11px] text-sand/35">
-          Estados: {ESTADOS.map((e) => ESTADO[e.id].label).join(" · ")}. Fecha límite admite día (31/07/2026) o trimestre (Q4, Q1 2027).
+          Estados: {ESTADOS.map((e) => ESTADO[e.id].label).join(" · ")}. Fecha límite: un día del calendario o, con el botón «Q», un trimestre (Q4, Q1 2027).
         </p>
       </div>
     </main>
