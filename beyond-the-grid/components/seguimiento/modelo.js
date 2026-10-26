@@ -65,12 +65,15 @@ export const FASES_GANTT = ["analisis", "desarrollo", "pruebas", "implantacion",
 export const EN_ESPERA = { id: "espera", label: "En espera", color: COLOR.gray3 };
 
 export const ESTADOS = [
+  { id: "sin_iniciar", label: "Sin empezar", color: COLOR.gray3 },
   { id: "en_plazo", label: "En plazo", color: COLOR.lime },
-  { id: "en_curso", label: "En curso", color: COLOR.serene },
+  { id: "pendiente_validacion", label: "Pendiente de validación", color: COLOR.serene },
   { id: "en_riesgo", label: "En riesgo", color: COLOR.mandarin },
-  { id: "sin_iniciar", label: "Sin iniciar", color: COLOR.gray3 },
 ];
 export const ESTADO = Object.fromEntries(ESTADOS.map((e) => [e.id, e]));
+/** Estado válido de una tarea: el antiguo «En curso» pasa a «En plazo»;
+    vacío o desconocido, «Sin empezar». */
+export const estadoTarea = (id) => (id === "en_curso" ? "en_plazo" : ESTADO[id] ? id : "sin_iniciar");
 
 export const TIPOS_TRASPASO = [
   { id: "ok_usuario", label: "falta el OK de usuario (pruebas)", color: COLOR.canary },
@@ -190,16 +193,12 @@ export const gruposPorInterno = (proyectos) => {
   return grupos;
 };
 
-/** Resumen de un proyecto: "6 tareas · 4 al 100 % · 1 en riesgo · Asignación: Marta". */
+/** Línea bajo el título de un proyecto: "Asignación: Marta y Pablo" (sin
+    recuento de tareas; "" si no hay nadie asignado). */
 export const resumenProyecto = (p) => {
   const ts = p.tareas || [];
-  const hechas = ts.filter(completa).length;
-  const riesgo = ts.filter((t) => t.estado === "en_riesgo").length;
   const asignados = [...new Set([p.responsable, ...ts.map((t) => t.asignacion)].filter(Boolean))];
-  const partes = [`${ts.length} ${ts.length === 1 ? "tarea" : "tareas"}`, `${hechas} al 100 %`];
-  if (riesgo) partes.push(`${riesgo} en riesgo`);
-  if (asignados.length) partes.push(`Asignación: ${enumerar(asignados)}`);
-  return partes.join(" · ");
+  return asignados.length ? `Asignación: ${enumerar(asignados)}` : "";
 };
 
 /** Cifras globales de la reunión (portada, separadores y "Cifras clave"). */

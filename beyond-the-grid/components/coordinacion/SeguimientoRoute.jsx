@@ -10,7 +10,7 @@ import { IconFolder, IconCheck } from "../icons";
 import { EJEMPLO } from "../seguimiento/ejemplo";
 import {
   FASES, ESTADOS, ESTADO, TIPOS_TRASPASO, TIPOS_INCIDENCIA, ICONOS,
-  cifras, nombreFichero, rutaDrive, fechaLarga, toISO, resumenProyecto,
+  cifras, nombreFichero, rutaDrive, fechaLarga, toISO, resumenProyecto, estadoTarea,
   trimestreDe, sumarTrimestres, etiquetaTrimestre, trimestreGantt,
   docVacio, combinarDocs, qTimeReport, resumenTimeReport,
 } from "../seguimiento/modelo";
@@ -71,9 +71,9 @@ const limpiar = (d) => ({
   ...d,
   proyectos: d.proyectos.map((p) => ({
     ...p,
-    tareas: (p.tareas || []).map((t) => ({ ...t, comentarios: sinVacias(t.comentarios) })),
+    tareas: (p.tareas || []).map((t) => ({ ...t, estado: estadoTarea(t.estado), comentarios: sinVacias(t.comentarios) })),
   })),
-  incidencias: (d.incidencias || []).map((i) => ({ ...i, detalle: sinVacias(i.detalle) })),
+  incidencias: (d.incidencias || []).map((i) => ({ ...i, estado: estadoTarea(i.estado), detalle: sinVacias(i.detalle) })),
 });
 
 /** PNG de public/seguimiento -> "image/png;base64,..." (formato de pptxgenjs). */
@@ -228,7 +228,7 @@ function TareaEditor({ t, set, quitar, subir }) {
           />
         </Campo>
         <Campo etiqueta="Estado" className="sm:col-span-2">
-          <Sel value={t.estado} onChange={(v) => set({ estado: v })} opciones={ESTADOS} />
+          <Sel value={estadoTarea(t.estado)} onChange={(v) => set({ estado: v })} opciones={ESTADOS} />
         </Campo>
         <Campo etiqueta="Comentarios (uno por línea)" className="sm:col-span-7">
           <Area value={t.comentarios} onChange={(v) => set({ comentarios: v })} />
@@ -267,7 +267,7 @@ function ProyectoEditor({ p, idx, total, abierto, toggle, upd, mover }) {
               {p.anexo && <span className="ml-2 rounded-full border border-white/15 px-2 py-0.5 align-middle font-sans text-[10px] font-bold uppercase text-sand/50">Anexo</span>}
               {riesgo && <span className={`ml-2 align-middle font-sans text-[11px] font-bold ${TEXT.mandarin}`}>● en riesgo</span>}
             </span>
-            <span className="block truncate text-[11.5px] text-sand/50">{p.interno || "—"} · {resumenProyecto(p)}</span>
+            <span className="block truncate text-[11.5px] text-sand/50">{[p.interno || "—", resumenProyecto(p)].filter(Boolean).join(" · ")}</span>
           </span>
         </button>
         <div className="flex shrink-0 items-center gap-1">
@@ -977,7 +977,7 @@ function EditorPestana({ id, nombre, esMia, t, previa, upd, guardar, recargar, c
                 </Campo>
                 <Campo etiqueta="Estado" className="sm:col-span-2">
                   {conEstado
-                    ? <Sel value={it.estado} onChange={(v) => set({ estado: v })} opciones={ESTADOS} />
+                    ? <Sel value={estadoTarea(it.estado)} onChange={(v) => set({ estado: v })} opciones={ESTADOS} />
                     : <p className="px-2 py-1.5 text-sm text-sand/40">{it.tipo === "bloqueada" ? "Bloqueada" : "—"}</p>}
                 </Campo>
                 <Campo etiqueta="Título" className="sm:col-span-5">
@@ -997,7 +997,7 @@ function EditorPestana({ id, nombre, esMia, t, previa, upd, guardar, recargar, c
             );
           })}
           {!(datos.incidencias || []).length && <EmptyCard>Sin incidencias ni tareas abiertas o bloqueadas.</EmptyCard>}
-          <BotonAnadir onClick={() => upd((d) => (d.incidencias ||= []).push({ id: uid("i"), tipo: "incidencia", estado: "en_curso", titulo: "", detalle: [] }))}>
+          <BotonAnadir onClick={() => upd((d) => (d.incidencias ||= []).push({ id: uid("i"), tipo: "incidencia", estado: "en_plazo", titulo: "", detalle: [] }))}>
             Añadir incidencia / tarea
           </BotonAnadir>
         </div>

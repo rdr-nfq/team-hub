@@ -58,13 +58,13 @@ const semanaSiguiente = () => {
         comentarios: ["Reuniones con negocio de Brasil para cerrar el alcance de contrapartidas, cuentas y métodos de liquidación locales", "Inventario de interfaces afectadas"] },
       { id: "n2", fase: "analisis", nombre: "Diseño técnico", fecha: "2026-09-11", asignacion: "Chema", avance: 100, estado: "en_plazo",
         comentarios: ["Modelo de datos para entidades brasileñas (CNPJ) y validaciones asociadas"] },
-      { id: "n3", fase: "desarrollo", sufijo: "Contrapartidas", nombre: "Alta y mantenimiento", fecha: "2026-10-02", asignacion: "Chema", avance: 85, estado: "en_curso",
+      { id: "n3", fase: "desarrollo", sufijo: "Contrapartidas", nombre: "Alta y mantenimiento", fecha: "2026-10-02", asignacion: "Chema", avance: 85, estado: "en_plazo",
         comentarios: ["Nuevos campos CNPJ y validación del dígito de control", "Adaptación de la ventana de contrapartidas", "Publicación en el servicio online de contrapartidas para los consumidores de Securities"] },
       { id: "n4", fase: "desarrollo", sufijo: "Liquidaciones", nombre: "Instrucciones de liquidación", fecha: "2026-10-16", asignacion: "Chema", avance: 40, estado: "en_riesgo",
         comentarios: ["Nuevos métodos de liquidación locales (SELIC, CETIP)", "Dependencia con el equipo de Murex para el mapeo de cuentas: pendiente de respuesta desde el 22/09"] },
-      { id: "n5", fase: "desarrollo", sufijo: "Interfaces", nombre: "Ficheros de salida", fecha: "2026-10-16", asignacion: "Pablo", avance: 30, estado: "en_curso",
+      { id: "n5", fase: "desarrollo", sufijo: "Interfaces", nombre: "Ficheros de salida", fecha: "2026-10-16", asignacion: "Pablo", avance: 30, estado: "en_plazo",
         comentarios: ["Adaptación de la extracción genérica", "Nuevo fichero diario para el regulador local"] },
-      { id: "n6", fase: "pruebas", nombre: "Pruebas unitarias", fecha: "2026-10-23", asignacion: "Chema", avance: 10, estado: "en_curso", comentarios: ["Pruebas unitarias de contrapartidas y liquidaciones"] },
+      { id: "n6", fase: "pruebas", nombre: "Pruebas unitarias", fecha: "2026-10-23", asignacion: "Chema", avance: 10, estado: "en_plazo", comentarios: ["Pruebas unitarias de contrapartidas y liquidaciones"] },
       { id: "n7", fase: "pruebas", nombre: "Pruebas integradas", fecha: "2026-11-06", asignacion: "Pablo", avance: 0, estado: "sin_iniciar", comentarios: ["Pruebas integradas con Calypso y Murex"] },
       { id: "n8", fase: "pruebas", nombre: "Pruebas de usuario", fecha: "2026-11-20", asignacion: "Chema", avance: 0, estado: "sin_iniciar", comentarios: ["UAT con el equipo de operaciones de São Paulo"] },
       { id: "n9", fase: "implantacion", nombre: "Implantación en producción", fecha: "Q4", asignacion: "Chema", avance: 0, estado: "sin_iniciar", comentarios: ["Implantación en producción", "Plan de marcha atrás"] },
@@ -74,7 +74,7 @@ const semanaSiguiente = () => {
 
   d.incidencias.push(
     { id: "i4", tipo: "incidencia", estado: "en_riesgo", titulo: "Cargador Fondos", detalle: ["Timeout en la carga masiva de más de 5.000 fondos"], icono: "warning" },
-    { id: "i5", tipo: "tarea", estado: "en_curso", titulo: "Certificados JBOSS", detalle: ["Renovación de certificados de los entornos de UAT", "Coordinar con sistemas la ventana"], icono: "tasks" },
+    { id: "i5", tipo: "tarea", estado: "en_plazo", titulo: "Certificados JBOSS", detalle: ["Renovación de certificados de los entornos de UAT", "Coordinar con sistemas la ventana"], icono: "tasks" },
   );
   d.traspasos.push(
     { id: "tr5", codigo: "2026-41", proyecto: "Eventos Corporativos", interno: "Pablo Rodríguez", nfq: "Pablo", pendiente: "Falta OK usuario post-implantación", tipo: "ok_usuario" },

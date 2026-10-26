@@ -54,7 +54,7 @@ export const EJEMPLO = {
           "El usuario que no tenga permisos de edición sobre el app script",
           "Google Sheet no puede ser repositorio de código",
         ]),
-        T("pruebas", "Pruebas unitarias", "2026-08-14", "Marta", 90, "en_curso", ["Pruebas unitarias"]),
+        T("pruebas", "Pruebas unitarias", "2026-08-14", "Marta", 90, "pendiente_validacion", ["Pruebas unitarias"]),
         T("pruebas", "Pruebas de usuario", "2026-08-20", "Marta", 100, "en_plazo", ["Pruebas usuario"]),
         T("implantacion", "", "Q4", "Marta", 0, "sin_iniciar", ["Implantación en producción"]),
       ],

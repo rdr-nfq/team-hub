@@ -21,7 +21,7 @@
 
 import {
   COLOR as C, FASE, FASES_GANTT, EN_ESPERA, ESTADO, TIPO_TRASPASO, TIPOS_TRASPASO, TIPOS_INCIDENCIA,
-  fechaLarga, fechaTarea, etiquetaFase, colorFase, nombreCorto, resumenProyecto,
+  fechaLarga, fechaTarea, etiquetaFase, colorFase, nombreCorto, resumenProyecto, estadoTarea,
   gruposPorInterno, cifras, enumerar, numTexto, semanasGantt, trimestreGantt, tramosGantt, rangoGantt,
   etiquetaSemana, nombreMes, mesSemana, parseISO, addDays, completa, quincenasTR, quincenaEnQ,
 } from "./modelo.js";
@@ -412,17 +412,18 @@ export function generarPresentacion(PptxGenJS, datos, assets, opts = {}) {
             } else {
               txt(s, "—", { x: 9.84, y, w: 0.46, h: 0.24, size: 9, color: C.gray4, valign: "middle" });
             }
-            const est = ESTADO[t.estado] || ESTADO.sin_iniciar;
+            const est = ESTADO[estadoTarea(t.estado)];
             punto(s, 11.32, y + 0.06, 0.12, est.color);
-            txt(s, est.label, { x: 11.5, y, w: 1.04, h: 0.24, size: 8.5, valign: "middle" });
+            // «Pendiente de validación» en una línea: hasta el borde y algo más pequeña.
+            txt(s, est.label, { x: 11.5, y, w: 1.3, h: 0.24, size: est.label.length > 12 ? 7.5 : 8.5, valign: "middle" });
             if (i < filas.length - 1) linea(s, 0.72, y + h - pad / 2, 11.9, 0, C.gray2);
             y += h;
           });
           const pendientes = tareas.filter((t) => !completa(t));
           s.addNotes(
-            `${p.nombre} (${[p.sdatool, p.traspaso].filter(Boolean).join(" · ")}). ${resumenProyecto(p)}.` +
+            `${p.nombre} (${[p.sdatool, p.traspaso].filter(Boolean).join(" · ")}).${resumenProyecto(p) ? ` ${resumenProyecto(p)}.` : ""}` +
               (pendientes.length
-                ? ` Pendiente: ${pendientes.map((t) => `${t.nombre || etiquetaFase(t).toLowerCase()} (${fechaTarea(t.fecha)}, ${t.avance ?? "—"} %, ${(ESTADO[t.estado] || ESTADO.sin_iniciar).label.toLowerCase()})`).join("; ")}.`
+                ? ` Pendiente: ${pendientes.map((t) => `${t.nombre || etiquetaFase(t).toLowerCase()} (${fechaTarea(t.fecha)}, ${t.avance ?? "—"} %, ${ESTADO[estadoTarea(t.estado)].label.toLowerCase()})`).join("; ")}.`
                 : ""),
           );
         },
@@ -461,7 +462,7 @@ export function generarPresentacion(PptxGenJS, datos, assets, opts = {}) {
   const etiquetaInc = (i) => {
     if (i.tipo === "incidencia") return ["INCIDENCIA", C.mandarin];
     if (i.tipo === "bloqueada") return ["TAREA BLOQUEADA", C.purple];
-    const e = ESTADO[i.estado] || ESTADO.en_plazo;
+    const e = ESTADO[estadoTarea(i.estado)];
     return [`TAREA · ${e.label.toUpperCase()}`, e.color];
   };
   const POR_PAG_INC = 6;

@@ -77,7 +77,7 @@ function estadoDe(avance, fechaISO, refISO) {
   if (avance >= 100) return "en_plazo";
   const f = parseISO(fechaISO);
   if (f && refISO && toISO(f) < refISO) return "en_riesgo";
-  return avance === 0 ? "sin_iniciar" : "en_curso";
+  return avance === 0 ? "sin_iniciar" : "en_plazo";
 }
 
 /** Columna de la cabecera que casa con re (-1 si no hay). */
@@ -180,7 +180,7 @@ export function docDesdePptx(raw, refISO) {
       for (const r of tabla.slice(1)) {
         const tit = (r[c.d] || "").replace(/\s+/g, " ").trim();
         if (!tit) continue;
-        out.incidencias.push({ id: nid("i"), tipo, estado: "en_curso", titulo: tit, detalle: c.co >= 0 ? lineasDe(r[c.co]) : [] });
+        out.incidencias.push({ id: nid("i"), tipo, estado: "en_plazo", titulo: tit, detalle: c.co >= 0 ? lineasDe(r[c.co]) : [] });
       }
     }
   }
@@ -217,7 +217,8 @@ const colDe = (cab, x) => {
 };
 const sinGuion = (t) => (String(t || "").trim() === "—" ? "" : String(t || "").trim());
 const FASE_POR_LABEL = Object.fromEntries(FASES.map((f) => [norm(f.label), f.id]));
-const ESTADO_POR_LABEL = Object.fromEntries(ESTADOS.map((e) => [norm(e.label), e.id]));
+// Con los nombres antiguos de las presentaciones ya generadas («En curso», «Sin iniciar»).
+const ESTADO_POR_LABEL = { "en curso": "en_plazo", "sin iniciar": "sin_iniciar", ...Object.fromEntries(ESTADOS.map((e) => [norm(e.label), e.id])) };
 const TRASPASO_POR_COLOR = Object.fromEntries(TIPOS_TRASPASO.map((t) => [String(t.color).toUpperCase(), t.id]));
 
 function proyectoAuto(s, pie, refISO) {
@@ -274,7 +275,7 @@ function incidenciasAuto(s) {
       .filter((c) => c !== e && c.x >= e.x - 0.05 && c.x < e.x + 3.6 && c.y > e.y + 0.1 && c.y < (siguiente ? siguiente.y - 0.1 : PIE_Y))
       .sort((a, b) => a.y - b.y);
     const tipo = e.texto === "INCIDENCIA" ? "incidencia" : e.texto === "TAREA BLOQUEADA" ? "bloqueada" : "tarea";
-    const estado = tipo === "tarea" ? ESTADO_POR_LABEL[norm(e.texto.split(" · ")[1])] || "en_curso" : "en_curso";
+    const estado = tipo === "tarea" ? ESTADO_POR_LABEL[norm(e.texto.split(" · ").slice(1).join(" · "))] || "en_plazo" : "en_plazo";
     return {
       id: nid("i"), tipo, estado,
       titulo: (dentro[0]?.texto || "").replace(/\s+/g, " ").trim(),
