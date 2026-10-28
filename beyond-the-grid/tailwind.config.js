@@ -1,11 +1,15 @@
 const ACENTOS = ["serene", "lime", "canary", "aqua", "purple", "mandarin"];
 // Texto, iconos y anillos: --t-* (en claro, Electric).
 const ACENTO_TINTA = Object.fromEntries(ACENTOS.map((c) => [c, `rgb(var(--t-${c}) / <alpha-value>)`]));
-// Bordes: --ct-* (en claro, Serene: el acento natural del fondo Sand).
-const ACENTO_LINEA = Object.fromEntries(ACENTOS.map((c) => [c, `rgb(var(--ct-${c}) / <alpha-value>)`]));
+// Bordes: --cl-* (en claro, Electric suave: --k-linea).
+const ACENTO_LINEA = Object.fromEntries(ACENTOS.map((c) => [c, ({ opacityValue }) =>
+  opacityValue === undefined || String(opacityValue).startsWith("var(")
+    ? `rgb(var(--cl-${c}) / ${opacityValue ?? 1})`
+    : `rgb(var(--cl-${c}) / calc(${opacityValue} * var(--k-linea)))`,
+]));
 /* Fondos: un relleno SÓLIDO (bg-lime: barras, puntos, botones) es el acento
-   BBVA (--c-*); un TINTE (bg-lime/10, con alfa) es decoración: --ct-* (en
-   claro, Serene) con el alfa reforzado por --k-bg. */
+   BBVA (--c-*); un TINTE (bg-lime/10, con alfa) es --ct-* (también el acento)
+   con el alfa reforzado en claro por --k-bg. */
 const ACENTO_FONDO = Object.fromEntries(ACENTOS.map((c) => [c, ({ opacityValue }) =>
   opacityValue === undefined || String(opacityValue).startsWith("var(")
     ? `rgb(var(--c-${c}) / ${opacityValue ?? 1})`
@@ -40,13 +44,22 @@ module.exports = {
         mandarin: "rgb(var(--c-mandarin) / <alpha-value>)",
         white: "rgb(var(--c-white) / <alpha-value>)",
       },
-      /* Norma BBVA en claro (fondo Sand): texto e iconos en Electric, Serene
-         como único acento natural, y lime/mandarin/canary… solo para
-         subrayar DATOS (barras, puntos de estado). Por eso un acento lee
-         variables distintas según el uso (app/globals.css): texto/iconos/
-         anillos -> --t-*, bordes y tintes -> --ct-*, rellenos sólidos -> --c-*.
-         En oscuro las tres son el mismo acento. */
+      /* Norma BBVA en claro (fondo Sand): el acento de cada sección como
+         RELLENO, y el texto, los iconos y las líneas en Electric. Por eso un
+         acento lee una variable distinta según el uso (app/globals.css):
+         texto/iconos/anillos -> --t-*, bordes -> --cl-*, tintes -> --ct-*,
+         rellenos sólidos -> --c-*. En oscuro todas son el mismo acento. */
       textColor: ACENTO_TINTA,
+      /* bg-white/[0.055]… (cristal de las tarjetas): en claro, blanco sólido
+         (--k-tarjeta multiplica el alfa). Bordes y texto «white» siguen con
+         --c-white (Gray 5 en claro). */
+      backgroundColor: {
+        ...ACENTO_FONDO,
+        white: ({ opacityValue }) =>
+          opacityValue === undefined || String(opacityValue).startsWith("var(")
+            ? `rgb(var(--c-white) / ${opacityValue ?? 1})`
+            : `rgb(var(--c-tarjeta) / min(1, calc(${opacityValue} * var(--k-tarjeta))))`,
+      },
       fill: ACENTO_TINTA,
       stroke: ACENTO_TINTA,
       borderColor: ACENTO_LINEA,
@@ -54,7 +67,6 @@ module.exports = {
       outlineColor: ACENTO_TINTA,
       divideColor: ACENTO_TINTA,
       textDecorationColor: ACENTO_TINTA,
-      backgroundColor: ACENTO_FONDO,
     },
   },
   plugins: [],

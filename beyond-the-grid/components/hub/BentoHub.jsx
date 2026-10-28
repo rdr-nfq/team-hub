@@ -9,7 +9,7 @@ import { useLinks } from "@/lib/links";
 import { useAuth } from "../chrome/AuthGate";
 import { rgba, solido } from "@/lib/ui";
 import { PALETTE } from "@/lib/palette";
-import { useAccentMap } from "@/lib/theme";
+import { useAccentMap, useTheme } from "@/lib/theme";
 import { EQUIPO } from "@/lib/equipos";
 import {
   IconBook, IconLink, IconUtensils, IconCalendar, IconRefresh, IconClock,
@@ -242,8 +242,11 @@ function FeatureCard({ item, accent, delay }) {
 
 function TypeColumn({ sec, delay, selector }) {
   const mapAccent = useAccentMap();
+  const { theme } = useTheme();
+  // En claro, la columna lleva el tinte de su sección (las tarjetas, blancas encima).
+  const fondo = theme === "light" ? { background: rgba(sec.color, 0.09) } : null;
   return (
-    <section aria-labelledby={`col-${sec.id}`} className="flex min-h-0 flex-col rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 backdrop-blur-sm" style={{ boxShadow: `inset 0 2px 0 ${rgba(sec.color, 0.7)}` }}>
+    <section aria-labelledby={`col-${sec.id}`} className="flex min-h-0 flex-col rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 backdrop-blur-sm" style={{ boxShadow: `inset 0 4px 0 ${solido(sec.color)}`, ...fondo }}>
       <div className="mb-4 flex items-center gap-2 px-1">
         <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: solido(sec.color) }} />
         <span className="font-display text-xs font-bold tabular-nums" style={{ color: mapAccent(sec.color) }}>{sec.n}</span>

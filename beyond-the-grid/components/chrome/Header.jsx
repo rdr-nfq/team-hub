@@ -4,6 +4,7 @@ import { Link } from "next-view-transitions";
 import { usePathname } from "next/navigation";
 import { useAuth } from "./AuthGate";
 import { useTheme } from "@/lib/theme";
+import { seccionDe } from "@/lib/seccion";
 
 /**
  * Cabecera fija (glass). Sesión + cerrar sesión + logo BBVA.
@@ -41,11 +42,14 @@ export default function Header() {
   const match = SUBTITLES.find(([base]) => p.startsWith(base));
   const backHref = match ? "/" : null;
   const subtitle = match ? match[1] : "RDR · Market Abuse · Comms Surveillance · BBVA × NFQ";
+  const seccion = seccionDe(p);
 
   return (
     // Barra sólida con blur: el contenido pasa POR DEBAJO al hacer scroll,
     // nunca se superpone con el título/sesión.
-    <header className="fixed inset-x-0 top-0 z-40 border-b border-white/[0.06] bg-midnight">
+    // En claro es una «isla» Electric (globals.css: .rdr-isla) con la paleta
+    // del oscuro encima: Electric como superficie de marca, no solo texto.
+    <header className="rdr-isla fixed inset-x-0 top-0 z-40 border-b border-white/[0.06] bg-midnight">
       <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-5 py-3 sm:px-6">
       <div className="flex min-w-0 items-center gap-3">
         {backHref && (
@@ -100,14 +104,19 @@ export default function Header() {
         >
           Salir
         </button>
-        {/* Logo oficial BBVA — regla dura nº4: WHITE sobre Midnight, RGB sobre claros. */}
+        {/* Logo oficial BBVA — regla dura nº4: WHITE sobre Midnight y sobre
+            Electric (la cabecera en claro). */}
         <img
-          src={theme === "light" ? "/team-hub/logos/bbva-rgb.png" : "/team-hub/logos/bbva-white.png?v=2"}
+          src="/team-hub/logos/bbva-white.png?v=2"
           alt="BBVA"
           className="h-6 w-auto md:h-7"
         />
       </div>
       </div>
+      {/* Franja de la sección (solo en claro; en oscuro ya la marcan los acentos). */}
+      {theme === "light" && seccion && (
+        <div aria-hidden className="h-1.5 w-full" style={{ background: seccion.color }} />
+      )}
     </header>
   );
 }

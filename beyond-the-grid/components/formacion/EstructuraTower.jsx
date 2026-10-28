@@ -226,7 +226,8 @@ export default function EstructuraTower({ estados, activeLevel }) {
     <>
       <div aria-hidden className="pointer-events-none fixed inset-0 z-0">
         <Canvas frameloop={frameloop} dpr={[1, 1.75]} camera={{ position: [0, 0, 9], fov: 55 }} gl={{ antialias: true, powerPreference: "high-performance" }}>
-          <color attach="background" args={[light ? "#F7F8F8" : "#070E46"]} />
+          {/* En claro, transparente: se ve el fondo Sand y la banda de la sección. */}
+          {!light && <color attach="background" args={["#070E46"]} />}
           <Cloud estados={estados} reduce={reduce} theme={theme} />
         </Canvas>
       </div>

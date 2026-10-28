@@ -1,6 +1,9 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { LinksProvider, useLinks } from "@/lib/links";
+import { seccionDe } from "@/lib/seccion";
+import { rgba } from "@/lib/ui";
 import { ThemeProvider, TemaDeCuenta, useTheme } from "@/lib/theme";
 import LoadingScreen from "./LoadingScreen";
 import AuthGate, { useAuth } from "./AuthGate";
@@ -11,6 +14,22 @@ function SincronizarTema() {
   const { email } = useAuth();
   const { getUrl } = useLinks();
   return <TemaDeCuenta email={email} url={getUrl("preferenciasBackend")} />;
+}
+
+/* Modo claro: banda del color de la sección detrás de la cabecera de cada
+   página (título y descripción), para saber dónde se está. El acento va de
+   relleno suave y el texto encima sigue en Electric (norma BBVA). */
+function BandaSeccion() {
+  const { theme } = useTheme();
+  const seccion = seccionDe(usePathname());
+  if (theme !== "light" || !seccion) return null;
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[300px]"
+      style={{ background: `linear-gradient(to bottom, ${rgba(seccion.color, 0.16)} 0%, ${rgba(seccion.color, 0.16)} 70%, transparent 100%)` }}
+    />
+  );
 }
 
 /* Logo NFQ según tema (blanco sobre Midnight, negro sobre Sand). */
@@ -36,7 +55,8 @@ export default function AppFrame({ children }) {
         <LoadingScreen />
         <AuthGate>
           <SincronizarTema />
-          <div className="relative min-h-dvh w-full">
+          <div className="relative isolate min-h-dvh w-full">
+            <BandaSeccion />
             <Header />
             {children}
             {/* Co-branding NFQ (regla nº5 CLAUDE.md: presente y menor que BBVA). */}
