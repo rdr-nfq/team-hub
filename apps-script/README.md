@@ -22,6 +22,7 @@ la URL (`lib/links.js`).
 | `guardias/` | `Codigo_Guardias.gs` | `guardias` | `/guardias`, `/guardias-gestion` | `guardiasBackend` |
 | `ofertas/` | `Codigo_Ofertas.gs` | `ofertas` | `/ofertas` | `ofertasBackend` |
 | `pases/` | `Codigo_Pases.gs`, `Avisos_Pases.gs` | `pases` | `/pases` | `pasesBackend` |
+| `preferencias/` | `Codigo_Preferencias.gs` (tema claro/oscuro recordado por cuenta) | `preferencias` | todas (botón de tema de la cabecera) | `preferenciasBackend` |
 | `retrospectiva/` | `Codigo_Retrospectiva.gs` | `retro` | `/retro` | `retroBackend` |
 | `seguimiento/` | `Codigo_Seguimiento.gs` | `seguimiento` | `/seguimiento` | `seguimientoBackend` |
 | `timereport/` | `Codigo_TimeReport.gs` (un Time Report por equipo: `equipo` = rdr · market-abuse · comms-surveillance; evidencias en `evidenciasDrive`, `evidenciasDriveMarketAbuse`, `evidenciasDriveCommsSurveillance`) | `timereport` | `/timereport`, `/timereport-gestion` | `timereportBackend` |
@@ -63,6 +64,7 @@ Seguimiento, ofertas y timereport (evidencias) trabajan con carpetas de Drive
 | `CORREO_REMITENTE` | todas | Opcional: cambia el remitente de `Correo.gs` |
 | `HUB_RESPONSABLE` | todas | Email del responsable del hub: recibe las pruebas y las respuestas a los recordatorios de comidas (por defecto, `HUB_RESPONSABLE` en `Hub.gs`) |
 | `PASES_BUZON_PRUEBAS` | pases | Buzón de pruebas del modo depuración de pases |
+| `pref:<email>` | preferencias | Las escribe la web: tema elegido por cada cuenta (no se tocan a mano) |
 | `<CLAVE>_SPREADSHEET_ID` | todas | Opcional: cambia la hoja de una app |
 
 ### Disparadores
@@ -81,7 +83,7 @@ editar el Excel (`vacacionesAlCambiarExcel`) y la caché precalentada
 2. **Configuración del proyecto** → marcar «Mostrar el archivo de manifiesto
    appsscript.json» y pegar `appsscript.json`.
 3. **Pegar todos los `.gs`**: un fichero del editor por cada `.gs` de cada
-   carpeta (16), con el mismo nombre. El orden da igual.
+   carpeta (17), con el mismo nombre. El orden da igual.
 4. **Propiedades del script** (Configuración del proyecto): copiar desde los
    proyectos antiguos `GITHUB_TOKEN`, `CLAVE_EQUIPO`, `vac:campanas` y
    `FIRMANTES_LATAM` (y las opcionales que se usen).

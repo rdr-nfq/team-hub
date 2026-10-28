@@ -1,10 +1,17 @@
 "use client";
 
-import { LinksProvider } from "@/lib/links";
-import { ThemeProvider, useTheme } from "@/lib/theme";
+import { LinksProvider, useLinks } from "@/lib/links";
+import { ThemeProvider, TemaDeCuenta, useTheme } from "@/lib/theme";
 import LoadingScreen from "./LoadingScreen";
-import AuthGate from "./AuthGate";
+import AuthGate, { useAuth } from "./AuthGate";
 import Header from "./Header";
+
+/* Tema recordado por cuenta (dentro de la sesión y de los enlaces). */
+function SincronizarTema() {
+  const { email } = useAuth();
+  const { getUrl } = useLinks();
+  return <TemaDeCuenta email={email} url={getUrl("preferenciasBackend")} />;
+}
 
 /* Logo NFQ según tema (blanco sobre Midnight, negro sobre Sand). */
 function NfqLogo() {
@@ -28,6 +35,7 @@ export default function AppFrame({ children }) {
       <LinksProvider>
         <LoadingScreen />
         <AuthGate>
+          <SincronizarTema />
           <div className="relative min-h-dvh w-full">
             <Header />
             {children}

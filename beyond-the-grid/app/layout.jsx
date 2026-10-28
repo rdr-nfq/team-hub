@@ -27,10 +27,11 @@ export default function RootLayout({ children }) {
       <html lang="es" className={`${serif.variable} ${lato.variable}`}>
         <head>
           {/* Aplica el tema guardado ANTES del primer paint (sin destello):
-              la clase activa las variables CSS del modo claro en globals.css. */}
+              el de la cuenta con sesión en este navegador o, si no, el último
+              usado (lib/theme.js). La clase activa el modo claro de globals.css. */}
           <script
             dangerouslySetInnerHTML={{
-              __html: `try{if(localStorage.getItem("rdr_theme")==="light"){var d=document.documentElement;d.classList.add("rdr-light");d.style.colorScheme="light"}}catch(e){}`,
+              __html: `try{var s=localStorage,e=s.getItem("rdr_auth_email"),t=(e&&s.getItem("rdr_theme:"+e))||s.getItem("rdr_theme");if(t==="light"){var d=document.documentElement;d.classList.add("rdr-light");d.style.colorScheme="light"}}catch(e){}`,
             }}
           />
         </head>

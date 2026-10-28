@@ -112,6 +112,10 @@
     "url": "https://script.google.com/macros/s/AKfycbwb8bJedskF2tmsusz4PdXNhtNu1V9dUxhq0QOM9n3Hc3abjolN1UO7F3pydzzp-8sy/exec",
     "note": "App \"timereport\" del proyecto único (hubBackend). La \"url\" es la del proyecto antiguo, solo como respaldo hasta configurar hubBackend. Backend Apps Script del Time Report web (/timereport y /timereport-gestion): proyectos, reparto, imputación, evidencias en Drive y recordatorio por email. Desplegar apps-script/timereport/Codigo_TimeReport.gs como aplicación web (Ejecutar como Yo, Cualquier persona), con EVIDENCIAS_FOLDER_ID en Propiedades del script, ejecutar autorizar() y crearTriggerRecordatorioTR() una vez, y pegar aquí la URL /exec."
   },
+  "preferenciasBackend": {
+    "app": "preferencias",
+    "note": "App \"preferencias\" del proyecto único (hubBackend): recuerda por cuenta el tema claro u oscuro. Código: apps-script/preferencias/Codigo_Preferencias.gs. Sin URL propia: solo funciona con hubBackend."
+  },
   "guardiasBackend": {
     "app": "guardias",
     "url": "https://script.google.com/macros/s/AKfycbxZtZ6yHiTRQ-GbDyzZv8i7u9Z3Z4nM3TszfVrq9ddFSnBn3d6jL5p8-eOSMT6DWFokVg/exec",

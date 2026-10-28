@@ -4,9 +4,18 @@
 
 /* ── Tokens por tema (tripletas RGB para que Tailwind componga el alfa).
    Oscuro (por defecto): paleta BBVA tal cual sobre Midnight.
-   Claro (html.rdr-light): fondo Sand, tinta Midnight, glass en tinta Electric
-   y acentos oscurecidos para mantener contraste AA como texto. ────────── */
+   Claro (html.rdr-light): fondo Sand y la conexión en Electric Blue: texto,
+   iconos y líneas en Electric; los acentos BBVA (sin oscurecer) solo como
+   relleno. --c-* = rellenos (bg-*), --t-* = tinta (text-, border-, ring-,
+   fill-…: tailwind.config.js), --k-bg = refuerzo del alfa de los tintes. ── */
 :root {
+  --k-bg: 1;
+  --t-serene: 133 200 255;
+  --t-lime: 136 231 131;
+  --t-canary: 255 231 97;
+  --t-aqua: 139 225 233;
+  --t-purple: 150 148 255;
+  --t-mandarin: 255 181 107;
   --c-midnight: 7 14 70; /* fondo base */
   --c-sand: 247 248 248; /* tinta principal */
   --c-white: 255 255 255; /* glass / bordes / superficies traslúcidas */
@@ -19,19 +28,21 @@
 }
 /* Modo claro = combinación "A · Sand" del manual BBVA (01-color.md):
    fondo Sand, TEXTO PRINCIPAL Electric Blue, neutros de la escala de grises
-   oficial (Gray 5 #46536D para glass/bordes/secundarios) y sin texto en
-   acentos claros sobre Sand (Serene como texto pasa a Electric). Los acentos
-   de estado (lime/mandarin/canary…) conservan su matiz en tono legible. */
+   oficial (Gray 5 #46536D para glass/bordes/secundarios). Electric/Midnight
+   son la conexión: ningún acento (lime, mandarin, canary…) va como texto,
+   icono o línea sobre claro; los acentos van de RELLENO con texto Electric
+   encima (regla 9 del CLAUDE.md), y en su color BBVA original. */
 html.rdr-light {
   --c-midnight: 247 248 248; /* bg-midnight pasa a Sand */
   --c-sand: 0 19 145; /* text-sand pasa a Electric (texto principal del manual) */
   --c-white: 70 83 109; /* glass/bordes: Gray 5 del manual (neutro, sin lavanda) */
-  --c-serene: 0 19 145; /* texto Serene sobre Sand prohibido -> Electric */
-  --c-lime: 27 122 62; /* #1B7A3E */
-  --c-canary: 180 83 9; /* #B45309 ámbar limpio */
-  --c-aqua: 14 116 144; /* #0E7490 */
-  --c-purple: 91 75 214; /* #5B4BD6 */
-  --c-mandarin: 194 65 12; /* #C2410C naranja limpio */
+  --k-bg: 2.4; /* bg-lime/10 -> 24 %: el tinte se lee como caja de color */
+  --t-serene: 0 19 145;
+  --t-lime: 0 19 145;
+  --t-canary: 0 19 145;
+  --t-aqua: 0 19 145;
+  --t-purple: 0 19 145;
+  --t-mandarin: 0 19 145;
 }
 
 /* BBVA: fondo Midnight (nunca negro puro) / Sand en claro. */
@@ -61,13 +72,13 @@ select optgroup {
 
 /* Foco visible global y consistente para navegación por teclado (a11y). */
 :focus-visible {
-  outline: 2px solid rgb(var(--c-serene));
+  outline: 2px solid rgb(var(--t-serene));
   outline-offset: 2px;
 }
 
 /* Botones-nodo del hub 3D (llevan estilo inline) -> anillo de foco por teclado. */
 .rdr-node-btn:focus-visible {
-  outline: 2px solid rgb(var(--c-serene));
+  outline: 2px solid rgb(var(--t-serene));
   outline-offset: 3px;
 }
 

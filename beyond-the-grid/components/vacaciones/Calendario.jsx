@@ -143,7 +143,7 @@ function DayCell({
   const inner = (
     <>
       {esHoy ? (
-        <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full bg-serene text-xs font-bold text-midnight">{dia}</span>
+        <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full bg-serene text-xs font-bold text-[#001391]">{dia}</span>
       ) : (
         <span className="shrink-0 pl-0.5 text-xs font-bold text-sand/60" style={numDia ? { color: numDia, opacity: personaTinta || heat?.solid ? 0.85 : undefined } : undefined}>
           {dia}

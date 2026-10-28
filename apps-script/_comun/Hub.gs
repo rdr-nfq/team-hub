@@ -6,7 +6,7 @@
    ?app=<nombre> y aquí se reparte al backend que toca:
 
      ?app=comidas · control · equipo · formaciones · guardias · ofertas ·
-          pases · retro · seguimiento · timereport · vacaciones
+          pases · preferencias · retro · seguimiento · timereport · vacaciones
 
    En links.json basta con poner la URL /exec en "hubBackend": cada clave de
    backend lleva su "app" y la web compone la URL sola.
@@ -21,7 +21,7 @@
      3. diagnosticarHub()      resumen: hojas, propiedades y disparadores.
    =========================================================================== */
 
-const HUB_APPS = ['comidas', 'control', 'equipo', 'formaciones', 'guardias', 'ofertas', 'pases', 'retro', 'seguimiento', 'timereport', 'vacaciones'];
+const HUB_APPS = ['comidas', 'control', 'equipo', 'formaciones', 'guardias', 'ofertas', 'pases', 'preferencias', 'retro', 'seguimiento', 'timereport', 'vacaciones'];
 
 /* Hojas de cálculo de cada app. Antes comidas, control y pases eran scripts
    ligados a su hoja (getActiveSpreadsheet); en un proyecto independiente hay
@@ -78,6 +78,7 @@ function _hubRepartir(e, get) {
     case 'guardias': return get ? doGetGuardias(e) : doPostGuardias(e);
     case 'ofertas': return get ? doGetOfertas(e) : doPostOfertas(e);
     case 'pases': return get ? doGetPases(e) : doPostPases(e);
+    case 'preferencias': return get ? doGetPreferencias(e) : doPostPreferencias(e);
     case 'retro': return get ? doGetRetro(e) : doPostRetro(e);
     case 'seguimiento': return get ? doGetSeguimiento(e) : doPostSeguimiento(e);
     case 'timereport': return get ? doGetTR(e) : doPostTR(e);
