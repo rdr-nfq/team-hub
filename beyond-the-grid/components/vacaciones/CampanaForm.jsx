@@ -29,7 +29,7 @@ export const solsDeSemana = (sols, campanaId, lunes, persona) =>
   (sols || []).filter((s) => s.campana === campanaId && (!persona || s.persona === persona)
     && ["PENDIENTE", "APROBADA"].includes(s.estado) && !(s.hasta < lunes || s.desde > mas(lunes, 6)));
 
-export default function CampanaForm({ campana, datos, post, onHecho }) {
+export default function CampanaForm({ campana, datos, post, onHecho, sinMarco = false }) {
   const [sel, setSel] = useState(() => new Set());
   const [desc, setDesc] = useState("");
   const [estado, setEstado] = useState({ fase: "form" }); // form | enviando | ok | error
@@ -67,8 +67,8 @@ export default function CampanaForm({ campana, datos, post, onHecho }) {
 
   return (
     <section
-      className="rounded-2xl border bg-white/[0.07] p-4 backdrop-blur-md"
-      style={{ borderColor: rgba(ACCENT, 0.6), boxShadow: `0 0 0 1px ${rgba(ACCENT, 0.15)}` }}
+      className={sinMarco ? "" : "rounded-2xl border bg-white/[0.07] p-4 backdrop-blur-md"}
+      style={sinMarco ? undefined : { borderColor: rgba(ACCENT, 0.6), boxShadow: `0 0 0 1px ${rgba(ACCENT, 0.15)}` }}
       aria-label={campana.nombre}
     >
       <div className="flex items-start gap-3">

@@ -11,10 +11,10 @@ import {
 } from "./constants";
 
 const ACCENT = PALETTE.mandarin;
-// Color de "mis días" y de la selección (exportados para las leyendas).
-// En claro, Electric (norma BBVA: nada de acento como línea o punto sobre claro);
-// «tus días» (aro continuo) y la marca de gestión (discontinua) se distinguen por el trazo.
-export const YO_COLOR = (theme) => (theme === "light" ? "#001391" : "#88E783");
+// «Tus días» (vista de equipo): celda Lime sólida con el número en Electric,
+// igual en los dos modos (acento como relleno, norma BBVA). La marca
+// discontinua es la selección de gestión o, en /vacaciones, lo pendiente.
+export const MIO_COLOR = "#88E783";
 export const MARCA_COLOR = (theme) => (theme === "light" ? "#001391" : "#9694FF");
 
 /** ¿El dispositivo tiene puntero con hover? (tooltip) o es táctil (bottom sheet). */
@@ -85,7 +85,7 @@ function DayTooltip({ tip }) {
 function DayCell({
   dia, mesNombre, dateStr, esHoy, esFinde, festivo, alerta,
   count, ausenciasClick, personaMode, personaNombre, personaAusente, personaColor,
-  empleadosMap, canHover, onOpenDay, onTip, mio = false, marcado = false,
+  empleadosMap, canHover, onOpenDay, onTip, mio = false, marcado = false, marcaTexto = "en la solicitud seleccionada",
 }) {
   const { theme } = useTheme();
   const light = theme === "light";
@@ -109,14 +109,22 @@ function DayCell({
   // Mapa de calor (solo fuera del modo persona). Sobre festivo/hoy no se pisa
   // el fondo: el nº va en chip con los colores del tramo.
   const heat = !personaMode && count > 0 ? heatStyle(count, theme) : null;
-  const heatFills = heat && !festivo && !esHoy;
+  const heatFills = heat && !festivo && !esHoy && !mio;
   if (heatFills) {
     style.background = heat.cell.background;
     style.borderColor = heat.cell.borderColor;
   }
 
   // Modo persona: día de la persona -> sólido con el color de su equipo.
+  // Tus días (fuera del modo persona de otro): Lime sólido.
   let personaTinta = null;
+  const mioFill = mio && !(personaMode && personaAusente);
+  if (mioFill) {
+    personaTinta = "#001391";
+    style.background = MIO_COLOR;
+    style.backgroundImage = "none";
+    style.borderColor = MIO_COLOR;
+  }
   if (personaMode && personaAusente) {
     personaTinta = textOn(personaColor);
     style.background = personaColor;
@@ -126,9 +134,8 @@ function DayCell({
 
   // Alerta de personal: anillo rojo interior (compatible con el foco global).
   if (alerta) sombras.push(`inset 0 0 0 2px ${alertColor(theme)}`);
-  // Mis días: anillo lime (vista de equipo). Selección: contorno purple
-  // discontinuo (la solicitud que coordinación está revisando).
-  if (mio) sombras.push(`inset 0 0 0 2px ${YO_COLOR(theme)}`);
+  // Marca: contorno discontinuo (la solicitud que coordinación revisa, o
+  // tus días pendientes de aprobar).
   if (marcado) {
     style.outline = `2px dashed ${MARCA_COLOR(theme)}`;
     style.outlineOffset = "1px";
@@ -151,7 +158,6 @@ function DayCell({
           {dia}
         </span>
       )}
-      {mio && <span aria-hidden className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full" style={{ background: YO_COLOR(theme) }} />}
       {/* Contenido central */}
       {personaMode ? (
         !personaAusente && count > 0 ? (
@@ -161,7 +167,9 @@ function DayCell({
         ) : null
       ) : count > 0 ? (
         <span aria-hidden className="flex flex-1 items-center justify-center pb-0.5">
-          {heatFills ? (
+          {mioFill ? (
+            <span className="text-[15px] font-bold leading-none tabular-nums text-[#001391]">{count}</span>
+          ) : heatFills ? (
             <span className="text-[15px] font-bold leading-none tabular-nums" style={heat.num}>{count}</span>
           ) : (
             <span
@@ -181,7 +189,7 @@ function DayCell({
   if (esHoy) partes.push("hoy");
   if (alerta) partes.push("alerta de personal");
   if (mio) partes.push("tienes ausencia");
-  if (marcado) partes.push("en la solicitud seleccionada");
+  if (marcado) partes.push(marcaTexto);
   const base = `${dia} de ${mesNombre.toLowerCase()}`;
   const ariaLabel =
     personaMode && personaAusente
@@ -211,7 +219,7 @@ function DayCell({
   return <div className={cls} style={style} aria-label={ariaLabel}>{inner}</div>;
 }
 
-function MonthCard({ mes, anio, hoyStr, festivos, ausenciasPorDia, filtros, personaNombre, personaColor, totalActivos, empleadosMap, canHover, onOpenDay, onTip, delay, yo, marca }) {
+function MonthCard({ mes, anio, hoyStr, festivos, ausenciasPorDia, filtros, personaNombre, personaColor, totalActivos, empleadosMap, canHover, onOpenDay, onTip, delay, yo, marca, marcaTexto }) {
   const { theme } = useTheme();
   const mapAccent = useAccentMap();
   const primerDia = new Date(anio, mes, 1);
@@ -267,6 +275,7 @@ function MonthCard({ mes, anio, hoyStr, festivos, ausenciasPorDia, filtros, pers
         onTip={onTip}
         mio={!!yo && ausencias.some((a) => a.nombre === yo)}
         marcado={!!marca && marca.has(dateStr)}
+        marcaTexto={marcaTexto}
       />
     );
   }
@@ -308,7 +317,7 @@ function MonthCard({ mes, anio, hoyStr, festivos, ausenciasPorDia, filtros, pers
  * alerta si quedan <10 disponibles, mapa de calor y "modo persona" con
  * exactamente 1 filtro.
  */
-export default function Calendario({ datos, filtros, totalActivos, onOpenDay, yo = null, marca = null }) {
+export default function Calendario({ datos, filtros, totalActivos, onOpenDay, yo = null, marca = null, marcaTexto }) {
   const canHover = useCanHover();
   const mapAccent = useAccentMap();
   const [tip, setTip] = useState(null);
@@ -375,11 +384,11 @@ export default function Calendario({ datos, filtros, totalActivos, onOpenDay, yo
                 className="mb-3 flex w-full items-center gap-2.5 rounded-xl border border-white/12 bg-white/[0.04] px-4 py-2.5 text-left backdrop-blur-md transition hover:border-white/25 hover:bg-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene"
               >
                 <span aria-hidden className={`text-[11px] text-sand/50 transition-transform ${abierto ? "rotate-90" : ""}`}>▶</span>
-                <span className="text-[13px] font-bold text-sand">
+                <span className="whitespace-nowrap text-[13px] font-bold text-sand">
                   Q{q + 1} · {MESES[q * 3]} — {MESES[q * 3 + 2]}
                 </span>
-                <span className="text-[11px] text-sand/45">trimestre pasado</span>
-                <span className="ml-auto text-[11px] font-bold tabular-nums" style={{ color: mapAccent(ACCENT) }}>
+                <span className="hidden text-[11px] text-sand/45 sm:inline">trimestre pasado</span>
+                <span className="ml-auto whitespace-nowrap text-[11px] font-bold tabular-nums" style={{ color: mapAccent(ACCENT) }}>
                   {ausenciasPorQ[q]} ausencia{ausenciasPorQ[q] === 1 ? "" : "s"}
                 </span>
                 <span className="text-[11px] font-bold uppercase tracking-wide text-sand/55">
@@ -408,6 +417,7 @@ export default function Calendario({ datos, filtros, totalActivos, onOpenDay, yo
                     delay={i * 30}
                     yo={yo}
                     marca={marca}
+                    marcaTexto={marcaTexto}
                   />
                 ))}
               </div>

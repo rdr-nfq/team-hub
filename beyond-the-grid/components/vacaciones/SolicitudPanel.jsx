@@ -21,7 +21,7 @@ function Campo({ etiqueta, children, className = "" }) {
 }
 
 /** Formulario de solicitud (VA/FO/ES) para quien ha entrado en la web. */
-export function SolicitudForm({ datos, post, onHecho }) {
+export function SolicitudForm({ datos, post, onHecho, sinMarco = false }) {
   const mapAccent = useAccentMap();
   const yo = datos.yo;
   const hoy = isoDe(new Date());
@@ -59,30 +59,9 @@ export function SolicitudForm({ datos, post, onHecho }) {
     );
   }
 
-  return (
-    <section
-      className="overflow-hidden rounded-2xl border bg-white/[0.055] backdrop-blur-md"
-      style={{ borderColor: rgba(ACCENT, 0.5) }}
-      aria-label="Pedir vacaciones"
-    >
-      <button
-        type="button"
-        onClick={() => setAbierto((v) => !v)}
-        aria-expanded={abierto}
-        className="flex w-full items-center gap-3 p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene"
-      >
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border" style={{ borderColor: rgba(ACCENT, 0.3), background: rgba(ACCENT, 0.12), color: mapAccent(ACCENT) }}>
-          <IconSun size={20} />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-[15px] font-bold text-sand">Pedir días</span>
-          <span className="block text-[12.5px] text-sand/65">Vacaciones, formación o permiso especial: le llega a coordinación.</span>
-        </span>
-        <span aria-hidden className={`text-sand/45 transition ${abierto ? "rotate-90" : ""}`}>▸</span>
-      </button>
-
-      {abierto && (
-        <div className="space-y-3 border-t border-white/10 p-4">
+  const cuerpo = (
+        <div className={sinMarco ? "space-y-3" : "space-y-3 border-t border-white/10 p-4"}>
+          {sinMarco && <p className="text-[12.5px] text-sand/65">Vacaciones, formación o permiso especial: le llega a coordinación.</p>}
           <div className="grid grid-cols-2 gap-3">
             <Campo etiqueta="Tipo" className="col-span-2">
               <select value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value })} className={`${FIELD} w-full`}>
@@ -138,7 +117,31 @@ export function SolicitudForm({ datos, post, onHecho }) {
             <p className="rounded-lg border border-mandarin/50 bg-mandarin/10 px-3 py-2 text-xs font-bold text-mandarin">No se pudo enviar: {estado.error}</p>
           )}
         </div>
-      )}
+  );
+  if (sinMarco) return cuerpo;
+
+  return (
+    <section
+      className="overflow-hidden rounded-2xl border bg-white/[0.055] backdrop-blur-md"
+      style={{ borderColor: rgba(ACCENT, 0.5) }}
+      aria-label="Pedir vacaciones"
+    >
+      <button
+        type="button"
+        onClick={() => setAbierto((v) => !v)}
+        aria-expanded={abierto}
+        className="flex w-full items-center gap-3 p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene"
+      >
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border" style={{ borderColor: rgba(ACCENT, 0.3), background: rgba(ACCENT, 0.12), color: mapAccent(ACCENT) }}>
+          <IconSun size={20} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[15px] font-bold text-sand">Pedir días</span>
+          <span className="block text-[12.5px] text-sand/65">Vacaciones, formación o permiso especial: le llega a coordinación.</span>
+        </span>
+        <span aria-hidden className={`text-sand/45 transition ${abierto ? "rotate-90" : ""}`}>▸</span>
+      </button>
+      {abierto && cuerpo}
     </section>
   );
 }
@@ -149,21 +152,22 @@ export function EstadoSolBadge({ estado }) {
 }
 
 /** Mis solicitudes: estado de cada una; las pendientes se pueden cancelar. */
-export function MisSolicitudes({ solicitudes, post, onHecho }) {
+export function MisSolicitudes({ solicitudes, post, onHecho, sinMarco = false }) {
   const [cancelando, setCancelando] = useState("");
   const [error, setError] = useState("");
-  if (!solicitudes?.length) return null;
+  if (!solicitudes?.length) return sinMarco ? <p className="text-[12.5px] text-sand/60">Todavía no has enviado ninguna solicitud.</p> : null;
   const cancelar = async (id) => {
     if (!confirm("¿Retirar esta solicitud? Todavía no estaba aprobada.")) return;
     setCancelando(id); setError("");
     try { await post("cancelar", { id }); onHecho?.(); } catch (e) { setError(String(e.message || e)); }
     setCancelando("");
   };
+  const Marco = sinMarco ? "div" : "section";
   return (
-    <section className="rounded-2xl border border-white/12 bg-white/[0.055] p-4 backdrop-blur-md" aria-label="Mis solicitudes">
-      <h2 className="mb-2.5 font-display text-base font-bold text-sand">Mis solicitudes</h2>
+    <Marco {...(sinMarco ? {} : { className: "rounded-2xl border border-white/12 bg-white/[0.055] p-4 backdrop-blur-md", "aria-label": "Mis solicitudes" })}>
+      {!sinMarco && <h2 className="mb-2.5 font-display text-base font-bold text-sand">Mis solicitudes</h2>}
       <ul className="space-y-2">
-        {solicitudes.slice(0, 8).map((s) => (
+        {(sinMarco ? solicitudes : solicitudes.slice(0, 8)).map((s) => (
           <li key={s.id} className="rounded-xl border border-white/10 bg-midnight/30 p-2.5 text-[12.5px]">
             <div className="flex flex-wrap items-center gap-1.5">
               {CLASE_SOL[s.clase]?.corto && <span className="text-[11px] font-bold text-sand/70">{CLASE_SOL[s.clase].corto}</span>}
@@ -185,7 +189,7 @@ export function MisSolicitudes({ solicitudes, post, onHecho }) {
         ))}
       </ul>
       {error && <p className="mt-2 text-[11.5px] font-bold text-mandarin">{error}</p>}
-    </section>
+    </Marco>
   );
 }
 
@@ -284,21 +288,28 @@ function CambioForm({ b, modo, datos, post, onHecho, onCerrar }) {
   );
 }
 
-export function MisDias({ datos, post, onHecho }) {
+/** Mis bloques de días aprobados que aún no han pasado (MisDias y su pestaña). */
+export function useMisBloques(datos) {
   const yo = datos.yo;
   const hoy = isoDe(new Date());
-  const [abierto, setAbierto] = useState(null); // { key, modo }
   const fxg = useMemo(() => festivosDeGrupo(datos.festivosDetalle, yo?.grupo), [datos.festivosDetalle, yo]);
   const tipos = (datos.tipos || []).map((t) => t.id);
-  const bloques = useMemo(
+  return useMemo(
     () => (yo ? bloquesDe(datos.ausenciasPorDia, yo.nombre, fxg, tipos).filter((b) => b.fin >= hoy) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [datos.ausenciasPorDia, yo, fxg, hoy]
   );
-  if (!yo || !bloques.length) return null;
+}
+
+export function MisDias({ datos, post, onHecho, sinMarco = false }) {
+  const yo = datos.yo;
+  const [abierto, setAbierto] = useState(null); // { key, modo }
+  const bloques = useMisBloques(datos);
+  if (!yo || !bloques.length) return sinMarco ? <p className="text-[12.5px] text-sand/60">No tienes días aprobados por delante.</p> : null;
+  const Marco = sinMarco ? "div" : "section";
   return (
-    <section className="rounded-2xl border border-white/12 bg-white/[0.055] p-4 backdrop-blur-md" aria-label="Mis días aprobados">
-      <h2 className="font-display text-base font-bold text-sand">Mis días aprobados</h2>
+    <Marco {...(sinMarco ? {} : { className: "rounded-2xl border border-white/12 bg-white/[0.055] p-4 backdrop-blur-md", "aria-label": "Mis días aprobados" })}>
+      {!sinMarco && <h2 className="font-display text-base font-bold text-sand">Mis días aprobados</h2>}
       <p className="mb-2.5 text-[11.5px] text-sand/55">Para cancelarlos o cambiarlos se pide a coordinación, igual que una solicitud.</p>
       <ul className="space-y-2">
         {bloques.map((b) => {
@@ -325,6 +336,6 @@ export function MisDias({ datos, post, onHecho }) {
           );
         })}
       </ul>
-    </section>
+    </Marco>
   );
 }

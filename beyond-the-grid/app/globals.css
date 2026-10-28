@@ -85,8 +85,11 @@ html.rdr-light {
   --ca-mandarin: 0 19 145;
   --ca-tinta: #f7f8f8;
 }
-/* Isla oscura dentro del modo claro (cabecera): Electric de fondo y la
-   paleta del modo oscuro encima (combinación «Electric» del manual). */
+/* Isla Electric (la cabecera): Electric de fondo y la paleta del modo oscuro
+   encima (combinación «Electric» del manual), IGUAL en los dos modos. */
+.rdr-isla {
+  --c-midnight: 0 19 145;
+}
 html.rdr-light .rdr-isla {
   --c-midnight: 0 19 145;
   --c-sand: 247 248 248;
@@ -324,9 +327,11 @@ html.rdr-light input {
 html.rdr-light .rdr-art {
   display: none;
 }
-/* Luz ambiental: el acento de la sección, presente pero suave sobre Sand. */
-html.rdr-light .rdr-blob {
-  opacity: 0.2;
+/* Sin degradados en claro: fuera la luz ambiental difuminada y el foco que
+   sigue al ratón; el color va en bloques planos (franja, tintes, rellenos). */
+html.rdr-light .rdr-blob,
+html.rdr-light .rdr-spot {
+  display: none !important;
 }
 /* Tarjetas en claro: blancas (--k-tarjeta) con una sombra suave para
    separarlas del fondo Sand; sin cristal translúcido gris. */

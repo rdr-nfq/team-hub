@@ -47,9 +47,9 @@ export default function Header() {
   return (
     // Barra sólida con blur: el contenido pasa POR DEBAJO al hacer scroll,
     // nunca se superpone con el título/sesión.
-    // En claro es una «isla» Electric (globals.css: .rdr-isla) con la paleta
-    // del oscuro encima: Electric como superficie de marca, no solo texto.
-    <header className="rdr-isla fixed inset-x-0 top-0 z-40 border-b border-white/[0.06] bg-midnight">
+    // «Isla» Electric (globals.css: .rdr-isla) con la paleta del oscuro encima,
+    // igual en claro y en oscuro: Electric como superficie de marca.
+    <header className="rdr-isla fixed inset-x-0 top-0 z-40 bg-midnight">
       <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-5 py-3 sm:px-6">
       <div className="flex min-w-0 items-center gap-3">
         {backHref && (
@@ -113,8 +113,8 @@ export default function Header() {
         />
       </div>
       </div>
-      {/* Franja de la sección (solo en claro; en oscuro ya la marcan los acentos). */}
-      {theme === "light" && seccion && (
+      {/* Franja del color de la sección: dónde se está (igual en los dos modos). */}
+      {seccion && (
         <div aria-hidden className="h-1.5 w-full" style={{ background: seccion.color }} />
       )}
     </header>
