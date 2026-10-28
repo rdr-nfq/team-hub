@@ -4,14 +4,14 @@ import { Link } from "next-view-transitions";
 import { usePathname } from "next/navigation";
 import { useAuth } from "./AuthGate";
 import { useTheme } from "@/lib/theme";
-import { seccionDe, SECCIONES_INDICE } from "@/lib/seccion";
+import { seccionDe } from "@/lib/seccion";
 
 /**
  * Cabecera fija, idéntica en todas las páginas (vive en AppFrame): botón
  * Inicio, título, subtítulo de la página, sesión, tema y logo BBVA, y debajo
  * la franja de la sección. En el índice el botón Inicio se queda en su sitio
- * marcado como página actual y la franja lleva los cuatro colores, para que
- * nada salte al navegar.
+ * marcado como página actual y la franja va del color de la barra (las
+ * columnas ya llevan el suyo), con la misma altura para que nada salte.
  */
 export default function Header() {
   const { email, logout } = useAuth();
@@ -124,14 +124,8 @@ export default function Header() {
       </div>
       </div>
       {/* Franja del color de la sección: dónde se está (igual en los dos modos).
-          En el índice, las cuatro secciones en el orden de sus columnas. */}
-      {seccion ? (
-        <div aria-hidden className="h-1.5 w-full" style={{ background: seccion.color }} />
-      ) : (
-        <div aria-hidden className="flex h-1.5 w-full">
-          {SECCIONES_INDICE.map((c) => <span key={c} className="flex-1" style={{ background: c }} />)}
-        </div>
-      )}
+          En el índice, del color de la barra: misma altura, sin raya. */}
+      <div aria-hidden className="h-1.5 w-full" style={seccion ? { background: seccion.color } : undefined} />
     </header>
   );
 }

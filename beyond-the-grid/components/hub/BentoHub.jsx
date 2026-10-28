@@ -302,7 +302,7 @@ export default function BentoHub() {
   return (
     <main className="relative min-h-dvh w-full lg:h-dvh lg:overflow-hidden">
       <AmbientBackground lite={lite} />
-      <div className="mx-auto flex w-full max-w-7xl flex-col px-5 pb-8 pt-24 sm:px-6 lg:h-full lg:pb-8">
+      <div className="mx-auto flex w-full max-w-7xl flex-col px-5 pb-8 pt-28 sm:px-6 lg:h-full lg:pb-8">
         {/* Columnas por tipo (el título va en el header) */}
         <div className={`grid grid-cols-1 gap-4 sm:grid-cols-2 ${gridCols} lg:min-h-0 lg:flex-1`}>
           {sections.map((sec, i) => (

@@ -9,9 +9,6 @@ const SECCIONES = [
   [/^\/(pases|recursos)/, "RDR", PALETTE.lime],
 ];
 
-/** Colores de las secciones en el orden de las columnas del índice. */
-export const SECCIONES_INDICE = [PALETTE.serene, PALETTE.mandarin, PALETTE.lime, PALETTE.purple];
-
 /** { nombre, color } de la sección de una ruta, o null (índice). */
 export function seccionDe(pathname) {
   const s = SECCIONES.find(([re]) => re.test(pathname || "/"));
