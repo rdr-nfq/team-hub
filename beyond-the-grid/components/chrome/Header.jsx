@@ -4,12 +4,14 @@ import { Link } from "next-view-transitions";
 import { usePathname } from "next/navigation";
 import { useAuth } from "./AuthGate";
 import { useTheme } from "@/lib/theme";
-import { seccionDe } from "@/lib/seccion";
+import { seccionDe, SECCIONES_INDICE } from "@/lib/seccion";
 
 /**
- * Cabecera fija (glass). Sesión + cerrar sesión + logo BBVA.
- * Detecta la ruta actual (vive en AppFrame, persistente): en /formacion muestra
- * el botón de volver al hub y cambia el subtítulo.
+ * Cabecera fija, idéntica en todas las páginas (vive en AppFrame): botón
+ * Inicio, título, subtítulo de la página, sesión, tema y logo BBVA, y debajo
+ * la franja de la sección. En el índice el botón Inicio se queda en su sitio
+ * marcado como página actual y la franja lleva los cuatro colores, para que
+ * nada salte al navegar.
  */
 export default function Header() {
   const { email, logout } = useAuth();
@@ -52,18 +54,26 @@ export default function Header() {
     <header className="rdr-isla fixed inset-x-0 top-0 z-40 bg-midnight">
       <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-5 py-3 sm:px-6">
       <div className="flex min-w-0 items-center gap-3">
-        {backHref && (
-          <Link
-            href={backHref}
-            aria-label="Volver al inicio"
-            className="inline-flex shrink-0 items-center gap-0 rounded-full border-[1.5px] border-serene/35 bg-midnight/70 p-2.5 font-sans text-xs font-bold uppercase tracking-[0.08em] text-sand shadow-[0_4px_14px_rgba(0,0,0,0.3)] backdrop-blur transition hover:-translate-y-px hover:border-serene/70 hover:bg-midnight/90 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene min-[460px]:gap-2 min-[460px]:px-4 min-[460px]:py-2.5"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M19 12H5M12 19l-7-7 7-7" />
-            </svg>
-            <span className="hidden min-[460px]:inline">Inicio</span>
-          </Link>
-        )}
+        {(() => {
+          const pill = "inline-flex shrink-0 items-center gap-0 rounded-full border-[1.5px] p-2.5 font-sans text-xs font-bold uppercase tracking-[0.08em] text-sand min-[460px]:gap-2 min-[460px]:px-4 min-[460px]:py-2.5";
+          const icono = (d) => (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>
+          );
+          const texto = <span className="hidden min-[460px]:inline">Inicio</span>;
+          return backHref ? (
+            <Link
+              href={backHref}
+              aria-label="Volver al inicio"
+              className={`${pill} border-serene/35 bg-midnight/70 transition hover:-translate-y-px hover:border-serene/70 hover:bg-midnight/90 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene`}
+            >
+              {icono("M19 12H5M12 19l-7-7 7-7")}{texto}
+            </Link>
+          ) : (
+            <span aria-current="page" className={`${pill} border-serene/70 bg-serene/15`}>
+              {icono("M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z")}{texto}
+            </span>
+          );
+        })()}
         {/* Marca compacta en móviles muy estrechos (<460px), donde el título completo se oculta */}
         <span className="font-display text-lg font-bold leading-none text-sand min-[460px]:hidden">RD&amp;S Hub</span>
         <div className="hidden min-w-0 min-[460px]:block">
@@ -113,9 +123,14 @@ export default function Header() {
         />
       </div>
       </div>
-      {/* Franja del color de la sección: dónde se está (igual en los dos modos). */}
-      {seccion && (
+      {/* Franja del color de la sección: dónde se está (igual en los dos modos).
+          En el índice, las cuatro secciones en el orden de sus columnas. */}
+      {seccion ? (
         <div aria-hidden className="h-1.5 w-full" style={{ background: seccion.color }} />
+      ) : (
+        <div aria-hidden className="flex h-1.5 w-full">
+          {SECCIONES_INDICE.map((c) => <span key={c} className="flex-1" style={{ background: c }} />)}
+        </div>
       )}
     </header>
   );
