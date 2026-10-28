@@ -26,7 +26,7 @@ function RestoCard({ r, onOpen, delay, reduce }) {
       {r.foto ? (
         <div className="h-32 shrink-0 bg-cover bg-center" style={{ backgroundImage: `url('${r.foto}')` }} role="img" aria-label={`Foto de ${r.nombre}`} />
       ) : (
-        <div aria-hidden className="grid h-32 shrink-0 place-items-center font-display text-4xl font-bold text-[#001391]/55" style={{ background: `linear-gradient(135deg, ${PALETTE.mandarin}, ${PALETTE.canary})` }}>
+        <div aria-hidden className="grid h-32 shrink-0 place-items-center font-display text-4xl font-bold text-[#001391]/55" style={{ background: PALETTE.mandarin }}>
           {(r.nombre || "?").charAt(0)}
         </div>
       )}

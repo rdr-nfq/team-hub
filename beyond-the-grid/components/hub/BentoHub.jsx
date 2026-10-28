@@ -225,12 +225,12 @@ function FeatureCard({ item, accent, delay }) {
       {...tilt}
       href={item.target}
       aria-label={`${item.label} — ${item.desc}`}
-      className="rdr-rise rdr-tilt group relative box-border flex w-full flex-col justify-center gap-2 overflow-hidden rounded-2xl border bg-gradient-to-br from-white/[0.1] to-white/[0.03] p-5 backdrop-blur-md lg:min-h-0 lg:flex-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene focus-visible:ring-offset-2 focus-visible:ring-offset-midnight"
+      className="rdr-rise rdr-tilt group relative box-border flex w-full flex-col justify-center gap-2 overflow-hidden rounded-2xl border bg-white/[0.055] p-5 backdrop-blur-md lg:min-h-0 lg:flex-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene focus-visible:ring-offset-2 focus-visible:ring-offset-midnight"
       style={{ animationDelay: `${delay}ms`, borderColor: rgba(accent, 0.5), "--pc": rgba(accent, 0.75) }}
     >
       <span aria-hidden className="rdr-spot" style={{ background: "radial-gradient(200px circle at var(--mx,50%) var(--my,50%), rgba(133,200,255,.22), transparent 70%)" }} />
       <span aria-hidden className="pointer-events-none absolute -right-5 -top-5 text-serene/15 transition-transform duration-500 group-hover:rotate-12"><IconOrbit size={140} /></span>
-      <span className="grid h-12 w-12 place-items-center rounded-xl border border-serene/40 text-serene" style={{ background: "linear-gradient(145deg, rgba(133,200,255,.25), rgba(133,200,255,.06))" }}><IconGrad size={26} /></span>
+      <span className="grid h-12 w-12 place-items-center rounded-xl border border-serene/40 text-serene" style={{ background: rgba(PALETTE.serene, 0.15) }}><IconGrad size={26} /></span>
       <div className="relative mt-1">
         <span className="block font-display text-xl font-bold text-sand">{item.label}</span>
         <span className="block text-sm text-sand/70">{item.desc}</span>

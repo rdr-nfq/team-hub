@@ -155,12 +155,14 @@ select optgroup {
   outline-offset: 3px;
 }
 
-/* Blobs de color ambientales detrás del glass (frosted sobre fondo vibrante). */
-.rdr-blob {
-  position: absolute;
-  border-radius: 9999px;
-  filter: blur(110px);
-  opacity: 0.14;
+/* Fondo plano en los dos modos: fuera las manchas de color difuminadas
+   (.rdr-blob), el foco que sigue al ratón (.rdr-spot) y el arte generativo
+   bajo los títulos (.rdr-art). El color va en bloques planos: la franja de
+   sección, los bordes y los rellenos de acento. */
+.rdr-blob,
+.rdr-spot,
+.rdr-art {
+  display: none !important;
 }
 
 /* Entrada escalonada de las tarjetas bento (solo opacidad: el transform lo
@@ -195,18 +197,6 @@ select optgroup {
 .rdr-tilt:active {
   transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) scale(0.985);
 }
-/* Foco que sigue al cursor dentro de la tarjeta. */
-.rdr-spot {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.25s ease;
-}
-.group:hover .rdr-spot,
-.group:focus-visible .rdr-spot {
-  opacity: 1;
-}
 
 /* ── Modo "lite" (lib/useLowPower): equipos de poca capacidad / GPU integrada.
    Quita lo más caro de componer —glass blur, blobs animados, tilt 3D y
@@ -221,13 +211,6 @@ html.rdr-lite .rdr-tilt {
   background-color: rgb(var(--c-midnight) / 0.92) !important; /* panel opaco: legible sin blur */
   transform: none !important;
   will-change: auto !important;
-}
-html.rdr-lite .rdr-blob {
-  filter: blur(60px);
-  opacity: 0.1;
-}
-html.rdr-lite .rdr-spot {
-  display: none !important;
 }
 
 /* Crossfade del SPA (index <-> /formacion) vía next-view-transitions. */
@@ -322,17 +305,6 @@ html.rdr-light input {
   accent-color: #001391 !important;
 }
 
-/* El arte generativo es nocturno (fondo navy): en claro se oculta y quedan
-   los tintes ambientales. */
-html.rdr-light .rdr-art {
-  display: none;
-}
-/* Sin degradados en claro: fuera la luz ambiental difuminada y el foco que
-   sigue al ratón; el color va en bloques planos (franja, tintes, rellenos). */
-html.rdr-light .rdr-blob,
-html.rdr-light .rdr-spot {
-  display: none !important;
-}
 /* Tarjetas en claro: blancas (--k-tarjeta) con una sombra suave para
    separarlas del fondo Sand; sin cristal translúcido gris. */
 html.rdr-light .backdrop-blur-md:not(.rdr-isla *) {

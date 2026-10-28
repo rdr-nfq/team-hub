@@ -55,7 +55,7 @@ function Tarjeta({ op, delay, mio, color }) {
       </div>
     );
   return (
-    <Link {...tilt} href={op.href} aria-label={`${op.label} — ${eq?.nombre}`} className={`${cls} bg-gradient-to-br from-white/[0.1] to-white/[0.03] hover:bg-white/[0.08]`} style={style}>
+    <Link {...tilt} href={op.href} aria-label={`${op.label} — ${eq?.nombre}`} className={`${cls} bg-white/[0.055] hover:bg-white/[0.08]`} style={style}>
       {contenido}
     </Link>
   );

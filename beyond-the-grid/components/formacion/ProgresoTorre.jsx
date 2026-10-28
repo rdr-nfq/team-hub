@@ -179,7 +179,6 @@ export default function ProgresoTorre({ niveles, completadas, current, onMarcar 
         <EstructuraTower estados={estados} activeLevel={activeLevel} />
       ) : (
         <div aria-hidden className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
-          <span className="absolute left-1/2 top-0 h-full w-24 -translate-x-1/2 bg-gradient-to-b from-serene/15 via-purple/10 to-transparent blur-2xl" />
           <span className="rdr-blob left-[-10%] top-[20%] h-64 w-64" style={{ background: PALETTE.royal }} />
         </div>
       )}

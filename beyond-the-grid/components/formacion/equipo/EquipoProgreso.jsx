@@ -161,7 +161,7 @@ function PersonaCard({ persona, datos, sinBackend, delay }) {
         <span
           aria-hidden
           className="grid h-14 w-14 shrink-0 place-items-center rounded-full border-2 font-display text-lg font-bold text-sand"
-          style={{ borderColor: rgba(color, 0.6), background: `radial-gradient(circle at 30% 25%, ${rgba(color, 0.3)}, rgba(255,255,255,0.03))` }}
+          style={{ borderColor: rgba(color, 0.6), background: rgba(color, 0.2) }}
         >
           {initials(persona.nombre)}
         </span>
