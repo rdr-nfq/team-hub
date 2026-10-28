@@ -26,12 +26,12 @@ const COLS = {
   bloqueado: [0.55, 0.66, 1.0], // azul claro (visible)
 };
 // Modo claro: sobre Sand el aditivo se lava, así que se pinta con NormalBlending
-// y tonos oscuros/saturados (mismos matices que LIGHT_EQ de lib/theme).
+// y la combinación Sand del manual BBVA: Electric, Serene, Purple y Gray 4.
 const COLS_LIGHT = {
-  completado: [0.106, 0.478, 0.243], // verde oscuro #1B7A3E
-  actual: [0.082, 0.373, 0.659], // azul #155FA8
-  proximamente: [0.357, 0.294, 0.839], // violeta oscuro #5B4BD6
-  bloqueado: [0.48, 0.53, 0.71], // azul grisáceo #7B87B5
+  completado: [0.0, 0.075, 0.569], // Electric #001391
+  actual: [0.522, 0.784, 1.0], // Serene #85C8FF
+  proximamente: [0.588, 0.58, 1.0], // Purple #9694FF
+  bloqueado: [0.678, 0.722, 0.761], // Gray 4 #ADB8C2
 };
 const levelCenterY = (L) => ((L + 0.5) / LV) * HEIGHT - HEIGHT / 2;
 

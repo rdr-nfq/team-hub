@@ -91,7 +91,7 @@ function Node({ nv }) {
   const { theme } = useTheme();
   const e = nv.estado;
   // Halo del nodo "actual": serene brillante en oscuro, azul medio suave en claro.
-  const glow = theme === "light" ? "shadow-[0_0_24px_-4px_rgba(21,95,168,.45)]" : "shadow-[0_0_24px_-4px_rgba(133,200,255,.7)]";
+  const glow = theme === "light" ? "shadow-[0_0_24px_-4px_rgba(0,19,145,.35)]" : "shadow-[0_0_24px_-4px_rgba(133,200,255,.7)]";
   const cls =
     e === "completado" ? "border-lime/60 bg-lime/20 text-lime"
       : e === "actual" ? `border-serene/70 bg-serene/15 text-serene ${glow}`

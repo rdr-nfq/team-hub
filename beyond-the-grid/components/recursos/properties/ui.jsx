@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { rgba } from "@/lib/ui";
+import { rgba, activo } from "@/lib/ui";
 import { ACCENT } from "./lib";
 
 /* Piezas pequeñas propias del catálogo de properties. Las primitivas grandes
@@ -12,7 +12,7 @@ import { ACCENT } from "./lib";
    activa del buscador interno del visor (superficie sólida → tinta Electric). */
 export const markStyle = (current) =>
   current
-    ? { backgroundColor: ACCENT, color: "#001391", borderRadius: 3, padding: "0 1px" }
+    ? { ...activo(ACCENT), borderRadius: 3, padding: "0 1px" }
     : { backgroundColor: rgba(ACCENT, 0.32), color: "inherit", borderRadius: 3, padding: "0 1px" };
 
 /* Texto con TODAS las ocurrencias de `q` (ya en minúsculas) envueltas en

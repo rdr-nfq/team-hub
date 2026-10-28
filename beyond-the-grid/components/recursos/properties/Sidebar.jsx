@@ -1,6 +1,6 @@
 "use client";
 
-import { rgba } from "@/lib/ui";
+import { rgba, activo } from "@/lib/ui";
 import { useAcc, Tag } from "@/components/recursos/explorer/ui";
 import { ACCENT, FLAG_DEFS, OTHER_FEEDS } from "./lib";
 import { Hl } from "./ui";
@@ -27,7 +27,7 @@ function Chip({ on, onClick, children }) {
       className={`max-w-full truncate rounded-full border px-2.5 py-1 text-[10.5px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene ${
         on ? "" : "border-white/12 bg-white/[0.04] text-sand/65 hover:bg-white/[0.08] hover:text-sand"
       }`}
-      style={on ? { backgroundColor: ACCENT, borderColor: ACCENT, color: "#001391" } : undefined}
+      style={on ? activo(ACCENT) : undefined}
     >
       {children}
     </button>

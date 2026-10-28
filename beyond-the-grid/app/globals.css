@@ -4,10 +4,15 @@
 
 /* ── Tokens por tema (tripletas RGB para que Tailwind componga el alfa).
    Oscuro (por defecto): paleta BBVA tal cual sobre Midnight.
-   Claro (html.rdr-light): fondo Sand y la conexión en Electric Blue: texto,
-   iconos y líneas en Electric; los acentos BBVA (sin oscurecer) solo como
-   relleno. --c-* = rellenos (bg-*), --t-* = tinta (text-, border-, ring-,
-   fill-…: tailwind.config.js), --k-bg = refuerzo del alfa de los tintes. ── */
+   Claro (html.rdr-light) = combinación Sand del manual: texto e iconos en
+   Electric, Serene como único acento natural, y los demás acentos solo para
+   subrayar DATOS (relleno sólido). Cada acento tiene varias variables según
+   el uso (tailwind.config.js y lib/ui.js):
+     --t-*  tinta: texto, iconos, anillos de foco      (claro: Electric)
+     --ct-* decoración: tintes, bordes, brillos, puntos (claro: Serene)
+     --c-*  relleno sólido de datos: barras, estados    (claro: el acento)
+     --ca-* elemento activo con relleno de acento       (claro: Electric)
+   --k-bg refuerza el alfa de los tintes en claro. ── */
 :root {
   --k-bg: 1;
   --t-serene: 133 200 255;
@@ -16,6 +21,19 @@
   --t-aqua: 139 225 233;
   --t-purple: 150 148 255;
   --t-mandarin: 255 181 107;
+  --ct-serene: 133 200 255;
+  --ct-lime: 136 231 131;
+  --ct-canary: 255 231 97;
+  --ct-aqua: 139 225 233;
+  --ct-purple: 150 148 255;
+  --ct-mandarin: 255 181 107;
+  --ca-serene: 133 200 255;
+  --ca-lime: 136 231 131;
+  --ca-canary: 255 231 97;
+  --ca-aqua: 139 225 233;
+  --ca-purple: 150 148 255;
+  --ca-mandarin: 255 181 107;
+  --ca-tinta: #001391;
   --c-midnight: 7 14 70; /* fondo base */
   --c-sand: 247 248 248; /* tinta principal */
   --c-white: 255 255 255; /* glass / bordes / superficies traslúcidas */
@@ -36,7 +54,21 @@ html.rdr-light {
   --c-midnight: 247 248 248; /* bg-midnight pasa a Sand */
   --c-sand: 0 19 145; /* text-sand pasa a Electric (texto principal del manual) */
   --c-white: 70 83 109; /* glass/bordes: Gray 5 del manual (neutro, sin lavanda) */
-  --k-bg: 2.4; /* bg-lime/10 -> 24 %: el tinte se lee como caja de color */
+  --k-bg: 1.6; /* tintes (bg-lime/10…) algo más presentes sobre Sand */
+  /* Tintes, bordes, brillos y decoración: Serene, el acento natural de Sand. */
+  --ct-serene: 133 200 255;
+  --ct-lime: 133 200 255;
+  --ct-canary: 133 200 255;
+  --ct-aqua: 133 200 255;
+  --ct-purple: 133 200 255;
+  --ct-mandarin: 133 200 255;
+  --ca-serene: 0 19 145;
+  --ca-lime: 0 19 145;
+  --ca-canary: 0 19 145;
+  --ca-aqua: 0 19 145;
+  --ca-purple: 0 19 145;
+  --ca-mandarin: 0 19 145;
+  --ca-tinta: #f7f8f8;
   --t-serene: 0 19 145;
   --t-lime: 0 19 145;
   --t-canary: 0 19 145;
@@ -233,6 +265,25 @@ html.rdr-lite .rdr-spot {
 }
 
 /* ── Ajustes específicos del modo claro ── */
+/* Botones, enlaces y pestañas activas con relleno de acento (mandarin, lime,
+   purple, canary, aqua): en claro pasan a Electric con texto Sand, el botón
+   principal de BBVA. Serene se queda (es el acento natural de Sand). Las
+   cajas y etiquetas de DATOS con relleno sólido no cambian: acento con texto
+   Electric es el patrón «caja de color» del manual. */
+html.rdr-light :is(button, a, [role="tab"], [role="button"]):is(.bg-\[\#FFB56B\], .bg-\[\#88E783\], .bg-\[\#9694FF\], .bg-\[\#FFE761\], .bg-\[\#F5E33D\], .bg-\[\#8BE1E9\]),
+html.rdr-light :is(button, a, [role="tab"], [role="button"]):is(.bg-lime, .bg-mandarin, .bg-purple, .bg-canary, .bg-aqua).text-\[\#001391\] {
+  background-color: #001391 !important;
+  border-color: #001391 !important;
+  color: #f7f8f8 !important;
+}
+/* Casillas, radios y deslizadores nativos: en claro, Electric. */
+html.rdr-light input {
+  accent-color: #001391 !important;
+}
+/* Luz ambiental: en claro solo Serene. */
+html.rdr-light .rdr-blob {
+  background: rgb(133 200 255) !important;
+}
 /* El arte generativo es nocturno (fondo navy): en claro se oculta y quedan
    los tintes ambientales. */
 html.rdr-light .rdr-art {

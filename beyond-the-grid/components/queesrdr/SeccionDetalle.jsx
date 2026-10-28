@@ -6,7 +6,7 @@
 // cadena de liquidación, relación entre entidades y diccionario).
 
 import { PALETTE } from "@/lib/palette";
-import { rgba } from "@/lib/ui";
+import { rgba, solido } from "@/lib/ui";
 import { useTheme, useAccentMap } from "@/lib/theme";
 import { Reveal, Slide, SlideModulo, BlockHeader, Glass, EdgeCard, KeyIdea, Pill, H3 } from "./ui";
 
@@ -355,7 +355,7 @@ export default function SeccionDetalle() {
               {LAGR_CICLO.map((s, i) => (
                 <li key={s.t} className="relative flex gap-3 pl-1">
                   <span className="relative flex flex-col items-center">
-                    <span aria-hidden className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: s.color }} />
+                    <span aria-hidden className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: solido(s.color) }} />
                     {i < LAGR_CICLO.length - 1 && <span aria-hidden className="mt-1 w-px flex-1 bg-white/15" />}
                   </span>
                   <p className="text-[13px] leading-relaxed text-sand/75">

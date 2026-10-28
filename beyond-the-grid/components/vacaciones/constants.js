@@ -129,25 +129,26 @@ export function fechaVuelta(hoyStr, fechasSet, festivos) {
   return null;
 }
 
-/* ── Mapa de calor del calendario (acento mandarin de la ruta) ──
-   Tramos: 1 tinte suave · 2-3 medio · 4+ sólido con texto AA
-   (Electric sobre mandarin claro en oscuro; blanco sobre #C05621 en claro). */
+/* ── Mapa de calor del calendario ──
+   Tramos: 1 tinte suave · 2-3 medio · 4+ sólido.
+   Oscuro: el acento mandarin de la ruta. Claro (norma BBVA del fondo Sand):
+   escala Serene -> Electric, con el número en Electric (Sand sobre Electric). */
 export function heatStyle(n, theme) {
   const L = theme === "light";
   if (n >= 4)
     return {
       solid: true,
-      cell: { background: L ? "#C05621" : "#FFB56B", borderColor: L ? "#C05621" : "#FFB56B" },
-      num: { color: L ? "#FFFFFF" : "#001391" },
+      cell: { background: L ? "#001391" : "#FFB56B", borderColor: L ? "#001391" : "#FFB56B" },
+      num: { color: L ? "#F7F8F8" : "#001391" },
     };
   if (n >= 2)
     return {
-      cell: { background: L ? "rgba(192,86,33,0.24)" : "rgba(255,181,107,0.30)", borderColor: L ? "rgba(192,86,33,0.5)" : "rgba(255,181,107,0.55)" },
-      num: { color: L ? "#8A3E17" : "#FFDDB8" },
+      cell: { background: L ? "#85C8FF" : "rgba(255,181,107,0.30)", borderColor: L ? "#85C8FF" : "rgba(255,181,107,0.55)" },
+      num: { color: L ? "#001391" : "#FFDDB8" },
     };
   return {
-    cell: { background: L ? "rgba(192,86,33,0.11)" : "rgba(255,181,107,0.14)", borderColor: L ? "rgba(192,86,33,0.32)" : "rgba(255,181,107,0.32)" },
-    num: { color: L ? "#A0491B" : "#FFB56B" },
+    cell: { background: L ? "rgba(133,200,255,0.35)" : "rgba(255,181,107,0.14)", borderColor: L ? "rgba(133,200,255,0.8)" : "rgba(255,181,107,0.32)" },
+    num: { color: L ? "#001391" : "#FFB56B" },
   };
 }
 
@@ -166,19 +167,21 @@ export function textOn(c) {
   return lum > 0.55 ? "#070E46" : "#FFFFFF";
 }
 
-/* ── Chips de motivo en modo "tinte" (fondo suave + texto temado AA), para el
-   resumen "Ahora" y la vista Personas. Los chips sólidos del tooltip/DaySheet
-   siguen usando MOTIVOS tal cual. ── */
+/* ── Chips de motivo para el resumen "Ahora" y la vista Personas.
+   Oscuro: tinte suave con el texto del acento. Claro (norma BBVA): caja
+   sólida del color del motivo con texto Electric (la baja, roja con blanco),
+   como los chips del tooltip/DaySheet: nada de texto de acento sobre claro. ── */
 const MOTIVO_TEXT_DARK = { VA: "#88E783", FO: "#85C8FF", ES: "#9694FF", BA: "#FF9A9A" };
-const MOTIVO_TEXT_LIGHT = { VA: "#1B7A3E", FO: "#155FA8", ES: "#5B4BD6", BA: "#C53030" };
 const MOTIVO_TINT_DARK = { VA: "rgba(136,231,131,0.14)", FO: "rgba(133,200,255,0.14)", ES: "rgba(150,148,255,0.16)", BA: "rgba(197,48,48,0.24)" };
-const MOTIVO_TINT_LIGHT = { VA: "rgba(27,122,62,0.10)", FO: "rgba(21,95,168,0.10)", ES: "rgba(91,75,214,0.10)", BA: "rgba(197,48,48,0.10)" };
 
 export function motivoChipStyle(codigo, theme) {
-  const L = theme === "light";
+  if (theme === "light") {
+    const m = MOTIVOS[codigo];
+    return m ? { background: m.bg, color: m.text } : { background: "rgba(133,200,255,0.35)", color: "#001391" };
+  }
   return {
-    background: (L ? MOTIVO_TINT_LIGHT : MOTIVO_TINT_DARK)[codigo] || (L ? "rgba(7,14,70,0.08)" : "rgba(247,248,248,0.1)"),
-    color: (L ? MOTIVO_TEXT_LIGHT : MOTIVO_TEXT_DARK)[codigo] || (L ? "#070E46" : "#F7F8F8"),
+    background: MOTIVO_TINT_DARK[codigo] || "rgba(247,248,248,0.1)",
+    color: MOTIVO_TEXT_DARK[codigo] || "#F7F8F8",
   };
 }
 
@@ -249,17 +252,16 @@ export const FESTIVO_STYLE = {
   AMBOS: { backgroundImage: rayas("rgba(255,181,107,0.13)", "rgba(255,181,107,0.20)"), borderColor: "rgba(255,181,107,0.6)" },
 };
 
-// Variante para MODO CLARO: mismos tonos oscurecidos que LIGHT_EQ de lib/theme
-// (serene #155FA8, lime #1B7A3E, mandarin #C05621) — las rayas rgba de los
-// acentos claros son invisibles sobre Sand.
+// Variante para MODO CLARO (norma BBVA): rayas del acento BBVA de cada país
+// bien marcadas (se leen como caja de color) y borde y número en Electric.
 export const FESTIVO_STYLE_LIGHT = {
-  ES: { backgroundImage: rayas("rgba(21,95,168,0.10)", "rgba(21,95,168,0.20)"), borderColor: "rgba(21,95,168,0.55)" },
-  MX: { backgroundImage: rayas("rgba(27,122,62,0.10)", "rgba(27,122,62,0.20)"), borderColor: "rgba(27,122,62,0.55)" },
-  AMBOS: { backgroundImage: rayas("rgba(192,86,33,0.10)", "rgba(192,86,33,0.20)"), borderColor: "rgba(192,86,33,0.6)" },
+  ES: { backgroundImage: rayas("rgba(133,200,255,0.35)", "rgba(133,200,255,0.6)"), borderColor: "rgba(0,19,145,0.35)" },
+  MX: { backgroundImage: rayas("rgba(136,231,131,0.35)", "rgba(136,231,131,0.6)"), borderColor: "rgba(0,19,145,0.35)" },
+  AMBOS: { backgroundImage: rayas("rgba(255,181,107,0.35)", "rgba(255,181,107,0.6)"), borderColor: "rgba(0,19,145,0.35)" },
 };
 
 export const FESTIVO_NUM_COLOR = { ES: "#85C8FF", MX: "#88E783", AMBOS: "#FFB56B" };
-export const FESTIVO_NUM_COLOR_LIGHT = { ES: "#155FA8", MX: "#1B7A3E", AMBOS: "#C05621" };
+export const FESTIVO_NUM_COLOR_LIGHT = { ES: "#001391", MX: "#001391", AMBOS: "#001391" };
 
 /** Estilo/color de número de un festivo según tema. */
 export const festivoStyle = (k, theme) => (theme === "light" ? FESTIVO_STYLE_LIGHT : FESTIVO_STYLE)[k];

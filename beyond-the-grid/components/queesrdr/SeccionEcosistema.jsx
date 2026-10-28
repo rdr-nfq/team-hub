@@ -4,7 +4,7 @@
 // sistemas conectados (IN/OUT/bidireccional) y el flujo real Murex → Calypso.
 
 import { PALETTE } from "@/lib/palette";
-import { rgba } from "@/lib/ui";
+import { rgba, solido } from "@/lib/ui";
 import { useAccentMap } from "@/lib/theme";
 import { Reveal, Slide, SlideModulo, BlockHeader, Glass } from "./ui";
 
@@ -114,7 +114,7 @@ export default function SeccionEcosistema() {
         <Reveal className="mt-6 flex flex-wrap gap-x-5 gap-y-1.5">
           {Object.values(DIR).map((d) => (
             <span key={d.legend} className="flex items-center gap-2 text-xs" style={{ color: mapAccent(d.color) }}>
-              <span aria-hidden className="h-2.5 w-2.5 rounded-full" style={{ background: d.color }} />
+              <span aria-hidden className="h-2.5 w-2.5 rounded-full" style={{ background: solido(d.color) }} />
               {d.legend}
             </span>
           ))}

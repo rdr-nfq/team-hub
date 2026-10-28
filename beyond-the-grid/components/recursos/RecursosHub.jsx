@@ -3,7 +3,7 @@
 import { Link } from "next-view-transitions";
 import { useReducedMotion } from "framer-motion";
 import { useTilt } from "@/hooks/useTilt";
-import { rgba } from "@/lib/ui";
+import { rgba, solido } from "@/lib/ui";
 import { PALETTE } from "@/lib/palette";
 import { useAccentMap } from "@/lib/theme";
 import { RECURSOS } from "@/lib/recursos";
@@ -85,7 +85,7 @@ export default function RecursosHub() {
             documentación viva. La biblioteca crece — si echas algo en falta, propónlo al equipo.
           </p>
           <p className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/[0.05] px-3 py-1.5 text-xs text-sand/70">
-            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: ACCENT }} aria-hidden />
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: solido(ACCENT) }} aria-hidden />
             {RECURSOS.length} {RECURSOS.length === 1 ? "recurso disponible" : "recursos disponibles"} · en crecimiento
           </p>
         </header>

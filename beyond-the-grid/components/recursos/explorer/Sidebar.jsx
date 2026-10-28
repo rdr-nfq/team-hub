@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { rgba } from "@/lib/ui";
+import { rgba, solido, activo } from "@/lib/ui";
 import { PALETTE } from "@/lib/palette";
 import { EJES, CAJON_ID, CAT_SHORT } from "./lib";
 import { useAcc, CatPill, optionDomId } from "./ui";
@@ -67,7 +67,7 @@ function EjeTabs({ eje, onEje, counts }) {
                 ? "border-transparent"
                 : "border-white/12 bg-white/[0.04] text-sand/70 hover:bg-white/[0.07] hover:text-sand"
             }`}
-            style={on ? { backgroundColor: ACCENT, color: "#070E46" } : undefined}
+            style={on ? activo(ACCENT) : undefined}
           >
             <span className="text-[12px] font-bold leading-tight">{t.label}</span>
             <span className={`text-[12px] font-bold leading-none tabular-nums ${on ? "opacity-70" : "text-sand/45"}`}>
@@ -187,7 +187,7 @@ function CategoryFilter({ categorias, counts, selCats, onToggle, onClear }) {
                       muted ? "cursor-default opacity-40" : "hover:bg-white/[0.07]"
                     }`}
                   >
-                    <span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: c.color }} />
+                    <span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: solido(c.color) }} />
                     <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-sand">
                       {c.emoji} {c.nombre}
                     </span>
@@ -198,7 +198,7 @@ function CategoryFilter({ categorias, counts, selCats, onToggle, onClear }) {
                     <span
                       aria-hidden
                       className={`grid h-4 w-4 shrink-0 place-items-center rounded border ${on ? "" : "border-white/25"}`}
-                      style={on ? { backgroundColor: ACCENT, borderColor: ACCENT, color: "#070E46" } : undefined}
+                      style={on ? activo(ACCENT) : undefined}
                     >
                       {on && <IconCheck />}
                     </span>
@@ -216,7 +216,7 @@ function CategoryFilter({ categorias, counts, selCats, onToggle, onClear }) {
             <span
               key={c.key}
               className="inline-flex items-center gap-1 rounded-full py-1 pl-2.5 pr-1 text-[10.5px] font-bold"
-              style={{ backgroundColor: c.color, color: "#001391" }}
+              style={activo(c.color)}
             >
               <span className="max-w-[130px] truncate">{CAT_SHORT[c.key] || c.nombre}</span>
               <button

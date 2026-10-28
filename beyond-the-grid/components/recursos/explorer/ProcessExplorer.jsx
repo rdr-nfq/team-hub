@@ -4,6 +4,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 import { Link } from "next-view-transitions";
 import { motion, useReducedMotion } from "framer-motion";
 import { PALETTE } from "@/lib/palette";
+import { activo } from "@/lib/ui";
 import { useAccentMap } from "@/lib/theme";
 import {
   C, DATA_URL, CLASIF_URL, CAJON_ID, cxColor,
@@ -405,7 +406,7 @@ export default function ProcessExplorer() {
               <Link
                 href="/recursos/mapa"
                 className="inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-bold uppercase tracking-wide transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene"
-                style={{ backgroundColor: PALETTE.purple, borderColor: PALETTE.purple, color: "#070E46" }}
+                style={activo(PALETTE.purple)}
               >
                 Mapa interactivo <span aria-hidden>→</span>
               </Link>

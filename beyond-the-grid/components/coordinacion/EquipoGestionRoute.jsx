@@ -45,8 +45,8 @@ function SelectorEquiposMiembro({ valor, onChange }) {
               if (n.length) onChange(EQUIPOS.map((x) => x.id).filter((id) => n.includes(id)));
             }}
             title={on && valor.length === 1 ? "Tiene que estar al menos en un equipo" : undefined}
-            className="rounded-lg border px-2.5 py-1.5 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene"
-            style={on ? { borderColor: rgba(COLOR_GESTION, 0.7), background: rgba(COLOR_GESTION, 0.18), color: mapAccent(COLOR_GESTION) } : { borderColor: "rgba(255,255,255,.15)", color: "rgba(247,248,248,.5)" }}
+            className={`rounded-lg border px-2.5 py-1.5 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene ${on ? "" : "border-white/15 text-sand/50"}`}
+            style={on ? { borderColor: rgba(COLOR_GESTION, 0.7), background: rgba(COLOR_GESTION, 0.18), color: mapAccent(COLOR_GESTION) } : undefined}
           >
             {on ? "✓ " : ""}{e.nombre}
           </button>
@@ -177,7 +177,7 @@ export default function EquipoGestionRoute() {
         {team && (
           <>
             {/* Barra de acciones */}
-            <div className="sticky top-16 z-10 mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-[#070E46]/90 p-3 backdrop-blur">
+            <div className="sticky top-16 z-10 mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-midnight/90 p-3 backdrop-blur">
               <div className="flex flex-wrap gap-1" role="tablist" aria-label="Filtrar por equipo">
                 {[{ id: "", nombre: "Todos" }, ...EQUIPOS].map((e) => (
                   <button key={e.id || "todos"} type="button" role="tab" aria-selected={filtro === e.id} onClick={() => setFiltro(e.id)}

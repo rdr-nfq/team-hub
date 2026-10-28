@@ -12,8 +12,10 @@ import {
 
 const ACCENT = PALETTE.mandarin;
 // Color de "mis días" y de la selección (exportados para las leyendas).
-export const YO_COLOR = (theme) => (theme === "light" ? "#1B7A3E" : "#88E783");
-export const MARCA_COLOR = (theme) => (theme === "light" ? "#5B4BD6" : "#9694FF");
+// En claro, Electric (norma BBVA: nada de acento como línea o punto sobre claro);
+// «tus días» (aro continuo) y la marca de gestión (discontinua) se distinguen por el trazo.
+export const YO_COLOR = (theme) => (theme === "light" ? "#001391" : "#88E783");
+export const MARCA_COLOR = (theme) => (theme === "light" ? "#001391" : "#9694FF");
 
 /** ¿El dispositivo tiene puntero con hover? (tooltip) o es táctil (bottom sheet). */
 function useCanHover() {
@@ -97,7 +99,7 @@ function DayCell({
   } else if (esHoy) {
     cls += " border-serene/80";
     style.background = light ? "rgba(0,19,145,0.08)" : "rgba(0,19,145,0.5)";
-    sombras.push(`inset 0 0 0 1px ${light ? "rgba(21,95,168,0.6)" : "rgba(133,200,255,0.6)"}`);
+    sombras.push(`inset 0 0 0 1px ${light ? "rgba(0,19,145,0.6)" : "rgba(133,200,255,0.6)"}`);
   } else if (esFinde) {
     cls += " border-white/10 bg-white/[0.07]";
   } else {

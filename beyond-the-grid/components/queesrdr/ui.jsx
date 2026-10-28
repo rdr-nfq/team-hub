@@ -6,7 +6,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { rgba } from "@/lib/ui";
+import { rgba, solido } from "@/lib/ui";
 import { useAccentMap } from "@/lib/theme";
 import { useDeck } from "./Deck";
 
@@ -153,7 +153,7 @@ export function DotList({ color = "#85C8FF", items, className = "" }) {
     <ul className={`mt-4 space-y-2.5 ${className}`}>
       {items.map((it, i) => (
         <li key={i} className="relative pl-5 text-[14px] leading-relaxed text-sand/80">
-          <span aria-hidden className="absolute left-0 top-[0.55em] h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+          <span aria-hidden className="absolute left-0 top-[0.55em] h-1.5 w-1.5 rounded-full" style={{ background: solido(color) }} />
           {it}
         </li>
       ))}
@@ -221,7 +221,7 @@ export function SlideModulo({ id, n, color, title, desc }) {
     <Slide id={id} color={color}>
       <div className="rdr-anim">
         <div className="flex items-center gap-3">
-          <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />
+          <span className="h-2.5 w-2.5 rounded-full" style={{ background: solido(color) }} />
           <span className="font-sans text-xs font-bold uppercase tracking-[0.35em]" style={{ color: mapAccent(color) }}>
             Módulo {n}
           </span>

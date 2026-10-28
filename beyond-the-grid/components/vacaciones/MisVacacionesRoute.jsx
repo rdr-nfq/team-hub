@@ -63,7 +63,7 @@ export default function MisVacacionesRoute() {
             <p className="font-sans text-xs font-bold uppercase tracking-[0.4em]" style={{ color: mapAccent(ACCENT) }}>Equipo · RDR</p>
             <h1 className="mt-2 font-display text-3xl font-bold tracking-tight text-sand sm:text-4xl">Vacaciones del equipo</h1>
             <p className="mt-2 max-w-xl text-pretty text-sm text-sand/65">
-              Quién está fuera cada día. Toca un nombre para filtrar; tus días van marcados en verde. Pide los tuyos desde «Pedir días».
+              Quién está fuera cada día. Toca un nombre para filtrar; tus días van marcados {theme === "light" ? "con un aro azul" : "en verde"}. Pide los tuyos desde «Pedir días».
             </p>
           </div>
           {d?.anios?.length > 1 && (

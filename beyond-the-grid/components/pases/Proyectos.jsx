@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { PALETTE } from "@/lib/palette";
-import { rgba } from "@/lib/ui";
+import { rgba, solido } from "@/lib/ui";
 import { useAccentMap } from "@/lib/theme";
 import { usePases } from "./PasesRoute";
 import {
@@ -273,7 +273,7 @@ function ProjectCard({ p, idx, E }) {
     <section className={`${CARD_CLS} p-4`} style={{ boxShadow: `inset 3px 0 0 ${color}` }}>
       <header className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} aria-hidden />
+          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: solido(color) }} aria-hidden />
           <h4 className="font-display text-lg font-bold text-sand">{p.nombre}</h4>
           {feats.map((f) => (
             <span key={f} className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ color: textColor, backgroundColor: rgba(color, 0.14) }}>{f}</span>

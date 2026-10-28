@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "next-view-transitions";
 import { useReducedMotion } from "framer-motion";
 import { ReactFlow, Background, BackgroundVariant, Controls, MiniMap, MarkerType } from "@xyflow/react";
-import { rgba } from "@/lib/ui";
+import { rgba, activo } from "@/lib/ui";
 import { PALETTE } from "@/lib/palette";
 import { useTheme, useAccentMap } from "@/lib/theme";
 import { DATA_URL, C } from "../explorer/lib";
@@ -51,7 +51,7 @@ function Trail({ trail, onGoto, onNew }) {
         type="button"
         onClick={onNew}
         className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-bold transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene"
-        style={{ backgroundColor: ACCENT, borderColor: ACCENT, color: "#070E46" }}
+        style={activo(ACCENT)}
       >
         <span aria-hidden>⌕</span> Elegir proceso
       </button>

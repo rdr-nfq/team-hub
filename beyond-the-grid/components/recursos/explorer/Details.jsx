@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { rgba } from "@/lib/ui";
+import { rgba, activo } from "@/lib/ui";
 import { C, cxColor, stepColor, deriveQueues, CAJON_ID } from "./lib";
 import {
   useAcc, Tag, TypePill, CatPill, CxText, CodePanel, InfoRow, WfFlow, ChainChips, TagList, Step, DetailHeader,
@@ -447,7 +447,7 @@ export function ProcesoDetail({ p, cat, data, dataIndex, clasifIndex, openSub, o
           <a
             href={mapHref}
             className="inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-bold uppercase tracking-wide transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene"
-            style={{ backgroundColor: C.purple, borderColor: C.purple, color: "#070E46" }}
+            style={activo(C.purple)}
           >
             Ver este proceso en el mapa interactivo <span aria-hidden>→</span>
           </a>

@@ -7,7 +7,7 @@ import { useTilt } from "@/hooks/useTilt";
 import { useLowPower } from "@/hooks/useLowPower";
 import { useLinks } from "@/lib/links";
 import { useAuth } from "../chrome/AuthGate";
-import { rgba } from "@/lib/ui";
+import { rgba, solido } from "@/lib/ui";
 import { PALETTE } from "@/lib/palette";
 import { useAccentMap } from "@/lib/theme";
 import { EQUIPO } from "@/lib/equipos";
@@ -245,7 +245,7 @@ function TypeColumn({ sec, delay, selector }) {
   return (
     <section aria-labelledby={`col-${sec.id}`} className="flex min-h-0 flex-col rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 backdrop-blur-sm" style={{ boxShadow: `inset 0 2px 0 ${rgba(sec.color, 0.7)}` }}>
       <div className="mb-4 flex items-center gap-2 px-1">
-        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: sec.color }} />
+        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: solido(sec.color) }} />
         <span className="font-display text-xs font-bold tabular-nums" style={{ color: mapAccent(sec.color) }}>{sec.n}</span>
         {selector || <h2 id={`col-${sec.id}`} className="font-display text-sm font-bold uppercase tracking-[0.15em] text-sand">{sec.title}</h2>}
       </div>

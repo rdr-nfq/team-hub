@@ -114,7 +114,7 @@ function MapNode({ data, selected }) {
             style={
               hex
                 ? { borderColor: rgba(hex, 0.55), color: acc(hex), backgroundColor: rgba(hex, 0.08) }
-                : { borderColor: "rgba(247,248,248,0.15)", color: "inherit" }
+                : { borderColor: "rgb(var(--c-sand) / 0.15)", color: "inherit" }
             }
           >
             {data.num}
