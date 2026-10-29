@@ -14,7 +14,7 @@ import CampanasAdmin from "./CampanasAdmin";
 import ResultadoSincronizacion from "./ResultadoSincronizacion";
 import { VacacionesSkeleton, ErrorCard } from "./VacacionesRoute";
 import { EstadoSolBadge } from "./SolicitudPanel";
-import { useVacaciones, useV2Configurado, fechaCortaEs, festivosDeGrupo, laborables, CLAVE_V2, CLASE_SOL } from "./datos";
+import { useVacaciones, useV2Configurado, fechaCortaEs, festivosDeGrupo, laborables, conEneroSiguiente, CLAVE_V2, CLASE_SOL } from "./datos";
 
 const rangoTxt = (a, b) => `${fechaCortaEs(a)}${b !== a ? ` → ${fechaCortaEs(b)}` : ""}`;
 
@@ -81,7 +81,10 @@ function DetalleSolicitud({ s, d, post, onResuelta }) {
   const [estado, setEstado] = useState({ fase: "idle" });
   useEffect(() => { setMotivo(""); setForzar(false); setEstado({ fase: "idle" }); }, [s.id]);
 
-  const saldo = (d.saldos || []).find((x) => x.nombre === s.persona);
+  // Saldo del AÑO de la solicitud (una de enero siguiente usa el de ese año).
+  const anioSol = Number(s.desde.slice(0, 4));
+  const saldos = anioSol === d.year ? d.saldos : anioSol === d.anioSiguiente ? d.saldosSiguiente : null;
+  const saldo = (saldos || []).find((x) => x.nombre === s.persona);
   const grupo = saldo?.grupo || d.empleadosMap[s.persona]?.grupo;
   const cancela = s.clase === "CANCELACION";
   const dias = diasSolicitud(s, d);
@@ -465,13 +468,19 @@ export default function GestionVacacionesRoute() {
   const { theme } = useTheme();
   const [anio, setAnio] = useState(null);
   const { snap, reload, post } = useVacaciones(v2 ? anio : null);
+  // Enero del año siguiente (como en /vacaciones): solo en Resumen y
+  // Calendario; Personas, Festivos y Formularios editan el año elegido.
+  const base = snap?.data;
+  const anioSig = base?.anios?.includes(base.year + 1) ? base.year + 1 : null;
+  const { snap: snapSig, reload: reloadSig } = useVacaciones(anioSig, { activo: !!v2 && !!anioSig });
+  const dMas = useMemo(() => conEneroSiguiente(base, snapSig?.data), [base, snapSig]);
   const [tab, setTab] = useState("resumen");
   const [selId, setSelId] = useState(null);
   const [filtros, setFiltros] = useState(() => new Set());
   const [sheet, setSheet] = useState(null);
   const [aviso, setAviso] = useState("");
   const [hoy] = useState(() => new Date());
-  const d = snap?.data;
+  const d = base;
 
   // ?id=… (enlace del correo de nueva solicitud) -> abre esa solicitud.
   useEffect(() => {
@@ -480,11 +489,11 @@ export default function GestionVacacionesRoute() {
   }, []);
 
   const sel = useMemo(() => (d?.pendientes || []).find((s) => s.id === selId) || null, [d, selId]);
-  const marca = useMemo(() => (sel && d ? new Set(diasSolicitud(sel, d)) : null), [sel, d]);
+  const marca = useMemo(() => (sel && dMas ? new Set(diasSolicitud(sel, dMas)) : null), [sel, dMas]);
 
-  const datosVis = useMemo(() => (d ? normalizarColores(d, theme) : null), [d, theme]);
+  const datosVis = useMemo(() => (dMas ? normalizarColores(dMas, theme) : null), [dMas, theme]);
   const toggleFiltro = useCallback((nombre) => setFiltros((prev) => { const n = new Set(prev); if (n.has(nombre)) n.delete(nombre); else n.add(nombre); return n; }), []);
-  const recargar = () => reload(true);
+  const recargar = () => { reload(true); if (anioSig) reloadSig(true); };
   const abrir = (id) => { setSelId(id); setTab("calendario"); };
 
   if (v2 === false) {
@@ -519,7 +528,7 @@ export default function GestionVacacionesRoute() {
               <AnioSiguiente d={d} post={post} onHecho={(a, msg) => { setAviso(msg); setAnio(a); reload(true); }} />
             )}
             {snap?.actualizando && <span className="text-xs text-sand/50" role="status">Actualizando…</span>}
-            <button type="button" onClick={() => reload(true)} disabled={!!snap?.actualizando} title="Recargar" className="rounded-full border border-white/15 p-2 text-sand/60 hover:text-sand disabled:opacity-50"><IconReload size={15} className={snap?.actualizando ? "animate-spin" : ""} /></button>
+            <button type="button" onClick={recargar} disabled={!!snap?.actualizando} title="Recargar" className="rounded-full border border-white/15 p-2 text-sand/60 hover:text-sand disabled:opacity-50"><IconReload size={15} className={snap?.actualizando ? "animate-spin" : ""} /></button>
           </div>
         </header>
 
@@ -586,7 +595,7 @@ export default function GestionVacacionesRoute() {
                     {selId && !sel && <p className="text-[12px] text-canary">Esa solicitud ya no está pendiente.</p>}
                   </section>
                   {sel && (
-                    <DetalleSolicitud s={sel} d={d} post={post} onResuelta={(r) => {
+                    <DetalleSolicitud s={sel} d={dMas} post={post} onResuelta={(r) => {
                       const hecho = [r.dias ? `${r.dias} días escritos` : "", r.liberados ? `${r.liberados} días liberados` : "", r.evento ? "evento creado" : ""].filter(Boolean).join(", ");
                       const c = CLASE_SOL[r.clase] || CLASE_SOL.NUEVA;
                       setAviso(r.estado === "APROBADA"

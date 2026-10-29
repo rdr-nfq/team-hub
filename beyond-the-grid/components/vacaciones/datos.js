@@ -171,6 +171,7 @@ export function conEneroSiguiente(d, sig) {
   return {
     ...d,
     anioSiguiente: sig.year,
+    saldosSiguiente: sig.saldos, // solo coordinación: saldo de quien pide días de enero
     ausenciasPorDia: { ...d.ausenciasPorDia, ...enero(sig.ausenciasPorDia) },
     festivos: { ...d.festivos, ...enero(sig.festivos) },
     festivosDetalle: [...(d.festivosDetalle || []), ...(sig.festivosDetalle || []).filter((f) => f.fecha.startsWith(pre))],
