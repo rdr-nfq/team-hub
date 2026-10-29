@@ -34,19 +34,33 @@ export function SolicitudForm({ datos, post, onHecho, sinMarco = false }) {
   const dias = useMemo(() => (f.desde ? laborables(f.desde, hasta, fxg) : []), [f.desde, hasta, fxg]);
   // Días que ya tengo registrados dentro del rango.
   const ocupados = useMemo(() => dias.filter((iso) => (datos.ausenciasPorDia[iso] || []).some((a) => a.nombre === yo?.nombre)), [dias, datos.ausenciasPorDia, yo]);
-  const cruzaAnio = f.desde && hasta && f.desde.slice(0, 4) !== hasta.slice(0, 4);
-  const listo = !!(yo && f.desde && hasta >= f.desde && dias.length && !ocupados.length && !cruzaAnio);
+  // El backend trabaja año a año: un rango que cruza al año siguiente (Navidad)
+  // se envía en dos solicitudes, una por año (solo si existe su pestaña).
+  const a1 = Number(f.desde.slice(0, 4)), a2 = Number(hasta.slice(0, 4));
+  const cruzaAnio = !!(f.desde && hasta && a2 !== a1);
+  const cruzaMal = cruzaAnio && (a2 !== a1 + 1 || !(datos.anios || []).includes(a2));
+  const tramos = !f.desde ? [] : cruzaAnio
+    ? [[f.desde, `${a1}-12-31`], [`${a2}-01-01`, hasta]].filter(([x, y]) => laborables(x, y, fxg).length)
+    : [[f.desde, hasta]];
+  const listo = !!(yo && f.desde && hasta >= f.desde && dias.length && !ocupados.length && !cruzaMal);
 
   const enviar = async () => {
     if (!listo || estado.fase === "enviando") return;
     setEstado({ fase: "enviando" });
+    let total = 0, aviso = "", hechas = 0;
     try {
-      const r = await post("solicitar", { clase: "NUEVA", tipo: f.tipo, desde: f.desde, hasta, comentario: f.comentario.trim() });
-      setEstado({ fase: "ok", dias: r.solicitud.dias, aviso: r.aviso });
+      for (const [x, y] of tramos) {
+        const r = await post("solicitar", { clase: "NUEVA", tipo: f.tipo, desde: x, hasta: y, comentario: f.comentario.trim() });
+        total += r.solicitud.dias; hechas++;
+        if (r.aviso) aviso = r.aviso;
+      }
+      setEstado({ fase: "ok", dias: total, n: hechas, aviso });
       setF({ tipo: f.tipo, desde: "", hasta: "", comentario: "" });
       onHecho?.();
     } catch (e) {
-      setEstado({ fase: "error", error: String(e.message || e) });
+      const parcial = hechas ? `Se guardó la parte de ${tramos[0][0].slice(0, 4)} (${total} días), pero no la de ${tramos[1][0].slice(0, 4)}: ` : "";
+      setEstado({ fase: "error", error: parcial + String(e.message || e) });
+      if (hechas) onHecho?.();
     }
   };
 
@@ -81,14 +95,17 @@ export function SolicitudForm({ datos, post, onHecho, sinMarco = false }) {
 
           {f.desde && (
             <p className="text-[12px] text-sand/65">
-              {cruzaAnio ? (
-                <span className="text-mandarin">No puede cruzar de año: pídelo en dos solicitudes.</span>
+              {cruzaMal ? (
+                <span className="text-mandarin">
+                  {a2 !== a1 + 1 ? "Como mucho puede llegar al año siguiente." : `Todavía no está abierto ${a2}: pide hasta el 31/12 y avisa a coordinación.`}
+                </span>
               ) : dias.length ? (
                 <>📅 <b className="text-sand">{dias.length}</b> {dias.length === 1 ? "día laborable" : "días laborables"}{yo.grupo ? ` (sin fines de semana ni festivos de ${yo.grupo})` : " (sin fines de semana)"}.</>
               ) : (
                 <span className="text-mandarin">Ese rango no tiene días laborables.</span>
               )}
-              {f.desde < hoy && !cruzaAnio && <span className="ml-1 text-canary">Ojo: empieza en el pasado.</span>}
+              {cruzaAnio && !cruzaMal && tramos.length > 1 && <span className="ml-1">Cruza de año: se envía como dos solicitudes, una por año.</span>}
+              {f.desde < hoy && !cruzaMal && <span className="ml-1 text-canary">Ojo: empieza en el pasado.</span>}
             </p>
           )}
           {ocupados.length > 0 && (
@@ -110,7 +127,7 @@ export function SolicitudForm({ datos, post, onHecho, sinMarco = false }) {
             <p className={`text-xs font-bold ${estado.aviso ? "text-canary" : TEXT.lime}`}>
               {estado.aviso
                 ? `Solicitud guardada (${estado.dias} días), pero el aviso por correo falló: ${estado.aviso}. Avisa tú a coordinación.`
-                : `✓ Solicitud enviada (${estado.dias} días): coordinación ya tiene el aviso.`}
+                : `✓ ${estado.n > 1 ? `${estado.n} solicitudes enviadas` : "Solicitud enviada"} (${estado.dias} días): coordinación ya tiene el aviso.`}
             </p>
           )}
           {estado.fase === "error" && (

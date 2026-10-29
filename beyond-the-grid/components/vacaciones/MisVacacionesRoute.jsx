@@ -12,7 +12,7 @@ import DaySheet from "./DaySheet";
 import { AmbientBackground, VacacionesSkeleton, ErrorCard } from "./VacacionesRoute";
 import { SolicitudForm, MisSolicitudes, MisDias, useMisBloques } from "./SolicitudPanel";
 import CampanaForm from "./CampanaForm";
-import { useVacaciones, festivosVistaGrupo, festivosDeGrupo, laborables } from "./datos";
+import { useVacaciones, festivosVistaGrupo, festivosDeGrupo, laborables, conEneroSiguiente } from "./datos";
 
 const ACCENT = PALETTE.mandarin;
 
@@ -82,10 +82,15 @@ export default function MisVacacionesRoute() {
   const mapAccent = useAccentMap();
   const [anio, setAnio] = useState(null);
   const { snap, reload, post } = useVacaciones(anio);
+  const base = snap?.data;
+  // Enero del año siguiente (si existe su pestaña): se carga aparte y se
+  // suma al final del calendario, para gestionar Navidad sin cambiar de año.
+  const anioSig = base?.anios?.includes(base.year + 1) ? base.year + 1 : null;
+  const { snap: snapSig, reload: reloadSig } = useVacaciones(anioSig, { activo: !!anioSig });
+  const d = useMemo(() => conEneroSiguiente(base, snapSig?.data), [base, snapSig]);
   const [filtros, setFiltros] = useState(() => new Set());
   const [sheet, setSheet] = useState(null);
   const [hoy] = useState(() => new Date());
-  const d = snap?.data;
 
   const toggleFiltro = useCallback((nombre) => {
     setFiltros((prev) => {
@@ -115,9 +120,9 @@ export default function MisVacacionesRoute() {
     return set;
   }, [d]);
 
-  const totalActivos = d ? d.empleados.filter((e) => e.activo).length : 0;
+  const totalActivos = base ? base.empleados.filter((e) => e.activo).length : 0;
   const ausentesHoy = d && d.year === hoy.getFullYear() ? (d.ausenciasPorDia?.[dateKey(hoy)] || []).length : 0;
-  const recargar = () => reload(true);
+  const recargar = () => { reload(true); if (anioSig) reloadSig(true); };
 
   return (
     <main className="relative min-h-dvh w-full">

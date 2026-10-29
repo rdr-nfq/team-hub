@@ -51,7 +51,7 @@ export function useV2Configurado() {
   return getUrl(CLAVE_V2) != null;
 }
 
-export function useVacaciones(anio) {
+export function useVacaciones(anio, { activo = true } = {}) {
   const { getUrl, error: linksError } = useLinks();
   const { email } = useAuth();
   const [snap, setSnap] = useState(null); // { data, error }
@@ -91,9 +91,9 @@ export function useVacaciones(anio) {
 
   useEffect(() => {
     const listo = linksError || getUrl(CLAVE_V2) != null || getUrl("_updated") != null || getUrl("_comment") != null;
-    if (!listo || !email) return;
+    if (!listo || !email || !activo) return;
     load();
-  }, [getUrl, linksError, load, email]);
+  }, [getUrl, linksError, load, email, activo]);
 
   // Las escrituras NO se reintentan (podrían haberse guardado ya).
   const post = useCallback(async (action, body) => {
@@ -136,7 +136,8 @@ export function bloquesDe(ausenciasPorDia, nombre, festivosGrupo, tipos) {
   let cur = null;
   for (const f of fechas) {
     const hueco = cur ? laborables(sumarDia(cur.fin), restarDia(f.dateStr), festivosGrupo).length : -1;
-    if (cur && cur.motivo === f.motivo && hueco === 0) {
+    // Un bloque no cruza de año (el backend trabaja año a año).
+    if (cur && cur.motivo === f.motivo && hueco === 0 && cur.fin.slice(0, 4) === f.dateStr.slice(0, 4)) {
       cur.fin = f.dateStr; cur.fechas.push(f.dateStr); cur.dias++;
     } else {
       cur = { inicio: f.dateStr, fin: f.dateStr, motivo: f.motivo, dias: 1, fechas: [f.dateStr] };
@@ -157,6 +158,25 @@ export function rangoIso(desde, hasta) {
   if (!desde || !hasta || hasta < desde) return out;
   for (let d = deIso(desde); isoDe(d) <= hasta && out.length < 400; d.setDate(d.getDate() + 1)) out.push(isoDe(d));
   return out;
+}
+
+/** Datos del año + el ENERO del año siguiente (si está cargado), para ver y
+   pedir las vacaciones de Navidad sin cambiar de año. Las claves son fechas
+   ISO, así que se suman sin chocar. */
+export function conEneroSiguiente(d, sig) {
+  if (!d || !sig || sig.year !== d.year + 1) return d;
+  const pre = `${sig.year}-01`;
+  const enero = (obj) => Object.fromEntries(Object.entries(obj || {}).filter(([k]) => k.startsWith(pre)));
+  const nuevos = (sig.empleados || []).filter((e) => !d.empleadosMap?.[e.nombre]);
+  return {
+    ...d,
+    anioSiguiente: sig.year,
+    ausenciasPorDia: { ...d.ausenciasPorDia, ...enero(sig.ausenciasPorDia) },
+    festivos: { ...d.festivos, ...enero(sig.festivos) },
+    festivosDetalle: [...(d.festivosDetalle || []), ...(sig.festivosDetalle || []).filter((f) => f.fecha.startsWith(pre))],
+    empleados: [...(d.empleados || []), ...nuevos],
+    empleadosMap: { ...sig.empleadosMap, ...d.empleadosMap },
+  };
 }
 
 /** Festivos de un grupo: { iso: true } a partir de festivosDetalle/festivosTodos. */

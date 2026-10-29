@@ -219,7 +219,7 @@ function DayCell({
   return <div className={cls} style={style} aria-label={ariaLabel}>{inner}</div>;
 }
 
-function MonthCard({ mes, anio, hoyStr, festivos, ausenciasPorDia, filtros, personaNombre, personaColor, totalActivos, empleadosMap, canHover, onOpenDay, onTip, delay, yo, marca, marcaTexto }) {
+function MonthCard({ mes, anio, otroAnio = false, hoyStr, festivos, ausenciasPorDia, filtros, personaNombre, personaColor, totalActivos, empleadosMap, canHover, onOpenDay, onTip, delay, yo, marca, marcaTexto }) {
   const { theme } = useTheme();
   const mapAccent = useAccentMap();
   const primerDia = new Date(anio, mes, 1);
@@ -293,8 +293,13 @@ function MonthCard({ mes, anio, hoyStr, festivos, ausenciasPorDia, filtros, pers
         ...(contieneHoy ? { borderColor: rgba(ACCENT, 0.65), boxShadow: `0 0 24px -8px ${rgba(ACCENT, 0.35)}` } : null),
       }}
     >
-      <h3 className="mb-3 flex items-baseline justify-between font-display text-lg font-bold text-sand">
-        {MESES[mes]}
+      <h3 className="mb-3 flex items-baseline justify-between gap-2 font-display text-lg font-bold text-sand">
+        {otroAnio ? `${MESES[mes]} ${anio}` : MESES[mes]}
+        {otroAnio && !contieneHoy && (
+          <span className="rounded-full border border-white/15 px-2 py-0.5 font-sans text-[10px] font-bold uppercase tracking-[0.08em] text-sand/60">
+            Año siguiente
+          </span>
+        )}
         {contieneHoy && (
           <span className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em]" style={{ background: rgba(ACCENT, 0.15), color: mapAccent(ACCENT) }}>
             Mes actual
@@ -345,11 +350,12 @@ export default function Calendario({ datos, filtros, totalActivos, onOpenDay, yo
   const ausenciasPorQ = useMemo(() => {
     const tot = [0, 0, 0, 0];
     Object.entries(datos.ausenciasPorDia || {}).forEach(([k, lista]) => {
+      if (Number(k.slice(0, 4)) !== anio) return; // enero del año siguiente no es Q1
       const m = Number(k.slice(5, 7));
       if (m >= 1 && m <= 12) tot[Math.floor((m - 1) / 3)] += (lista || []).length;
     });
     return tot;
-  }, [datos.ausenciasPorDia]);
+  }, [datos.ausenciasPorDia, anio]);
 
   // Modo persona: exactamente UNA persona filtrada en el EquipoPanel.
   const { personaNombre, personaColor } = useMemo(() => {
@@ -372,7 +378,10 @@ export default function Calendario({ datos, filtros, totalActivos, onOpenDay, yo
       {[0, 1, 2, 3].map((q) => {
         const pliega = plegable(q);
         // Un trimestre pasado se abre solo si contiene la selección (marca).
-        const conMarca = !!marca && Array.from(marca).some((k) => Math.floor((Number(k.slice(5, 7)) - 1) / 3) === q);
+        const conMarca = !!marca && Array.from(marca).some((k) => Number(k.slice(0, 4)) === anio && Math.floor((Number(k.slice(5, 7)) - 1) / 3) === q);
+        // Tras diciembre, enero del año siguiente si viene en los datos.
+        const meses = [[anio, q * 3], [anio, q * 3 + 1], [anio, q * 3 + 2]];
+        if (q === 3 && datos.anioSiguiente) meses.push([datos.anioSiguiente, 0]);
         const abierto = !pliega || abiertos.has(q) || conMarca;
         return (
           <div key={q}>
@@ -398,11 +407,12 @@ export default function Calendario({ datos, filtros, totalActivos, onOpenDay, yo
             )}
             {abierto && (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
-                {[q * 3, q * 3 + 1, q * 3 + 2].map((mes, i) => (
+                {meses.map(([a, mes], i) => (
                   <MonthCard
-                    key={mes}
+                    key={`${a}-${mes}`}
                     mes={mes}
-                    anio={anio}
+                    anio={a}
+                    otroAnio={a !== anio}
                     hoyStr={hoyStr}
                     festivos={datos.festivos || {}}
                     ausenciasPorDia={datos.ausenciasPorDia || {}}
