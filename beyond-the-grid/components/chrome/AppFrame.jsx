@@ -1,7 +1,7 @@
 "use client";
 
 import { LinksProvider, useLinks } from "@/lib/links";
-import { ThemeProvider, TemaDeCuenta, useTheme } from "@/lib/theme";
+import { ThemeProvider, TemaDeCuenta } from "@/lib/theme";
 import LoadingScreen from "./LoadingScreen";
 import AuthGate, { useAuth } from "./AuthGate";
 import Header from "./Header";
@@ -13,11 +13,9 @@ function SincronizarTema() {
   return <TemaDeCuenta email={email} url={getUrl("preferenciasBackend")} />;
 }
 
-/* Logo NFQ según tema (blanco sobre Midnight, negro sobre Sand). */
+/* Logo NFQ: el isotipo en color (PNG transparente), igual en los dos modos. */
 function NfqLogo() {
-  const { theme } = useTheme();
-  const src = theme === "light" ? "/team-hub/logos/nfq-black.png" : "/team-hub/logos/nfq-white.png?v=2";
-  return <img src={src} alt="NFQ" className="h-6 w-auto" />;
+  return <img src="/team-hub/logos/nfq-white.png?v=2" alt="NFQ" className="h-6 w-auto" />;
 }
 
 /**
