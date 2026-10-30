@@ -71,7 +71,8 @@ Seguimiento, ofertas y timereport (evidencias) trabajan con carpetas de Drive
 
 `instalarDisparadores()` (se puede repetir: no duplica) crea todos:
 recordatorios de comidas (`enviarRecordatorio`), recordatorio de evidencias
-del Time Report (`enviarRecordatorioTR`), avisos de pases
+del Time Report (`enviarRecordatorioTR`, diario a las 7:00: los días de aviso
+programa los envíos de las 9, 11, 13, 15 y 17 h con `recordatorioTRTramo`), avisos de pases
 (`revisarAvisosProgramados`), certificados de formaciones cada 5 min
 (`syncCertificates`), y en vacaciones la invalidación de caché al
 editar el Excel (`vacacionesAlCambiarExcel`) y la caché precalentada

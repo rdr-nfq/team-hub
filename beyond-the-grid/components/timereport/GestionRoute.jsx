@@ -773,7 +773,7 @@ export default function GestionRoute() {
                     <section className={`${GLASS} space-y-3 p-4 xl:sticky xl:top-24`}>
                       <h2 className="font-display text-base font-bold text-sand">Acciones</h2>
                       <p className="text-[11px] text-sand/50">
-                        Los ficheros se renombran solos a <span className="tabular-nums text-sand/75">{et?.carpeta}_NombreApellido.pdf</span> al
+                        Los ficheros se renombran solos a <span className="tabular-nums text-sand/75">{et?.fichero("Nombre Apellido")}</span> al
                         consultar el estado. Descarga el ZIP y el PDF del resumen y arrástralos al correo del cliente.
                       </p>
                       <div className="flex flex-wrap gap-2">

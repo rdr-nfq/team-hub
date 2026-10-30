@@ -102,8 +102,8 @@ const MES_LARGO = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio
 /* Quincena "de mes" (1 = días 1-15, 2 = 16-fin) y nombre canónico de la
    carpeta de evidencias: "2_Quincena_Junio2026", dentro de
    <Año>/<MM. Mes> ("2026/06. Junio/2_Quincena_Junio2026"). Misma convención
-   que el backend (Codigo_TimeReport.gs) y que el nombre de los ficheros
-   ("2_Quincena_Junio2026_PabloLlorente.pdf"). */
+   que el backend (Codigo_TimeReport.gs). Los ficheros se renombran a
+   "TR 16 - 30 Junio 2026. Pablo Llorente.pdf" (fichero(persona)). */
 export function etiquetaEvidencias(q, quincena) {
   const qn = quincenasDeQ(q).find((x) => x.n === quincena);
   if (!qn) return null;
@@ -111,12 +111,10 @@ export function etiquetaEvidencias(q, quincena) {
   const año = Number(String(q).slice(0, 4));
   const carpeta = `${nMes}_Quincena_${MES_LARGO[qn.mes]}${año}`;
   const carpetaMes = `${String(qn.mes + 1).padStart(2, "0")}. ${MES_LARGO[qn.mes]}`;
-  return { nMes, mes: MES_LARGO[qn.mes], año, carpeta, carpetaMes, ruta: `${año}/${carpetaMes}/${carpeta}` };
+  const rango = nMes === 1 ? "1 - 15" : `16 - ${new Date(año, qn.mes + 1, 0).getDate()}`;
+  const fichero = (persona) => `TR ${rango} ${MES_LARGO[qn.mes]} ${año}. ${String(persona || "").trim()}.pdf`;
+  return { nMes, mes: MES_LARGO[qn.mes], año, carpeta, carpetaMes, ruta: `${año}/${carpetaMes}/${carpeta}`, fichero };
 }
-
-/* Nombre de fichero canónico de una persona: sin espacios ni acentos. */
-export const nombreFichero = (persona) =>
-  String(persona || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]+/g, "");
 
 export const horasDe = (dias) => Object.values(dias || {}).reduce((a, v) => a + num(v), 0);
 

@@ -19,14 +19,16 @@
  *   · EVIDENCIAS por quincena en Drive: carpeta <raíz>/<Año>/<MM. Mes>/<n>_Quincena_<Mes><Año>
  *     (p.ej. 2026/06. Junio/2_Quincena_Junio2026). El backend crea las carpetas, dice
  *     quién ha subido ya su evidencia y quién falta, RENOMBRA los ficheros al
- *     nombre canónico (2_Quincena_Junio2026_PabloLlorente.pdf) y genera un ZIP
+ *     nombre canónico (TR 16 - 30 Junio 2026. Pablo Llorente.pdf) y genera un ZIP
  *     con todas para que coordinación lo arrastre al correo del cliente.
- *   · RECORDATORIO por email (9:00, Europe/Madrid) los días 1 y 15 de cada mes
- *     —o el siguiente laborable si caen en finde/festivo— a todo el equipo:
- *     "mañana es el día de enviar las evidencias", con enlace a la web y a la
- *     carpeta de la quincena DE SU EQUIPO. Uno por equipo (con carpeta de
+ *   · RECORDATORIO por email el primer día laborable en Madrid desde el 2 y
+ *     desde el 16 de cada mes (la quincena que acaba de cerrar): a las 9:00, a
+ *     todo el equipo («hoy toca subir las evidencias»), con enlace a la web y
+ *     a la carpeta de la quincena DE SU EQUIPO; a las 11, 13, 15 y 17 h, solo a
+ *     quien aún no ha subido la suya. Uno por equipo (con carpeta de
  *     evidencias configurada) y persona, desde el grupo (_comun/Correo.gs).
- *     enviarRecordatorioTRAhora() lo manda en el momento, sin esperar al 1/15.
+ *     A mano: enviarRecordatorioTRAhora() (a todos) y enviarPendientesTRAhora()
+ *     (a quien falta), de la última quincena cerrada.
  *
  *  DESPLIEGUE (proyecto Apps Script INDEPENDIENTE):
  *   1. script.google.com -> Nuevo proyecto -> pegar este fichero.
@@ -34,7 +36,7 @@
  *      como el resto de enlaces del hub. Debe estar compartida (editor) con el
  *      equipo para que puedan subir sus ficheros.
  *   3. Ejecutar una vez `autorizar` (Drive + Gmail + UrlFetch) y una vez
- *      `crearTriggerRecordatorioTR` (disparador diario a las 9:00).
+ *      `crearTriggerRecordatorioTR` (disparador diario a las 7:00 que programa los envíos).
  *   4. Implementar -> Aplicación web (Ejecutar como YO, Cualquier persona) ->
  *      "Nueva versión" en cada cambio. Pegar la URL /exec en links.json ->
  *      "timereportBackend".
@@ -326,7 +328,11 @@ function _infoQuincena(q, quincena) {
 }
 
 function _sinAcentos(s) { return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
-function _nombreFichero(persona) { return _sinAcentos(persona).replace(/[^A-Za-z0-9]+/g, ''); }
+/* Nombre canónico de una evidencia (sin extensión):
+   "TR 16 - 31 Octubre 2026. Pablo Llorente" (misma convención que la web). */
+function _nombreEvidencia(info, persona) {
+  return 'TR ' + info.desdeDia + ' - ' + info.hastaDia + ' ' + info.mes + ' ' + info.anio + '. ' + String(persona || '').trim();
+}
 function _normTR(s) { return _sinAcentos(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
 
 /* Equipo (equipo.json del hub): [{nombre, email, emailBBVA, coordinador…}] */
@@ -462,9 +468,9 @@ function estadoEvidencias(q, quincena, raiz, eq) {
     if (!p) { sinIdentificar.push({ fichero: nombre, url: file.getUrl() }); return; }
     var extM = /\.([A-Za-z0-9]{1,6})$/.exec(nombre);
     var ext = extM ? '.' + extM[1].toLowerCase() : (file.getMimeType() === MimeType.PDF ? '.pdf' : '');
-    var canon = info.carpeta + '_' + _nombreFichero(p.nombre);
+    var canon = _nombreEvidencia(info, p.nombre);
     usados[canon] = (usados[canon] || 0) + 1;
-    var deseado = canon + (usados[canon] > 1 ? '_' + usados[canon] : '') + ext;
+    var deseado = canon + (usados[canon] > 1 ? ' (' + usados[canon] + ')' : '') + ext;
     var renombrado = false;
     if (nombre !== deseado) { try { file.setName(deseado); renombrado = true; nombre = deseado; } catch (e) {} }
     entregados.push({ persona: p.nombre, fichero: nombre, url: file.getUrl(), actualizado: file.getLastUpdated().toISOString(), renombrado: renombrado });
@@ -509,26 +515,38 @@ function descargarEvidencias(q, quincena, raiz, eq) {
 }
 
 /* ───────────────────────── Recordatorio de evidencias ─────────────────────── */
+/* El primer día LABORABLE EN MADRID después del 1 y del 15 de cada mes (el 2
+   y el 16, o el siguiente laborable), la quincena que acaba de cerrar:
+     · 9:00  → a TODO el equipo: «hoy toca subir tu evidencia».
+     · 11:00, 13:00, 15:00 y 17:00 → solo a quien aún no la ha subido
+       (estadoEvidencias de su carpeta); si ya no falta nadie, se para.
+   Horas exactas: un disparador diario (7-8 h) decide si hoy toca y programa
+   el de las 9:00; cada envío programa el siguiente (un solo disparador
+   puntual a la vez, «recordatorioTRTramo»). */
+var TR_TRAMOS = [9, 11, 13, 15, 17];
+var TR_PROP_RECORDATORIO = 'tr:recordatorio';
 
-/* Ejecutar UNA vez: disparador diario a las 9:00 (Europe/Madrid). El propio
-   handler decide si hoy toca (día 1 / 15 o el siguiente laborable). */
+/* Ejecutar UNA vez (lo hace instalarDisparadores; se puede repetir). */
 function crearTriggerRecordatorioTR() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
-    if (t.getHandlerFunction() === 'enviarRecordatorioTR') ScriptApp.deleteTrigger(t);
+    var h = t.getHandlerFunction();
+    if (h === 'enviarRecordatorioTR' || h === 'recordatorioTRTramo') ScriptApp.deleteTrigger(t);
   });
-  ScriptApp.newTrigger('enviarRecordatorioTR').timeBased().everyDays(1).atHour(9).inTimezone(TR_CONFIG.TZ).create();
-  Logger.log('Disparador creado: enviarRecordatorioTR, diario a las 9:00 (' + TR_CONFIG.TZ + ').');
+  ScriptApp.newTrigger('enviarRecordatorioTR').timeBased().everyDays(1).atHour(7).inTimezone(TR_CONFIG.TZ).create();
+  Logger.log('Disparador creado: enviarRecordatorioTR, diario a las 7:00 (' + TR_CONFIG.TZ + '); los días de recordatorio programa los envíos de las ' + TR_TRAMOS.join(', ') + ' h.');
 }
 
 function _hoyISOTR() { return Utilities.formatDate(new Date(), TR_CONFIG.TZ, 'yyyy-MM-dd'); }
 
-/* Festivos de España de vacaciones ({iso:"ES"|"MX"|"AMBOS"}). {} si falla. */
-function _festivosES() {
+/* Festivos de MADRID ({iso: 1}) de vacaciones (grupos de festivos cuyo nombre
+   contiene «Madrid»; si no hay ninguno, los de España). {} si falla. */
+function _festivosMadrid() {
   try {
-    // Mismo proyecto que vacaciones: se piden directamente (antes, por HTTP).
-    var d = datosPublicos();
+    var d = datos(undefined, ''); // mismo proyecto que vacaciones
     var out = {};
-    Object.keys(d.festivos || {}).forEach(function (k) { if (d.festivos[k] === 'ES' || d.festivos[k] === 'AMBOS') out[k] = 1; });
+    var madrid = (d.festivosDetalle || []).filter(function (f) { return /madrid/i.test(f.grupo || ''); });
+    if (madrid.length) madrid.forEach(function (f) { out[f.fecha] = 1; });
+    else Object.keys(d.festivos || {}).forEach(function (k) { if (d.festivos[k] === 'ES' || d.festivos[k] === 'AMBOS') out[k] = 1; });
     return out;
   } catch (e) { Logger.log('festivos: ' + e); return {}; }
 }
@@ -543,114 +561,186 @@ function _iso(anio, mes0, dia) {
   return anio + '-' + ('0' + (mes0 + 1)).slice(-2) + '-' + ('0' + dia).slice(-2);
 }
 
-/* Si hoy es el día de recordar (1 o 15, o el primer laborable después), devuelve
-   la quincena que CIERRA: {q, quincena, info}. Si no toca, null. */
+/* Si hoy es día de recordatorio (el primer laborable desde el 2 o desde el
+   16), la quincena que CIERRA: {q, quincena, info}. Si no toca, null. */
 function _quincenaARecordar(hoy, festivos) {
   var p = hoy.split('-').map(Number);
   var anio = p[0], mes0 = p[1] - 1, dia = p[2];
   var ult = new Date(anio, mes0 + 1, 0).getDate();
-  var anclas = [1, 15];
+  var anclas = [2, 16];
   for (var i = 0; i < anclas.length; i++) {
     var d = anclas[i];
     while (d <= ult && !_esLaborable(_iso(anio, mes0, d), festivos)) d++;
     if (d !== dia) continue;
-    // Día 1 → cierra la 2ª quincena del mes anterior; día 15 → la 1ª de este mes.
-    var mesQ = anclas[i] === 1 ? mes0 - 1 : mes0;
-    var anioQ = anio;
-    if (mesQ < 0) { mesQ = 11; anioQ--; }
-    var q = anioQ + 'Q' + (Math.floor(mesQ / 3) + 1);
-    var quincena = (mesQ % 3) * 2 + (anclas[i] === 1 ? 2 : 1);
-    return { q: q, quincena: quincena, info: _infoQuincena(q, quincena) };
+    // Desde el 2 → la 2ª quincena del mes anterior; desde el 16 → la 1ª de este mes.
+    return anclas[i] === 2 ? _quincenaDeMes(anio, mes0 - 1, 2) : _quincenaDeMes(anio, mes0, 1);
   }
   return null;
 }
 
-/* Handler del disparador diario. */
+/* {q, quincena, info} de la quincena nMes (1|2) del mes mes0 (-1 = diciembre anterior). */
+function _quincenaDeMes(anio, mes0, nMes) {
+  if (mes0 < 0) { mes0 = 11; anio--; }
+  var q = anio + 'Q' + (Math.floor(mes0 / 3) + 1);
+  var quincena = (mes0 % 3) * 2 + nMes;
+  return { q: q, quincena: quincena, info: _infoQuincena(q, quincena) };
+}
+
+/* Última quincena cerrada (para los envíos a mano). */
+function _ultimaQuincenaCerrada() {
+  var p = _hoyISOTR().split('-').map(Number);
+  return p[2] <= 15 ? _quincenaDeMes(p[0], p[1] - 2, 2) : _quincenaDeMes(p[0], p[1] - 1, 1);
+}
+
+/* Handler del disparador diario (7-8 h): si hoy toca, programa las 9:00. */
 function enviarRecordatorioTR() {
   var hoy = _hoyISOTR();
-  var r = _quincenaARecordar(hoy, _festivosES());
+  var r = _quincenaARecordar(hoy, _festivosMadrid());
   if (!r) { Logger.log(hoy + ': hoy no toca recordatorio.'); return; }
-  _recordarATodos(r.info, false);
+  PropertiesService.getScriptProperties().setProperty(TR_PROP_RECORDATORIO, JSON.stringify({ hoy: hoy, q: r.q, quincena: r.quincena, tramo: 0 }));
+  _programarTramoTR(hoy, 0);
+  Logger.log(hoy + ': recordatorio de ' + r.info.carpeta + ' programado a las ' + TR_TRAMOS[0] + ':00.');
 }
 
-/* Manda YA el recordatorio a todo el equipo (quincena en curso), sin esperar
-   al día 1/15. Ejecutar a mano desde el editor. */
+/* Un único disparador puntual a la hora del tramo i de hoy. */
+function _programarTramoTR(hoy, i) {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'recordatorioTRTramo') ScriptApp.deleteTrigger(t);
+  });
+  if (i >= TR_TRAMOS.length) return;
+  var cuando = Utilities.parseDate(hoy + ' ' + ('0' + TR_TRAMOS[i]).slice(-2) + ':00', TR_CONFIG.TZ, 'yyyy-MM-dd HH:mm');
+  ScriptApp.newTrigger('recordatorioTRTramo').timeBased().at(cuando).create();
+}
+
+/* Handler de cada tramo: 9:00 a todos; luego, solo a quien falte. */
+function recordatorioTRTramo() {
+  var props = PropertiesService.getScriptProperties();
+  var plan = JSON.parse(props.getProperty(TR_PROP_RECORDATORIO) || 'null');
+  var hoy = _hoyISOTR();
+  if (!plan || plan.hoy !== hoy) { _programarTramoTR(hoy, TR_TRAMOS.length); Logger.log('Recordatorio TR: sin plan para hoy.'); return; }
+  var info = _infoQuincena(plan.q, plan.quincena);
+  var siguen = 1;
+  if (plan.tramo === 0) _recordarATodos(info, false);
+  else siguen = _recordarPendientes(info, TR_TRAMOS[plan.tramo]);
+  plan.tramo++;
+  props.setProperty(TR_PROP_RECORDATORIO, JSON.stringify(plan));
+  _programarTramoTR(hoy, siguen ? plan.tramo : TR_TRAMOS.length);
+}
+
+/* Manda YA el aviso a todo el equipo (última quincena cerrada). A mano. */
 function enviarRecordatorioTRAhora() {
-  _recordarATodos(_quincenaEnCurso(), true);
+  _recordarATodos(_ultimaQuincenaCerrada().info, true);
 }
 
-/* Prueba: el correo de cada equipo con carpeta configurada, solo al
-   responsable del hub (PRUEBA_TO si se rellena). */
+/* Manda YA el aviso a quien aún no ha subido su evidencia. A mano. */
+function enviarPendientesTRAhora() {
+  _recordarPendientes(_ultimaQuincenaCerrada().info, null);
+}
+
+/* Prueba: los dos correos (a todos y a quien falta) de cada equipo con
+   carpeta configurada, solo al responsable del hub (PRUEBA_TO si se rellena). */
 function enviarRecordatorioTRPrueba() {
-  var info = _quincenaEnCurso();
+  var info = _ultimaQuincenaCerrada().info;
   var to = TR_CONFIG.PRUEBA_TO || _hubResponsable();
   Object.keys(TR_EQUIPOS).forEach(function (eq) {
     if (!_evidenciasRootId('', eq)) { Logger.log(TR_EQUIPOS[eq].nombre + ': sin carpeta de evidencias, no se prueba.'); return; }
-    var c = _correoRecordatorio(info, _urlCarpeta(info, eq), true, eq);
-    var r = _correoEnviar(to, '[PRUEBA] ' + c.asunto, c.texto, c.html, { nombre: c.remite });
-    Logger.log(TR_EQUIPOS[eq].nombre + ': prueba ' + (r.enviados.length ? 'enviada' : 'FALLIDA') + ' a ' + to + ' (' + info.carpeta + ').');
+    var url = _urlCarpeta(info, eq);
+    [_correoRecordatorio(info, url, false, eq), _correoRecordatorio(info, url, false, eq, 'Nombre Apellido')].forEach(function (c) {
+      var r = _correoEnviar(to, '[PRUEBA] ' + c.asunto, c.texto, c.html, { nombre: c.remite });
+      Logger.log(TR_EQUIPOS[eq].nombre + ': prueba ' + (r.enviados.length ? 'enviada' : 'FALLIDA') + ' a ' + to + ' (' + c.asunto + ').');
+    });
   });
-}
-
-function _quincenaEnCurso() {
-  var p = _hoyISOTR().split('-').map(Number);
-  var q = p[0] + 'Q' + (Math.floor((p[1] - 1) / 3) + 1);
-  return _infoQuincena(q, ((p[1] - 1) % 3) * 2 + (p[2] <= 15 ? 1 : 2));
 }
 
 function _urlCarpeta(info, eq) {
   try { return _carpetaQuincena(info, '', eq).getUrl(); } catch (e) { Logger.log('carpeta: ' + e); return ''; }
 }
 
-/* Un recordatorio por EQUIPO, a cada persona de ese equipo por separado y
-   desde el grupo (Correo.gs). Solo para los equipos con carpeta de
-   evidencias en links.json: así Market Abuse y Comms Surveillance empiezan a
-   recibirlo cuando se configure la suya. Quien está en dos equipos recibe
-   los dos (cada uno con su carpeta). Las respuestas van a coordinación. */
-function _recordarATodos(info, manual) {
+/* Personas activas con email de equipo.json, y emails de coordinación. */
+function _equipoConEmailTR() {
   var team = _equipoTR().filter(function (p) { return p.email && p.activo !== false && p.baja !== true; });
   var coord = team.filter(function (p) { return p.coordinador === true; }).map(function (p) { return String(p.email).trim(); });
+  return { team: team, coord: coord.join(',') };
+}
+
+/* Un aviso por EQUIPO, a cada persona de ese equipo por separado y desde el
+   grupo (Correo.gs). Solo para los equipos con carpeta de evidencias en
+   links.json: así Market Abuse y Comms Surveillance empiezan a recibirlo
+   cuando se configure la suya. Quien está en dos equipos recibe los dos
+   (cada uno con su carpeta). Las respuestas van a coordinación. */
+function _recordarATodos(info, manual) {
+  var e = _equipoConEmailTR();
   Object.keys(TR_EQUIPOS).forEach(function (eq) {
     if (!_evidenciasRootId('', eq)) { Logger.log(TR_EQUIPOS[eq].nombre + ': sin carpeta de evidencias en links.json, no se envía.'); return; }
-    var emails = team.filter(function (p) { return _equiposDeTR(p).indexOf(eq) >= 0; }).map(function (p) { return String(p.email).trim(); });
+    var emails = e.team.filter(function (p) { return _equiposDeTR(p).indexOf(eq) >= 0; }).map(function (p) { return String(p.email).trim(); });
     if (!emails.length) { Logger.log(TR_EQUIPOS[eq].nombre + ': nadie en el equipo.'); return; }
     var c = _correoRecordatorio(info, _urlCarpeta(info, eq), manual, eq);
-    var r = _correoEnviar(emails, c.asunto, c.texto, c.html, { nombre: c.remite, replyTo: coord.join(',') });
+    var r = _correoEnviar(emails, c.asunto, c.texto, c.html, { nombre: c.remite, replyTo: e.coord });
     Logger.log(TR_EQUIPOS[eq].nombre + ' · ' + info.carpeta + ': enviado a ' + r.enviados.length + ' de ' + emails.length
       + (r.fallidos.length ? ' · FALLAN: ' + r.fallidos.join(' | ') : ''));
   });
   Logger.log('Cuota de correo restante hoy: ' + MailApp.getRemainingDailyQuota());
 }
 
-/* Asunto, texto y HTML del recordatorio. manual=true: "toca enviar" (envío a
-   mano en cualquier momento); false: "mañana toca enviar" (disparador 1/15). */
-function _correoRecordatorio(info, carpetaUrl, manual, eq) {
+/* Aviso personal a quien aún no ha subido su evidencia (por equipo, según su
+   carpeta). Devuelve cuántos faltan en total (0 = ya no hace falta seguir). */
+function _recordarPendientes(info, hora) {
+  var e = _equipoConEmailTR();
+  var faltan = 0;
+  Object.keys(TR_EQUIPOS).forEach(function (eq) {
+    if (!_evidenciasRootId('', eq)) return;
+    var st;
+    try { st = estadoEvidencias(info.q, info.quincena, '', eq); } catch (err) { Logger.log(TR_EQUIPOS[eq].nombre + ': ' + err); faltan++; return; }
+    var pend = {};
+    st.pendientes.forEach(function (n) { pend[n] = 1; });
+    var personas = e.team.filter(function (p) { return pend[p.nombre] && _equiposDeTR(p).indexOf(eq) >= 0; });
+    faltan += personas.length;
+    personas.forEach(function (p) {
+      var c = _correoRecordatorio(info, st.carpeta.url, false, eq, p.nombre, hora);
+      _correoEnviar(String(p.email).trim(), c.asunto, c.texto, c.html, { nombre: c.remite, replyTo: e.coord });
+    });
+    Logger.log(TR_EQUIPOS[eq].nombre + ' · ' + info.carpeta + ': faltan ' + personas.length + (personas.length ? ' (' + personas.map(function (p) { return p.nombre; }).join(', ') + ')' : ''));
+  });
+  return faltan;
+}
+
+/* Asunto, texto y HTML del aviso. Sin `persona`: a todo el equipo («hoy toca
+   subir las evidencias»). Con `persona`: aviso personal a quien aún no la ha
+   subido. manual=true: enviado a mano (sin «hoy»). */
+function _correoRecordatorio(info, carpetaUrl, manual, eq, persona, hora) {
   eq = eq || 'rdr';
   var nombreEq = TR_EQUIPOS[eq].nombre;
   var web = TR_CONFIG.WEB_URL + (eq === 'rdr' ? '' : '?equipo=' + eq);
-  var cuando = manual ? 'Toca enviar las evidencias' : 'Mañana toca enviar las evidencias';
-  var asunto = '⏰📎 Time Report ' + nombreEq + ' · ' + cuando.toLowerCase() + ' (' + info.etiqueta + ')';
-  var texto = 'Hola equipo,\n\n' + cuando + ' del Time Report ' + nombreEq + ' de la quincena ' + info.etiqueta + '.\n\n'
+  var fichero = _nombreEvidencia(info, persona || 'Nombre Apellido') + '.pdf';
+  var titulo = persona ? 'Te falta subir tu evidencia' : (manual ? 'Toca subir las evidencias' : 'Hoy toca subir las evidencias');
+  var asunto = (persona ? '⏳📎 ' : '⏰📎 ') + 'Time Report ' + nombreEq + ' · ' + titulo.toLowerCase() + ' (' + info.etiqueta + ')';
+  var saludo = persona ? String(persona).split(' ')[0] : 'equipo';
+  var frase = persona
+    ? 'Todavía no vemos tu evidencia del Time Report ' + nombreEq + ' de la quincena ' + info.etiqueta + ' en la carpeta. Súbela hoy, por favor.'
+    : titulo + ' del Time Report ' + nombreEq + ' de la quincena ' + info.etiqueta + ': cada uno sube la suya a la carpeta de la quincena.';
+  var texto = 'Hola ' + saludo + ',\n\n' + frase + '\n\n'
     + '📊 Tu imputación: ' + web + '\n'
     + (carpetaUrl ? '📁 Carpeta de evidencias: ' + carpetaUrl + '\n' : '')
-    + (carpetaUrl ? '\nEl fichero se renombra solo a ' + info.carpeta + '_TuNombre.pdf.' : '');
+    + '\nEl fichero se renombra solo a «' + fichero + '».'
+    + (persona && hora && hora < TR_TRAMOS[TR_TRAMOS.length - 1] ? '\n\nTe lo volveremos a recordar cada dos horas (hasta las ' + TR_TRAMOS[TR_TRAMOS.length - 1] + ':00) mientras falte.' : '');
   var btn = function (href, label, bg) {
     return '<a href="' + href + '" style="display:inline-block;background:' + bg + ';color:#001391;font-weight:bold;text-decoration:none;padding:12px 26px;border-radius:999px;font-size:15px;margin:0 8px 8px 0;">' + label + '</a>';
   };
   var html = '<div style="font-family:Lato,Arial,sans-serif;max-width:520px;margin:0 auto;color:#070E46;">'
     + '<div style="background:#001391;color:#F7F8F8;border-radius:14px 14px 0 0;padding:20px 24px;">'
     +   '<div style="font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#85C8FF;">Time Report ' + nombreEq + ' · BBVA × NFQ</div>'
-    +   '<div style="font-family:Georgia,\'Source Serif 4\',serif;font-size:22px;font-weight:bold;margin-top:4px;">⏰ ' + cuando + '</div></div>'
+    +   '<div style="font-family:Georgia,\'Source Serif 4\',serif;font-size:22px;font-weight:bold;margin-top:4px;">' + (persona ? '⏳ ' : '⏰ ') + titulo + '</div></div>'
     + '<div style="border:1px solid #E2E6EA;border-top:0;border-radius:0 0 14px 14px;padding:22px 24px;background:#FFFFFF;">'
-    +   '<p style="margin:0 0 14px;font-size:15px;">👋 Hola <strong>equipo</strong>,</p>'
-    +   '<p style="margin:0 0 14px;font-size:15px;line-height:1.55;">📅 <strong>' + cuando + '</strong> del Time Report ' + nombreEq + ' de la quincena <strong>' + info.etiqueta + '</strong>.</p>'
+    +   '<p style="margin:0 0 14px;font-size:15px;">👋 Hola <strong>' + saludo + '</strong>,</p>'
+    +   '<p style="margin:0 0 14px;font-size:15px;line-height:1.55;">📅 ' + frase.replace(info.etiqueta, '<strong>' + info.etiqueta + '</strong>') + '</p>'
     +   '<p style="margin:0 0 18px;font-size:15px;line-height:1.55;">'
     +     '✅ Comprueba tu imputación en la web<br>'
     +     '📋 Copia las filas al TR de BBVA<br>'
-    +     '📎 Sube tu evidencia a la carpeta de la quincena'
-    +     (carpetaUrl ? ' (se renombra sola a <code>' + info.carpeta + '_TuNombre.pdf</code>)' : '') + '</p>'
+    +     '📎 Sube tu evidencia a la carpeta de la quincena<br>'
+    +     '<span style="font-size:13px;color:#46536D;">Se renombra sola a <code>' + fichero + '</code></span></p>'
+    +   (carpetaUrl ? btn(carpetaUrl, '📁 Subir mi evidencia', '#85C8FF') : '')
     +   btn(web, '📊 Ver mi Time Report →', '#FFB56B')
-    +   (carpetaUrl ? btn(carpetaUrl, '📁 Subir evidencias', '#85C8FF') : '')
+    +   (persona && hora && hora < TR_TRAMOS[TR_TRAMOS.length - 1] ? '<p style="margin:10px 0 0;font-size:12px;color:#46536D;">Te lo recordaremos cada dos horas (hasta las ' + TR_TRAMOS[TR_TRAMOS.length - 1] + ':00) mientras falte.</p>' : '')
     +   '<p style="margin:14px 0 0;font-size:12px;color:#46536D;">Si los botones no van: <a href="' + web + '" style="color:#001391;">' + web + '</a>'
     +   (carpetaUrl ? ' · <a href="' + carpetaUrl + '" style="color:#001391;">carpeta de evidencias</a>' : '') + '</p></div></div>';
   return { asunto: asunto, texto: texto, html: html, remite: 'Time Report ' + nombreEq };
