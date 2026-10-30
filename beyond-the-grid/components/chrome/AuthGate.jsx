@@ -10,7 +10,7 @@ import {
 } from "react";
 import Script from "next/script";
 import { normEmail } from "@/lib/email";
-import { equiposDe, EQUIPO_DEFECTO } from "@/lib/equipos";
+import { equiposDe, esActivo, EQUIPO_DEFECTO } from "@/lib/equipos";
 
 /**
  * Puerta de acceso del hub con Google Identity Services (GIS).
@@ -25,6 +25,8 @@ import { equiposDe, EQUIPO_DEFECTO } from "@/lib/equipos";
  *   https://rdr-nfq.github.io   y   http://localhost:3000
  */
 const AUTH_KEY = "rdr_auth_email";
+const avisoInactivo = (e) =>
+  `La cuenta ${e} está marcada como inactiva en el hub. Si crees que es un error, habla con coordinación.`;
 const EQUIPO_URL = "/team-hub/equipo/equipo.json"; // absoluto: funciona desde / y /formacion/
 const GOOGLE_CLIENT_ID =
   "535974839401-54e3t5n61nbc0c31corcfr56gplj8svl.apps.googleusercontent.com";
@@ -58,12 +60,14 @@ export default function AuthGate({ children, onAuthed }) {
 
   // Solo se permite el correo NFQ (p.email). El @bbva.com (emailBBVA) NO entra.
   // Los dos lados se normalizan: un espacio de más en equipo.json dejaba a esa
-  // persona sin poder entrar, sin que nada lo explicara.
-  const emailPermitido = useCallback((e) => {
+  // persona sin poder entrar, sin que nada lo explicara. Quien está marcado
+  // como inactivo en Gestión de equipo no entra (y pierde la sesión guardada).
+  const miembro = useCallback((e) => {
     const x = normEmail(e);
-    if (!x) return false;
-    return team.current.some((p) => normEmail(p.email) === x);
+    return x ? team.current.find((p) => normEmail(p.email) === x) || null : null;
   }, []);
+  const emailPermitido = useCallback((e) => esActivo(miembro(e)), [miembro]);
+
 
   const esCoordinador = useCallback((e) => {
     const x = normEmail(e);
@@ -114,7 +118,9 @@ export default function AuthGate({ children, onAuthed }) {
         entrar(mail);
       } else {
         setMsg(
-          data && data.email
+          mail && miembro(mail)
+            ? avisoInactivo(mail)
+            : data && data.email
             ? `El correo ${data.email} no pertenece a ningún equipo del hub. Usa tu cuenta @nfq.es, @nter.es o @nfq.mx del equipo.`
             : "No se pudo verificar el correo. Inténtalo de nuevo."
         );
@@ -147,7 +153,10 @@ export default function AuthGate({ children, onAuthed }) {
         entrar(cached);
         return;
       }
-      if (cached) localStorage.removeItem(AUTH_KEY);
+      if (cached) {
+        localStorage.removeItem(AUTH_KEY);
+        if (miembro(cached)) setMsg(avisoInactivo(cached));
+      }
 
       // 2) inicializa GIS y pinta el botón
       waitForGoogle(() => {
@@ -175,7 +184,7 @@ export default function AuthGate({ children, onAuthed }) {
     return () => {
       cancelled = true;
     };
-  }, [emailPermitido, entrar]);
+  }, [emailPermitido, entrar, miembro]);
 
   return (
     <AuthContext.Provider value={{ email, isCoordinador, equipos, logout }}>

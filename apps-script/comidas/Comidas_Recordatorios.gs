@@ -2,7 +2,9 @@
    Comidas RDR · Recordatorios por email (Apps Script)
 
    Avisa a quien AÚN NO ha votado, con el enlace a la web. Un correo
-   INDIVIDUAL a cada pendiente, desde el grupo de Google (Correo.gs).
+   INDIVIDUAL a cada pendiente, desde el grupo de Google (Correo.gs). Solo a
+   quien tiene festivos de MADRID en vacaciones (su grupo de festivos en
+   Vacas_<año> contiene «Madrid»): la comida es en la oficina de Madrid.
 
    Cuándo, y solo si ese jueves es de oficina ('N' en la pestaña "Semana"):
      · Lun 12 y 17 · Mar 12 y 17
@@ -160,7 +162,28 @@ function votantes_(ss, fecha) {
 
 function noVotantes_(ss, fecha) {
   const voto = votantes_(ss, fecha);
-  return equipo_().filter(p => !voto[nombreClave_(p.nombre)]).map(p => ({ nombre: p.nombre, email: p.email }));
+  return deMadrid_(equipo_()).filter(p => !voto[nombreClave_(p.nombre)]).map(p => ({ nombre: p.nombre, email: p.email }));
+}
+
+/** Solo quien tiene festivos de Madrid en vacaciones (grupo de festivos de
+ *  su fila en Vacas_<año> con «Madrid» en el nombre; mismo proyecto). Si no
+ *  se puede leer vacaciones, todos (mejor un aviso de más que ninguno). */
+function deMadrid_(team) {
+  try {
+    const b = _base();
+    const fuera = [];
+    const out = team.filter(p => {
+      const v = _personaPorEmail(b, p.email);
+      const ok = !!(v && /madrid/i.test(v.grupo || ''));
+      if (!ok) fuera.push(p.nombre + ' (' + (v ? (v.grupo || 'sin grupo') : 'no está en vacaciones') + ')');
+      return ok;
+    });
+    if (fuera.length) Logger.log('Sin festivos de Madrid, no se les avisa: ' + fuera.join(', '));
+    return out;
+  } catch (e) {
+    Logger.log('⚠ Vacaciones no disponible (' + e + '): se avisa a todo el equipo.');
+    return team;
+  }
 }
 
 function lider_(ss, fecha) {
@@ -229,6 +252,7 @@ function diagnosticarComidas() {
   Logger.log('Hoy: día ISO ' + isoDow + ' (1=Lun) · jueves de esta semana: ' + fecha);
   Logger.log('¿Jueves de oficina ("N" en Semana)?: ' + esOficina_(ss, fecha));
   Logger.log('equipo.json: ' + team.length + ' personas · sin email: ' + team.filter(p => !p.email).map(p => p.nombre).join(', '));
+  Logger.log('Con festivos de Madrid (reciben el aviso): ' + deMadrid_(team).length + ' de ' + team.length);
   Logger.log('Pendientes de votar (' + pendientes.length + '): ' + pendientes.map(p => p.nombre + ' <' + p.email + '>').join(', '));
   // Votos de la semana: si alguno no casa con nadie de equipo.json, a esa
   // persona se le seguiría recordando aunque haya votado.
