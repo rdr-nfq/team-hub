@@ -94,8 +94,8 @@ function guardarEquipo(clave, team) {
     emails[limpio.email] = 1;
     return limpio;
   });
-  var hayCoordinador = team.some(function (m) { return !!m.coordinador; });
-  if (!hayCoordinador) throw new Error('Debe quedar al menos una persona con rol de coordinador.');
+  var hayCoordinador = team.some(function (m) { return !!m.coordinador && m.activo !== false; });
+  if (!hayCoordinador) throw new Error('Debe quedar al menos una persona ACTIVA con rol de coordinador.');
 
   var api = 'https://api.github.com/repos/' + CONFIG_EQUIPO.REPO + '/contents/' + CONFIG_EQUIPO.RUTA;
   var headers = {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useLinks } from "@/lib/links";
+import { esActivo } from "@/lib/equipos";
 import EquipoProgreso from "./EquipoProgreso";
 
 /**
@@ -35,7 +36,7 @@ export default function EquipoRoute() {
         if (!r.ok) throw new Error("No se pudo cargar equipo.json");
         return r.json();
       })
-      .then((data) => alive && setTeam(data.team || []))
+      .then((data) => alive && setTeam((data.team || []).filter(esActivo)))
       .catch((e) => {
         if (!alive) return;
         setTeam([]);

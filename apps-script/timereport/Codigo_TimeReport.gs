@@ -6,8 +6,10 @@
  *  UN Time Report POR EQUIPO (param. `equipo`: rdr · market-abuse ·
  *  comms-surveillance; sin él, rdr): proyectos, reparto, bloqueos, cálculos y
  *  evidencias completamente separados. Quien está en dos equipos (equipo.json,
- *  "equipos") sale en los dos. Las filas de las hojas llevan la columna
- *  «Equipo» (vacía = rdr: lo guardado antes de separarlos).
+ *  "equipos") sale en el reparto de los dos, pero su evidencia y sus avisos
+ *  van a su equipo PRINCIPAL ("equipoTR"); "activo": false lo saca de todo.
+ *  Las filas de las hojas llevan la columna «Equipo» (vacía = rdr: lo
+ *  guardado antes de separarlos).
  *
  *  Almacén del Time Report del equipo: proyectos del trimestre, reparto de
  *  horas por quincena/persona/día, estados (Nivel 2) por quincena, horas
@@ -68,7 +70,10 @@ var TR_CONFIG = {
   EQUIPO_JSON_URL: 'https://raw.githubusercontent.com/rdr-nfq/team-hub/main/beyond-the-grid/public/equipo/equipo.json',
   LINKS_JSON_URL: 'https://raw.githubusercontent.com/rdr-nfq/team-hub/main/beyond-the-grid/public/links/links.json',
   // Destinatario de la prueba del recordatorio (vacío = quien ejecuta).
-  PRUEBA_TO: ''
+  PRUEBA_TO: '',
+  // Equipos que reciben los avisos de evidencias (por su equipo principal).
+  // De momento solo RDR; para sumar otro: 'market-abuse', 'comms-surveillance'.
+  EQUIPOS_AVISO: ['rdr']
 };
 
 /* Equipos con Time Report propio y la clave de links.json con la carpeta raíz
@@ -84,12 +89,22 @@ function _eqTR(v) {
   if (!TR_EQUIPOS[e]) throw new Error('Equipo desconocido: ' + v);
   return e;
 }
+/* Activo (Gestión de equipo): "activo": false lo saca de evidencias y avisos. */
+function _activoTR(m) { return !!m && m.activo !== false && m.baja !== true; }
+/* Equipo PRINCIPAL del TR ("equipoTR"; si falta o no es suyo, el primero):
+   dónde sube su evidencia y qué avisos recibe (como lib/equipos.js). */
+function _equipoTRDe(m) {
+  var eqs = _equiposDeTR(m);
+  var v = String((m && m.equipoTR) || '').trim().toLowerCase();
+  return eqs.indexOf(v) >= 0 ? v : eqs[0];
+}
 /* Equipos de un miembro de equipo.json (como lib/equipos.js: sin «equipos» = rdr). */
 function _equiposDeTR(m) {
   var v = m && m.equipos;
   var lista = Array.isArray(v) ? v : (typeof v === 'string' && v ? v.split(/[,;]/) : []);
   var ids = lista.map(function (x) { return String(x).trim().toLowerCase(); }).filter(function (x) { return TR_EQUIPOS[x]; });
-  return ids.length ? ids : ['rdr'];
+  // En el orden de TR_EQUIPOS (como la web), para que «el primero» coincida.
+  return ids.length ? Object.keys(TR_EQUIPOS).filter(function (k) { return ids.indexOf(k) >= 0; }) : ['rdr'];
 }
 
 var MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -419,10 +434,12 @@ function carpetaEvidencias(q, quincena, raiz, eq) {
 
 var _ZIP_RE = /\.zip$/i;
 
-/* ¿De quién es este fichero? 1) por el nombre (nombre canónico, o el mayor
-   número de letras de nombre/apellidos que contenga, si es único); 2) por el
-   propietario del fichero (email del equipo). null = sin identificar. */
-function _identificar(file, team) {
+/* ¿De quién es este fichero? 1) por el NOMBRE, entre todas las personas
+   activas (nombre canónico, o el mayor número de letras de nombre/apellidos
+   que contenga, si es único): así se pueden subir a mano evidencias de otros
+   con su nombre; 2) si el nombre no dice nada, por el propietario del fichero
+   (solo entre los del equipo de la carpeta). null = sin identificar. */
+function _identificar(file, team, delEquipo) {
   var base = _normTR(file.getName().replace(/\.[^.]+$/, ''));
   var compacto = base.replace(/\s+/g, '');
   var mejor = null, mejorScore = 0, empate = false;
@@ -436,6 +453,7 @@ function _identificar(file, team) {
     else if (score > 0 && score === mejorScore) empate = true;
   });
   if (mejor && !empate && mejorScore >= 4) return mejor;
+  team = delEquipo || team;
   var email = '';
   try { var o = file.getOwner(); email = o ? String(o.getEmail() || '').toLowerCase() : ''; } catch (e) {}
   if (email) {
@@ -453,8 +471,10 @@ function estadoEvidencias(q, quincena, raiz, eq) {
   eq = eq || 'rdr';
   var info = _infoQuincena(q, quincena);
   var folder = _carpetaQuincena(info, raiz, eq);
-  // Solo las personas de ese equipo (quien está en dos, entrega en las dos carpetas).
-  var team = _equipoTR().filter(function (p) { return p.activo !== false && p.baja !== true && _equiposDeTR(p).indexOf(eq) >= 0; });
+  // Deben entregar aquí las personas activas con este equipo como PRINCIPAL;
+  // los ficheros se reconocen por nombre entre todas las activas.
+  var activos = _equipoTR().filter(_activoTR);
+  var team = activos.filter(function (p) { return _equipoTRDe(p) === eq; });
   var entregados = [], sinIdentificar = [], zip = null;
   var usados = {}; // nombre canónico ya asignado en esta carpeta -> nº de ficheros
   var it = folder.getFiles();
@@ -464,7 +484,7 @@ function estadoEvidencias(q, quincena, raiz, eq) {
   ficheros.forEach(function (file) {
     var nombre = file.getName();
     if (_ZIP_RE.test(nombre)) { zip = { nombre: nombre, url: 'https://drive.google.com/uc?export=download&id=' + file.getId(), verUrl: file.getUrl() }; return; }
-    var p = _identificar(file, team);
+    var p = _identificar(file, activos, team);
     if (!p) { sinIdentificar.push({ fichero: nombre, url: file.getUrl() }); return; }
     var extM = /\.([A-Za-z0-9]{1,6})$/.exec(nombre);
     var ext = extM ? '.' + extM[1].toLowerCase() : (file.getMimeType() === MimeType.PDF ? '.pdf' : '');
@@ -642,7 +662,7 @@ function enviarPendientesTRAhora() {
 function enviarRecordatorioTRPrueba() {
   var info = _ultimaQuincenaCerrada().info;
   var to = TR_CONFIG.PRUEBA_TO || _hubResponsable();
-  Object.keys(TR_EQUIPOS).forEach(function (eq) {
+  TR_CONFIG.EQUIPOS_AVISO.forEach(function (eq) {
     if (!_evidenciasRootId('', eq)) { Logger.log(TR_EQUIPOS[eq].nombre + ': sin carpeta de evidencias, no se prueba.'); return; }
     var url = _urlCarpeta(info, eq);
     [_correoRecordatorio(info, url, false, eq), _correoRecordatorio(info, url, false, eq, 'Nombre Apellido')].forEach(function (c) {
@@ -658,21 +678,20 @@ function _urlCarpeta(info, eq) {
 
 /* Personas activas con email de equipo.json, y emails de coordinación. */
 function _equipoConEmailTR() {
-  var team = _equipoTR().filter(function (p) { return p.email && p.activo !== false && p.baja !== true; });
+  var team = _equipoTR().filter(function (p) { return p.email && _activoTR(p); });
   var coord = team.filter(function (p) { return p.coordinador === true; }).map(function (p) { return String(p.email).trim(); });
   return { team: team, coord: coord.join(',') };
 }
 
-/* Un aviso por EQUIPO, a cada persona de ese equipo por separado y desde el
-   grupo (Correo.gs). Solo para los equipos con carpeta de evidencias en
-   links.json: así Market Abuse y Comms Surveillance empiezan a recibirlo
-   cuando se configure la suya. Quien está en dos equipos recibe los dos
-   (cada uno con su carpeta). Las respuestas van a coordinación. */
+/* Un aviso por EQUIPO de TR_CONFIG.EQUIPOS_AVISO (de momento, solo RDR), a
+   cada persona activa cuyo equipo PRINCIPAL es ese, por separado y desde el
+   grupo (Correo.gs). Necesita la carpeta de evidencias del equipo en
+   links.json. Las respuestas van a coordinación. */
 function _recordarATodos(info, manual) {
   var e = _equipoConEmailTR();
-  Object.keys(TR_EQUIPOS).forEach(function (eq) {
+  TR_CONFIG.EQUIPOS_AVISO.forEach(function (eq) {
     if (!_evidenciasRootId('', eq)) { Logger.log(TR_EQUIPOS[eq].nombre + ': sin carpeta de evidencias en links.json, no se envía.'); return; }
-    var emails = e.team.filter(function (p) { return _equiposDeTR(p).indexOf(eq) >= 0; }).map(function (p) { return String(p.email).trim(); });
+    var emails = e.team.filter(function (p) { return _equipoTRDe(p) === eq; }).map(function (p) { return String(p.email).trim(); });
     if (!emails.length) { Logger.log(TR_EQUIPOS[eq].nombre + ': nadie en el equipo.'); return; }
     var c = _correoRecordatorio(info, _urlCarpeta(info, eq), manual, eq);
     var r = _correoEnviar(emails, c.asunto, c.texto, c.html, { nombre: c.remite, replyTo: e.coord });
@@ -687,13 +706,13 @@ function _recordarATodos(info, manual) {
 function _recordarPendientes(info, hora) {
   var e = _equipoConEmailTR();
   var faltan = 0;
-  Object.keys(TR_EQUIPOS).forEach(function (eq) {
+  TR_CONFIG.EQUIPOS_AVISO.forEach(function (eq) {
     if (!_evidenciasRootId('', eq)) return;
     var st;
     try { st = estadoEvidencias(info.q, info.quincena, '', eq); } catch (err) { Logger.log(TR_EQUIPOS[eq].nombre + ': ' + err); faltan++; return; }
     var pend = {};
     st.pendientes.forEach(function (n) { pend[n] = 1; });
-    var personas = e.team.filter(function (p) { return pend[p.nombre] && _equiposDeTR(p).indexOf(eq) >= 0; });
+    var personas = e.team.filter(function (p) { return pend[p.nombre] && _equipoTRDe(p) === eq; });
     faltan += personas.length;
     personas.forEach(function (p) {
       var c = _correoRecordatorio(info, st.carpeta.url, false, eq, p.nombre, hora);

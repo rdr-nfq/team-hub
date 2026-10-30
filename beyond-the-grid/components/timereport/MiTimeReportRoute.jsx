@@ -7,7 +7,7 @@ import { useAuth } from "../chrome/AuthGate";
 import { GLASS, FIELD, TEXT, EmptyCard, PanelSkeleton } from "../coordinacion/ui";
 import { IconClock, IconAlert, IconExternal } from "../coordinacion/icons";
 import { useTimeReport, useEquipo, EVIDENCIAS_KEY } from "./datos";
-import { EQUIPO, equiposDe } from "@/lib/equipos";
+import { EQUIPO, equiposDe, equipoTRDe } from "@/lib/equipos";
 import { mismoEmail } from "@/lib/email";
 import {
   num, curQ, hoyISO, quincenasDeQ, quincenaDe, horasDe,
@@ -22,7 +22,8 @@ import {
    "Subir evidencias" abre la carpeta de Drive de ESA quincena (el backend la
    crea si no existe y renombra los ficheros al nombre canónico).
    Cada equipo tiene su propio Time Report: quien está en dos elige cuál ver
-   (por defecto, el del enlace ?equipo=… del recordatorio, o el primero). */
+   (por defecto, el del enlace ?equipo=… del recordatorio, o su equipo
+   principal: "equipoTR" en Gestión de equipo). */
 
 const ACCENT = PALETTE.mandarin;
 
@@ -46,7 +47,8 @@ export default function MiTimeReportRoute() {
     try { return new URLSearchParams(window.location.search).get("equipo") || ""; } catch { return ""; }
   });
   const [eqElegido, setEqElegido] = useState("");
-  const eqTR = [eqElegido, eqPedido].find((x) => x && misEquipos.includes(x)) || misEquipos[0];
+  const principal = yo ? equipoTRDe(yo) : "rdr";
+  const eqTR = [eqElegido, eqPedido].find((x) => x && misEquipos.includes(x)) || principal;
   const { snap, post } = useTimeReport(q, eqTR);
   const [abriendo, setAbriendo] = useState(false);
   const qs = quincenasDeQ(q);
@@ -177,7 +179,12 @@ export default function MiTimeReportRoute() {
             para que al pegarlo en la misma celda que la 1ª quincena no se borre nada.
           </p>
         )}
-        {evid && yo && (
+        {evid && yo && eqTR !== principal && (
+          <p className="-mt-3 mb-5 text-[11px] text-sand/50">
+            Tu evidencia va en la carpeta de tu equipo principal, <span className="font-bold text-sand/75">{EQUIPO[principal]?.nombre}</span>: cámbialo arriba para subirla.
+          </p>
+        )}
+        {evid && yo && eqTR === principal && (
           <p className="-mt-3 mb-5 text-[11px] text-sand/50">
             Carpeta de la quincena: <span className="font-bold text-sand/75">{evid.ruta}</span> · tu fichero quedará como{" "}
             <span className="font-bold tabular-nums text-sand/75">{evid.fichero(yo.nombre)}</span> (se renombra solo al subirlo).

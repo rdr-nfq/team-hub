@@ -20,3 +20,15 @@ export function equiposDe(miembro) {
   const ids = lista.map((x) => String(x).trim().toLowerCase()).filter((x) => EQUIPO[x]);
   return ids.length ? EQUIPOS.map((e) => e.id).filter((id) => ids.includes(id)) : [EQUIPO_DEFECTO];
 }
+
+/** ¿Persona activa? "activo": false (Gestión de equipo) la saca de listas,
+    avisos y correos; sigue en equipo.json. */
+export const esActivo = (m) => !!m && m.activo !== false && m.baja !== true;
+
+/** Equipo principal para el Time Report ("equipoTR"): dónde sube su evidencia
+    y qué avisos recibe. Si falta o no es uno de sus equipos, el primero. */
+export function equipoTRDe(m) {
+  const eqs = equiposDe(m);
+  const v = String((m && m.equipoTR) || "").trim().toLowerCase();
+  return eqs.includes(v) ? v : eqs[0];
+}

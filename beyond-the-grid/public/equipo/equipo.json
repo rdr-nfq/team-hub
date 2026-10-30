@@ -11,7 +11,9 @@
         "rdr",
         "market-abuse",
         "comms-surveillance"
-      ]
+      ],
+      "equipoTR": "rdr",
+      "activo": true
     },
     {
       "id": "XE48467",
@@ -23,7 +25,9 @@
       "equipos": [
         "rdr",
         "market-abuse"
-      ]
+      ],
+      "equipoTR": "market-abuse",
+      "activo": true
     },
     {
       "id": "XE95681",
@@ -31,7 +35,9 @@
       "email": "chema.martinez@nter.es",
       "emailBBVA": "chema.martinezbarqv.contractor@bbva.com",
       "track": "tecnico",
-      "coordinador": true
+      "coordinador": true,
+      "equipoTR": "rdr",
+      "activo": true
     },
     {
       "id": "T022809",
@@ -42,7 +48,9 @@
       "coordinador": true,
       "equipos": [
         "market-abuse"
-      ]
+      ],
+      "equipoTR": "market-abuse",
+      "activo": true
     },
     {
       "id": "T040429",
@@ -50,7 +58,9 @@
       "email": "david.sanchez@nter.es",
       "emailBBVA": "davidjoel.sanchez.contractor@bbva.com",
       "track": "tecnico",
-      "coordinador": false
+      "coordinador": false,
+      "equipoTR": "rdr",
+      "activo": true
     },
     {
       "id": "T037244",
@@ -58,7 +68,9 @@
       "email": "dariel.suarez@nfq.es",
       "emailBBVA": "dariel.suarez.contractor@bbva.com",
       "track": "funcional",
-      "coordinador": false
+      "coordinador": false,
+      "equipoTR": "rdr",
+      "activo": true
     },
     {
       "id": "T045519",
@@ -71,7 +83,9 @@
         "rdr",
         "market-abuse",
         "comms-surveillance"
-      ]
+      ],
+      "equipoTR": "rdr",
+      "activo": true
     },
     {
       "id": "T057120",
@@ -83,7 +97,9 @@
       "equipos": [
         "rdr",
         "comms-surveillance"
-      ]
+      ],
+      "equipoTR": "comms-surveillance",
+      "activo": true
     },
     {
       "id": "T057121",
@@ -91,7 +107,9 @@
       "email": "miguel.saavedra@nfq.es",
       "emailBBVA": "miguel.saavedragom.contractor@bbva.com",
       "track": "funcional",
-      "coordinador": false
+      "coordinador": false,
+      "equipoTR": "rdr",
+      "activo": true
     },
     {
       "id": "T030686",
@@ -99,7 +117,9 @@
       "email": "marta.trujillano@nfq.es",
       "emailBBVA": "marta.trujillano.contractor@bbva.com",
       "track": "funcional",
-      "coordinador": true
+      "coordinador": true,
+      "equipoTR": "rdr",
+      "activo": true
     },
     {
       "id": "T058095",
@@ -107,7 +127,9 @@
       "email": "irene.hermida@nfq.es",
       "emailBBVA": "irene.hermida.contractor@bbva.com",
       "track": "funcional",
-      "coordinador": false
+      "coordinador": false,
+      "equipoTR": "rdr",
+      "activo": true
     },
     {
       "id": "T060034",
@@ -115,7 +137,9 @@
       "email": "laura.stella@nfq.es",
       "emailBBVA": "laura.stella.contractor@bbva.com",
       "track": "funcional",
-      "coordinador": false
+      "coordinador": false,
+      "equipoTR": "rdr",
+      "activo": true
     },
     {
       "id": "T061576",
@@ -123,7 +147,9 @@
       "email": "iker.cid@nfq.es",
       "emailBBVA": "iker.cid.contractor@bbva.com",
       "track": "funcional",
-      "coordinador": false
+      "coordinador": false,
+      "equipoTR": "rdr",
+      "activo": true
     },
     {
       "id": "T063018",
@@ -131,7 +157,9 @@
       "email": "luis.bello@nfq.mx",
       "emailBBVA": "luisantonio.bello.gonzalez.contractor@bbva.com",
       "track": "tecnico",
-      "coordinador": false
+      "coordinador": false,
+      "equipoTR": "rdr",
+      "activo": true
     },
     {
       "id": "T066180",
@@ -139,7 +167,9 @@
       "email": "fernando.tejada@nfq.es",
       "emailBBVA": "fernando.tejada.contractor@bbva.com",
       "track": "funcional",
-      "coordinador": false
+      "coordinador": false,
+      "equipoTR": "rdr",
+      "activo": true
     },
     {
       "id": "T060320",
@@ -147,7 +177,9 @@
       "email": "eduardo.varona@nfq.es",
       "emailBBVA": "eduardo.varona.contractor@bbva.com",
       "track": "funcional",
-      "coordinador": false
+      "coordinador": false,
+      "equipoTR": "rdr",
+      "activo": true
     },
     {
       "id": "T063291",
@@ -155,7 +187,9 @@
       "email": "carlos.jimenez.garcia@nter.es",
       "emailBBVA": "carlos.jimenez.garcia.contractor@bbva.com",
       "track": "funcional",
-      "coordinador": false
+      "coordinador": false,
+      "equipoTR": "rdr",
+      "activo": true
     },
     {
       "id": "T070829",
@@ -166,7 +200,9 @@
       "coordinador": false,
       "equipos": [
         "market-abuse"
-      ]
+      ],
+      "equipoTR": "market-abuse",
+      "activo": true
     },
     {
       "id": "T071810",
@@ -177,7 +213,9 @@
       "coordinador": false,
       "equipos": [
         "market-abuse"
-      ]
+      ],
+      "equipoTR": "market-abuse",
+      "activo": true
     },
     {
       "id": "T074204",
@@ -185,7 +223,9 @@
       "email": "juan.botella@nfq.es",
       "emailBBVA": "juancarlos.botella.contractor@bbva.com",
       "track": "funcional",
-      "coordinador": false
+      "coordinador": false,
+      "equipoTR": "rdr",
+      "activo": true
     },
     {
       "id": "T074424",
@@ -196,7 +236,9 @@
       "coordinador": false,
       "equipos": [
         "market-abuse"
-      ]
+      ],
+      "equipoTR": "market-abuse",
+      "activo": true
     },
     {
       "id": "T075671",
@@ -204,7 +246,9 @@
       "email": "carmen.casado@nfq.es",
       "emailBBVA": "carmen.casado.nieto.contractor@bbva.com",
       "track": "funcional",
-      "coordinador": false
+      "coordinador": false,
+      "equipoTR": "rdr",
+      "activo": true
     },
     {
       "id": "T061313",
@@ -215,7 +259,9 @@
         "market-abuse"
       ],
       "track": "tecnico",
-      "coordinador": false
+      "coordinador": false,
+      "equipoTR": "market-abuse",
+      "activo": true
     },
     {
       "id": "T061592",
@@ -226,7 +272,9 @@
         "market-abuse"
       ],
       "track": "funcional",
-      "coordinador": false
+      "coordinador": false,
+      "equipoTR": "market-abuse",
+      "activo": true
     }
   ]
 }

@@ -324,7 +324,7 @@ function _equipoGuardias() {
 function _emailsCoordinadores() {
   var vistos = {}, out = [];
   _equipoGuardias().forEach(function (m) {
-    if (!m.coordinador || !m.email) return;
+    if (!m.coordinador || !m.email || m.activo === false || m.baja === true) return;
     var k = String(m.email).trim().toLowerCase();
     if (!k || vistos[k]) return;
     vistos[k] = 1;

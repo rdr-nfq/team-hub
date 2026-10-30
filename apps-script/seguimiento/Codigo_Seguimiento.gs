@@ -565,7 +565,7 @@ function _coordinadoresSeguimiento() {
     txt = resp.getContentText();
     try { cache.put('seg:equipo', txt, 300); } catch (e) {}
   }
-  return (JSON.parse(txt).team || []).filter(function (m) { return m && m.coordinador === true && m.id; });
+  return (JSON.parse(txt).team || []).filter(function (m) { return m && m.coordinador === true && m.activo !== false && m.baja !== true && m.id; });
 }
 
 /** Devuelve el coordinador con ese email o lanza error. */

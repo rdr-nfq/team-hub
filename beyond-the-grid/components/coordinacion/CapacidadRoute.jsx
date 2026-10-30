@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PALETTE } from "@/lib/palette";
+import { esActivo } from "@/lib/equipos";
 import { useSnapshot } from "./datos";
 import { num, h, curQ, horasQPersona, qsDisponibles, bloqueParaQ, colEjecucion, normQ } from "./model";
 import { GLASS, FIELD, TEXT, Kpi, EmptyCard, PanelSkeleton, Bar, CargandoExcel } from "./ui";
@@ -120,7 +121,7 @@ export default function CapacidadRoute() {
   useEffect(() => {
     fetch("/team-hub/equipo/equipo.json")
       .then((r) => r.json())
-      .then((d) => setEquipoWeb((d.team || []).map((p) => String(p.nombre || "")).filter(Boolean)))
+      .then((d) => setEquipoWeb((d.team || []).filter(esActivo).map((p) => String(p.nombre || "")).filter(Boolean)))
       .catch(() => {});
   }, []);
 

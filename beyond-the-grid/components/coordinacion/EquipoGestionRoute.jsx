@@ -7,7 +7,7 @@ import { GLASS, FIELD, TEXT } from "./ui";
 import { IconUsers, IconAlert, IconPlus, IconX, IconExternal } from "./icons";
 import { rgba } from "@/lib/ui";
 import { useAccentMap } from "@/lib/theme";
-import { EQUIPOS, equiposDe } from "@/lib/equipos";
+import { EQUIPOS, EQUIPO, equiposDe, equipoTRDe, esActivo } from "@/lib/equipos";
 import { useAuth } from "../chrome/AuthGate";
 import ResultadoSincronizacion from "../vacaciones/ResultadoSincronizacion";
 
@@ -20,10 +20,10 @@ import ResultadoSincronizacion from "../vacaciones/ResultadoSincronizacion";
 
 const CLAVE_KEY = "rdr_equipo_clave";
 // Orden preferente de campos; cualquier otro campo del JSON se añade detrás.
-const CAMPOS_BASE = ["id", "nombre", "email", "emailBBVA", "equipos", "track", "coordinador"];
-const PLANTILLA_MIEMBRO = { id: "", nombre: "", email: "", emailBBVA: "", equipos: ["rdr"], track: "funcional", coordinador: false };
+const CAMPOS_BASE = ["id", "nombre", "email", "emailBBVA", "equipos", "equipoTR", "track", "coordinador", "activo"];
+const PLANTILLA_MIEMBRO = { id: "", nombre: "", email: "", emailBBVA: "", equipos: ["rdr"], equipoTR: "rdr", track: "funcional", coordinador: false, activo: true };
 
-const esBool = (campo, team) => campo !== "equipos" && (team.some((m) => typeof m[campo] === "boolean") || campo === "coordinador");
+const esBool = (campo, team) => campo !== "equipos" && (team.some((m) => typeof m[campo] === "boolean") || campo === "coordinador" || campo === "activo");
 
 // Gestión (Coordinación) va en morado, como su sección del hub.
 const COLOR_GESTION = PALETTE.purple;
@@ -92,7 +92,8 @@ export default function EquipoGestionRoute() {
   }, [team]);
 
   const hayCambios = team && JSON.stringify(team) !== original.current;
-  const coordinadores = (team || []).filter((m) => m.coordinador).length;
+  const coordinadores = (team || []).filter((m) => m.coordinador && esActivo(m)).length;
+  const inactivos = (team || []).filter((m) => !esActivo(m)).length;
 
   // Los textos se guardan sin espacios sobrantes: un " correo@nfq.es" con un
   // espacio delante impedía entrar en la web a esa persona.
@@ -145,7 +146,7 @@ export default function EquipoGestionRoute() {
   };
 
   const etiqueta = (c) =>
-    ({ id: "ID", nombre: "Nombre", email: "Email NFQ/NTER", emailBBVA: "Email BBVA", equipos: "Equipos", track: "Track", coordinador: "Coordinador" }[c] || c);
+    ({ id: "ID", nombre: "Nombre", email: "Email NFQ/NTER", emailBBVA: "Email BBVA", equipos: "Equipos", equipoTR: "Equipo principal (TR)", track: "Track", coordinador: "Coordinador", activo: "Activo" }[c] || c);
 
   return (
     <main className="relative min-h-dvh w-full">
@@ -219,7 +220,7 @@ export default function EquipoGestionRoute() {
             {/* Avisos de estado */}
             {hayCambios && estado.fase !== "enviando" && (
               <p className="mb-3 text-[11.5px] font-bold text-canary">
-                Cambios sin guardar{coordinadores === 0 ? " · ⚠ no puede quedar el equipo sin ningún coordinador" : ""}
+                Cambios sin guardar{coordinadores === 0 ? " · ⚠ no puede quedar el equipo sin ningún coordinador activo" : ""}
                 {!clave.trim() ? " · introduce la clave de coordinación para poder guardar" : ""}
               </p>
             )}
@@ -262,12 +263,15 @@ export default function EquipoGestionRoute() {
             {/* Miembros */}
             <ul className="grid gap-3 lg:grid-cols-2">
               {team.map((m, i) => (filtro && !equiposDe(m).includes(filtro) ? null : (
-                <li key={i} className={`${GLASS} p-4`}>
+                <li key={i} className={`${GLASS} p-4 ${esActivo(m) ? "" : "opacity-60"}`}>
                   <div className="mb-3 flex items-start justify-between gap-2">
                     <p className="min-w-0 truncate font-display text-base font-bold text-sand">
                       {m.nombre || <span className="text-sand/35">Nuevo compañero</span>}
                       {m.coordinador && (
                         <span className="ml-2 rounded bg-[#9694FF] px-1.5 py-0.5 align-middle text-[9px] font-bold uppercase tracking-wide text-[#001391]">coord</span>
+                      )}
+                      {!esActivo(m) && (
+                        <span className="ml-2 rounded border border-white/25 px-1.5 py-0.5 align-middle font-sans text-[9px] font-bold uppercase tracking-wide text-sand/70">inactivo</span>
                       )}
                     </p>
                     {confirmarBaja === i ? (
@@ -292,8 +296,21 @@ export default function EquipoGestionRoute() {
                       // div, no label: un label haría que pinchar el título activara el primer botón.
                       <div key={c} className="col-span-2" role="group" aria-label={`Equipos de ${m.nombre || "este miembro"}`}>
                         <span className="text-[9.5px] font-bold uppercase tracking-wide text-sand/45">{etiqueta(c)}</span>
-                        <SelectorEquiposMiembro valor={equiposDe(m)} onChange={(v) => upd(i, "equipos", v)} />
+                        <SelectorEquiposMiembro valor={equiposDe(m)} onChange={(v) => {
+                          upd(i, "equipos", v);
+                          // El principal tiene que ser uno de sus equipos.
+                          if (!v.includes(equipoTRDe(m))) upd(i, "equipoTR", v[0]);
+                        }} />
                       </div>
+                    ) : c === "equipoTR" ? (
+                      <label key={c} className="block">
+                        <span className="text-[9.5px] font-bold uppercase tracking-wide text-sand/45">{etiqueta(c)}</span>
+                        <select value={equipoTRDe(m)} onChange={(e) => upd(i, c, e.target.value)} disabled={equiposDe(m).length < 2}
+                          title="Dónde sube su evidencia del Time Report y qué avisos del TR recibe"
+                          className={`${FIELD} block w-full !py-1.5 text-xs disabled:opacity-70`}>
+                          {equiposDe(m).map((id) => <option key={id} value={id}>{EQUIPO[id].nombre}</option>)}
+                        </select>
+                      </label>
                     ) : (
                       <label key={c} className={c === "email" || c === "emailBBVA" ? "col-span-2 block" : "block"}>
                         <span className="text-[9.5px] font-bold uppercase tracking-wide text-sand/45">{etiqueta(c)}</span>
@@ -301,13 +318,13 @@ export default function EquipoGestionRoute() {
                           <button
                             type="button"
                             role="switch"
-                            aria-checked={!!m[c]}
-                            onClick={() => upd(i, c, !m[c])}
+                            aria-checked={c === "activo" ? m[c] !== false : !!m[c]}
+                            onClick={() => upd(i, c, c === "activo" ? m[c] === false : !m[c])}
                             className={`block w-full rounded-lg border px-2 py-1.5 text-left text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene ${
-                              m[c] ? "border-transparent bg-[#9694FF] text-[#001391]" : "border-white/15 bg-white/[0.04] text-sand/55 hover:border-white/30"
+                              (c === "activo" ? m[c] !== false : m[c]) ? "border-transparent bg-[#9694FF] text-[#001391]" : "border-white/15 bg-white/[0.04] text-sand/55 hover:border-white/30"
                             }`}
                           >
-                            {m[c] ? "Sí" : "No"}
+                            {c === "activo" ? (m[c] === false ? "No · sin correos ni listas" : "Sí") : m[c] ? "Sí" : "No"}
                           </button>
                         ) : c === "track" ? (
                           <select value={m[c] ?? ""} onChange={(e) => upd(i, c, e.target.value)} className={`${FIELD} block w-full !py-1.5 text-xs`}>
@@ -329,7 +346,7 @@ export default function EquipoGestionRoute() {
               )))}
             </ul>
             <p className="mt-4 text-[11px] text-sand/45">
-              {team.length} miembros ({EQUIPOS.map((e) => `${team.filter((m) => equiposDe(m).includes(e.id)).length} ${e.nombre}`).join(" · ")}) · {coordinadores} con rol de coordinador · los campos nuevos que aparezcan en
+              {team.length} miembros{inactivos ? ` (${inactivos} inactivo${inactivos === 1 ? "" : "s"}: sin correos, avisos ni listas)` : ""} ({EQUIPOS.map((e) => `${team.filter((m) => equiposDe(m).includes(e.id)).length} ${e.nombre}`).join(" · ")}) · {coordinadores} con rol de coordinador · los campos nuevos que aparezcan en
               equipo.json se editan aquí automáticamente.
             </p>
           </>

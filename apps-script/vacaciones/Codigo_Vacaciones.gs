@@ -332,14 +332,16 @@ function _equipo() {
 function _emailsDe(m) { return [m.email, m.emailBBVA].map(_normEmail).filter(Boolean); }
 function _esCoord(email) {
   const e = _normEmail(email);
-  return !!e && _equipo().some(function (m) { return m.coordinador === true && _emailsDe(m).indexOf(e) >= 0; });
+  return !!e && _equipo().some(function (m) { return m.coordinador === true && _activo(m) && _emailsDe(m).indexOf(e) >= 0; });
 }
 function _exigirCoord(email) {
   if (!_esCoord(email)) throw new Error('Solo coordinación puede hacer esto (' + (email || 'sin email') + ').');
 }
 function _coordinadores() {
-  return _equipo().filter(function (m) { return m.coordinador === true && m.email; }).map(function (m) { return _normEmail(m.email); });
+  return _equipo().filter(function (m) { return m.coordinador === true && _activo(m) && m.email; }).map(function (m) { return _normEmail(m.email); });
 }
+/** Activo en equipo.json ("activo": false en Gestión de equipo: sin correos ni permisos). */
+function _activo(m) { return m.activo !== false && m.baja !== true; }
 /** Emails (web y BBVA) de equipo.json que corresponden a un email dado. */
 function _aliasEmail(email) {
   const e = _normEmail(email);

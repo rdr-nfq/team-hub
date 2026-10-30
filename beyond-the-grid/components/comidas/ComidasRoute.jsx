@@ -16,6 +16,7 @@ import { IconSemana, IconHistorial, IconAviso, IconVolver } from "./icons";
 import ArtBanner from "@/components/chrome/ArtBanner";
 import { ART } from "@/lib/art";
 import { mismoEmail } from "@/lib/email";
+import { esActivo } from "@/lib/equipos";
 
 const EQUIPO_URL = "/team-hub/equipo/equipo.json"; // absoluto: funciona bajo /comidas/ (basePath)
 
@@ -126,7 +127,7 @@ export default function ComidasRoute() {
   const [sending, setSending] = useState(false);
 
   const equipoNombres = useMemo(
-    () => (team || []).map((p) => p.nombre).sort((a, b) => a.localeCompare(b, "es")),
+    () => (team || []).filter(esActivo).map((p) => p.nombre).sort((a, b) => a.localeCompare(b, "es")),
     [team]
   );
   const votables = useMemo(() => (base ? semanasVotables(base.semanas) : []), [base]);
