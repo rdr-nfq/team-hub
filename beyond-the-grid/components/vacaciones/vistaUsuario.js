@@ -28,11 +28,27 @@ export const coincide = (nombre, q) => sinTilde(nombre).includes(sinTilde(q.trim
 
 /* Nombres de pila compuestos habituales: «Juan Carlos», «José Luis»… */
 const COMPUESTOS = new Set(["jose", "juan", "luis", "maria", "ana", "david", "miguel", "francisco", "jesus", "pedro"]);
-/** Nombre corto ÚNICO por persona: el de pila; si dos coinciden (sin tildes),
-   con la inicial del último apellido; si aún coinciden, el nombre completo. */
+/** {pila, apellido} de un nombre. El Excel usa «Apellidos, Nombre» (lo de
+   detrás de la coma es el nombre de pila); equipo.json, «Nombre Apellidos». */
+function partes(n) {
+  const limpio = n.replace(/\s+/g, " ").trim();
+  const coma = limpio.indexOf(",");
+  if (coma > 0) {
+    const pila = limpio.slice(coma + 1).trim();
+    const apellido = limpio.slice(0, coma).trim().split(" ")[0] || "";
+    if (pila) return { pila, apellido };
+  }
+  const t = limpio.split(" ");
+  const nPila = t.length >= 3 && COMPUESTOS.has(sinTilde(t[0])) ? 2 : 1;
+  return { pila: t.slice(0, nPila).join(" "), apellido: t[nPila] || "" };
+}
+/** Nombre corto ÚNICO por persona: el nombre de pila; si coincide con el de
+   otra (sin tildes), con la inicial del primer apellido; si aún coincide,
+   el nombre completo. */
 export function nombresCortos(nombres) {
-  const pila = (n) => { const t = n.trim().split(/\s+/); return t.length >= 3 && COMPUESTOS.has(sinTilde(t[0])) ? `${t[0]} ${t[1]}` : t[0]; };
-  const conInicial = (n) => { const t = n.trim().split(/\s+/); return t.length > 1 ? `${pila(n)} ${t[t.length - 1][0]}.` : n; };
+  const p = Object.fromEntries(nombres.map((n) => [n, partes(n)]));
+  const pila = (n) => p[n].pila;
+  const conInicial = (n) => (p[n].apellido ? `${p[n].pila} ${p[n].apellido[0].toUpperCase()}.` : n);
   const contar = (f) => { const c = {}; nombres.forEach((n) => { const k = sinTilde(f(n)); c[k] = (c[k] || 0) + 1; }); return c; };
   const c1 = contar(pila), c2 = contar(conInicial);
   return Object.fromEntries(nombres.map((n) => [n, c1[sinTilde(pila(n))] < 2 ? pila(n) : c2[sinTilde(conInicial(n))] < 2 ? conInicial(n) : n]));
