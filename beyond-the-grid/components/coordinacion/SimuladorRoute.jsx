@@ -319,7 +319,6 @@ export default function SimuladorRoute() {
 
       <div className="mx-auto w-full max-w-7xl px-5 pb-24 pt-cabecera sm:px-6">
         <header className="mb-6">
-          <p className="font-sans text-xs font-bold uppercase tracking-[0.4em] text-lime/80">Coordinación</p>
           <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
             <h1 className="flex items-center gap-3 font-display text-4xl font-bold leading-none tracking-tight text-sand sm:text-5xl">
               <IconGauge size={34} className="text-lime" /> Simulador de rentabilidad

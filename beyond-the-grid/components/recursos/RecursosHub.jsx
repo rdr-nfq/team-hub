@@ -76,9 +76,6 @@ export default function RecursosHub() {
 
       <div className="mx-auto w-full max-w-4xl px-5 pb-24 pt-cabecera sm:px-6">
         <header className="mb-8">
-          <p className="font-sans text-xs font-bold uppercase tracking-[0.4em]" style={{ color: acc(ACCENT) }}>
-            Proyectos · Biblioteca
-          </p>
           <h1 className="mt-2 font-display text-4xl font-bold leading-none tracking-tight text-sand sm:text-5xl">Recursos RDR</h1>
           <p className="mt-3 max-w-xl text-pretty text-sm text-sand/65">
             Referencia técnica y funcional del Repositorio de Datos de Referencia: herramientas, inventarios y

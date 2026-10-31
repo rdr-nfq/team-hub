@@ -303,7 +303,6 @@ export default function EquipoProgreso({ team, teamError, backend }) {
             <IconBack size={14} className="transition-transform group-hover:-translate-x-0.5" />
             Ruta formativa
           </Link>
-          <p className="mt-6 font-sans text-xs font-bold uppercase tracking-[0.4em] text-serene/80">BBVA × NFQ · CIB</p>
           <h1 className="mt-3 font-display text-4xl font-bold leading-none tracking-tight text-sand sm:text-5xl">
             Progreso del equipo
           </h1>

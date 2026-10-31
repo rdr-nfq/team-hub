@@ -8,7 +8,6 @@ import { IconGrad } from "@/components/icons";
 export default function FormacionesPage() {
   return (
     <SelectorEquipo
-      kicker="Formación"
       titulo="HUB Formativo"
       intro="Elige el equipo para ver su ruta de formación."
       opciones={[

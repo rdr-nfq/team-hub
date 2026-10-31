@@ -223,7 +223,6 @@ export default function ComidasRoute() {
       <div className="relative z-10 mx-auto w-full max-w-5xl px-5 pb-24 pt-cabecera sm:px-6">
         {/* Hero */}
         <header className="mb-8">
-          <p className="font-sans text-xs font-bold uppercase tracking-[0.4em] text-mandarin/90">Equipo · 02</p>
           <h1 className="mt-3 font-display text-4xl font-bold leading-none tracking-tight text-sand sm:text-5xl">
             Comidas de los jueves
           </h1>

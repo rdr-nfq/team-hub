@@ -449,7 +449,6 @@ export default function GestionRoute() {
 
       <div className="mx-auto w-full max-w-7xl px-5 pb-24 pt-cabecera sm:px-6">
         <header className="mb-6">
-          <p className="font-sans text-xs font-bold uppercase tracking-[0.4em] text-canary/80">Coordinación</p>
           <h1 className="mt-2 flex items-center gap-3 font-display text-4xl font-bold leading-none tracking-tight text-sand sm:text-5xl">
             <IconClock size={34} className="text-canary" /> Time Report <span className="text-canary">{nombreEq}</span>
           </h1>

@@ -61,7 +61,7 @@ function Tarjeta({ op, delay, mio, color }) {
   );
 }
 
-export default function SelectorEquipo({ kicker, titulo, intro, opciones, color = PALETTE.serene }) {
+export default function SelectorEquipo({ titulo, intro, opciones, color = PALETTE.serene }) {
   const { equipos } = useAuth();
   return (
     <main className="relative min-h-dvh w-full">
@@ -72,7 +72,6 @@ export default function SelectorEquipo({ kicker, titulo, intro, opciones, color 
       </div>
       <div className="mx-auto w-full max-w-6xl px-5 pb-24 pt-cabecera sm:px-6">
         <header className="mb-8">
-          <p className="font-sans text-xs font-bold uppercase tracking-[0.4em] text-serene/80">{kicker}</p>
           <h1 className="mt-2 font-display text-4xl font-bold leading-none tracking-tight text-sand sm:text-5xl">{titulo}</h1>
           {intro && <p className="mt-3 max-w-2xl text-pretty text-sm text-sand/65">{intro}</p>}
         </header>

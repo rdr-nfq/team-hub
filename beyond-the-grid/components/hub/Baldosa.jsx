@@ -12,10 +12,11 @@ export const FOCO = "focus-visible:outline-none focus-visible:ring-2 focus-visib
  * Acceso de la portada y de /gestion: baldosa teñida con el color de su
  * sección y placa con el icono oficial BBVA. Según el item: `ruta` (página
  * del hub), `copiar` / `abrir` (clave de links.json) o `pronto` (bloqueada).
+ * `arriba` alinea el contenido arriba (parejas cuya descripción puede partirse).
  */
-export default function Baldosa({ item, sec, grande, suave }) {
+export default function Baldosa({ item, sec, grande, suave, arriba }) {
   const { getUrl, copyLink } = useLinks();
-  const cls = `hub-tile ${CLASE[sec]}${suave ? " hub-suave" : ""} flex w-full items-center gap-3.5 rounded-xl text-left text-sand ${grande ? "min-h-[78px] px-4 py-3.5" : "min-h-[58px] px-3 py-2.5"} ${FOCO}`;
+  const cls = `hub-tile ${CLASE[sec]}${suave ? " hub-suave" : ""} flex w-full ${arriba ? "items-start" : "items-center"} gap-3.5 rounded-xl text-left text-sand ${grande ? "min-h-[68px] px-4 py-3" : "min-h-[54px] px-3 py-2"} ${FOCO}`;
   const cuerpo = (
     <>
       <span className={`hub-placa ${CLASE[sec]} grid shrink-0 place-items-center ${grande ? "h-11 w-11 rounded-[10px]" : "h-[34px] w-[34px] rounded-lg"}`}>

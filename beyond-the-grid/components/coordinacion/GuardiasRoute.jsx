@@ -6,8 +6,9 @@ import { useAuth } from "../chrome/AuthGate";
 import { useEquipo } from "../timereport/datos";
 import { mismoEmail } from "@/lib/email";
 import { FIELD, TEXT, EmptyCard, PanelSkeleton } from "./ui";
-import { IconClock, IconAlert, IconX, IconPlus } from "./icons";
+import { IconAlert, IconX, IconPlus } from "./icons";
 import { IconCheck } from "../icons";
+import IconoBBVA from "../iconosBBVA";
 import { curQ } from "./model";
 import { useGuardias, errorAviso } from "../guardias/datos";
 import { qDeFecha, fechaEs, eur, ESTADO, hoyISO } from "../guardias/model";
@@ -293,9 +294,8 @@ export default function GuardiasRoute() {
 
       <div className="mx-auto w-full max-w-4xl px-5 pb-24 pt-cabecera sm:px-6">
         <header className="mb-6">
-          <p className="font-sans text-xs font-bold uppercase tracking-[0.4em] text-purple/80">Coordinación</p>
           <h1 className="mt-2 flex items-center gap-3 font-display text-4xl font-bold leading-none tracking-tight text-sand sm:text-5xl">
-            <IconClock size={34} className="text-purple" /> Guardias
+            <IconoBBVA nombre="alarm" size={34} className="text-purple" /> Guardias
           </h1>
           <p className="mt-3 max-w-2xl text-pretty text-sm text-sand/65">
             Solicitudes de guardia del equipo. Las pendientes salen siempre destacadas arriba, sea cual sea el Q elegido.

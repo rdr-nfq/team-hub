@@ -147,9 +147,14 @@ html.rdr-light {
 .hub-tile.hub-suave {
   background: rgb(var(--hub-acc) / var(--hub-tinte-suave));
 }
+/* Al pasar el ratón se intensifica el tinte (la sombra sola no se ve sobre Midnight). */
 .hub-tile:hover {
+  background: rgb(var(--hub-acc) / calc(var(--hub-tinte) + 0.12));
   transform: translateY(-1px);
   box-shadow: 0 8px 20px -10px rgb(0 5 25 / 0.6);
+}
+.hub-tile.hub-suave:hover {
+  background: rgb(var(--hub-acc) / calc(var(--hub-tinte-suave) + 0.12));
 }
 html.rdr-light .hub-tile:hover {
   box-shadow: 0 8px 20px -10px rgb(7 14 70 / 0.25);
@@ -157,11 +162,21 @@ html.rdr-light .hub-tile:hover {
 .hub-tile:active {
   transform: none;
 }
-.hub-tile[aria-disabled="true"] {
+.hub-tile[aria-disabled="true"],
+.hub-tile[aria-disabled="true"]:hover {
+  background: rgb(var(--hub-acc) / var(--hub-tinte-suave));
   border-style: dashed;
   cursor: default;
   transform: none;
   box-shadow: none;
+}
+/* Selector de equipo de Proyectos y resultado elegido del buscador: tinte de su sección. */
+.hub-chip {
+  border: 1.5px solid rgb(var(--hub-acc));
+  background: rgb(var(--hub-acc) / var(--hub-tinte));
+}
+.hub-sel {
+  background: rgb(var(--hub-acc) / var(--hub-tinte));
 }
 .hub-placa {
   background: rgb(var(--hub-acc));

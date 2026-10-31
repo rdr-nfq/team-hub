@@ -351,9 +351,6 @@ function Hero({ actualizado }) {
   const mapAccent = useAccentMap();
   return (
     <header className="mb-8">
-      <p className="font-sans text-xs font-bold uppercase tracking-[0.4em]" style={{ color: mapAccent(ACCENT) }}>
-        Equipo · RDR
-      </p>
       <h1 className="mt-2 font-display text-3xl font-bold tracking-tight text-sand sm:text-4xl">
         Vacaciones del equipo
       </h1>

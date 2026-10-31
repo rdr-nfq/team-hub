@@ -219,7 +219,6 @@ export default function OfertasRoute() {
 
       <div className="mx-auto w-full max-w-5xl px-5 pb-24 pt-cabecera sm:px-6">
         <header className="mb-6">
-          <p className="font-sans text-xs font-bold uppercase tracking-[0.4em] text-canary/80">Coordinación</p>
           <h1 className="mt-2 flex items-center gap-3 font-display text-4xl font-bold leading-none tracking-tight text-sand sm:text-5xl">
             <IconReceipt size={34} className="text-canary" /> Generación de ofertas
           </h1>

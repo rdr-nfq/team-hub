@@ -151,12 +151,7 @@ export default function RetroRoute() {
         {/* Cabecera de página (el chrome fijo lo pone AppFrame/Header) */}
         {view !== "archive" && (
           <header className="rdr-rise mb-8">
-            <div className="flex flex-wrap items-center gap-3">
-              <p className="font-sans text-xs font-bold uppercase tracking-[0.35em] text-mandarin">
-                Equipo · Retrospectivas
-              </p>
-            </div>
-            <h1 className="mt-3 font-display text-4xl font-bold leading-none tracking-tight text-sand sm:text-5xl">
+            <h1 className="font-display text-4xl font-bold leading-none tracking-tight text-sand sm:text-5xl">
               Retro RDR
             </h1>
             {view === "menu" && (

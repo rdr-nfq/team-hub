@@ -131,7 +131,6 @@ export default function MisVacacionesRoute() {
       <div className="mx-auto w-full max-w-7xl px-5 pb-24 pt-cabecera sm:px-6">
         <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="font-sans text-xs font-bold uppercase tracking-[0.4em]" style={{ color: mapAccent(ACCENT) }}>Equipo · RDR</p>
             <h1 className="mt-2 font-display text-3xl font-bold tracking-tight text-sand sm:text-4xl">Vacaciones del equipo</h1>
             <p className="mt-2 max-w-xl text-pretty text-sm text-sand/65">
               Quién está fuera cada día. Tus días aprobados van en verde y los pendientes con borde discontinuo; pide los tuyos desde «Mis vacaciones».

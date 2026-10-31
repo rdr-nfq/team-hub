@@ -133,9 +133,6 @@ export default function PropertiesExplorer() {
 
       <div className="mx-auto w-full max-w-6xl px-5 pb-24 pt-cabecera sm:px-6">
         <header className="mb-8">
-          <p className="font-sans text-xs font-bold uppercase tracking-[0.4em]" style={{ color: acc(ACCENT) }}>
-            Recursos · Biblioteca
-          </p>
           <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
             <h1 className="font-display text-4xl font-bold leading-none tracking-tight text-sand sm:text-5xl">
               Properties GSProcess

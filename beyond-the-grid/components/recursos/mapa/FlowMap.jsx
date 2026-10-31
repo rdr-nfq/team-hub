@@ -226,9 +226,6 @@ export default function FlowMap() {
 
       <div className="mx-auto flex min-h-dvh w-full max-w-7xl flex-col px-4 pb-8 pt-cabecera sm:px-6">
         <header className="mb-4">
-          <p className="font-sans text-xs font-bold uppercase tracking-[0.4em]" style={{ color: acc(ACCENT) }}>
-            Recursos · Mapa
-          </p>
           <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
             <h1 className="font-display text-4xl font-bold leading-none tracking-tight text-sand sm:text-5xl">
               Mapa de flujos

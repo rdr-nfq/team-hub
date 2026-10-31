@@ -7,6 +7,7 @@ import { useAuth } from "../chrome/AuthGate";
 import { EQUIPO } from "@/lib/equipos";
 import { accesos, seccion } from "@/lib/seccion";
 import Baldosa, { CLASE, FOCO } from "./Baldosa";
+import IconoBBVA from "@/components/iconosBBVA";
 
 /* Portada: todos los accesos a la vista en una pantalla de portátil, en tres
    columnas por sección (colores e iconos de lib/seccion.js). Equipo con lo
@@ -36,7 +37,7 @@ const CLAVE_EQUIPO_HUB = "rdr_hub_equipo";
 
 function Seccion({ id, sec, titulo, extra, children }) {
   return (
-    <section aria-labelledby={id} className="flex min-w-0 flex-col gap-2.5">
+    <section aria-labelledby={id} className="flex min-w-0 flex-col gap-2">
       <div className="flex min-h-[30px] items-center gap-2.5">
         <h2 id={id} className={`hub-etiqueta ${CLASE[sec]} rounded-full px-3 py-[7px] text-[13px] font-bold uppercase leading-none tracking-[0.05em]`}>{titulo}</h2>
         {extra}
@@ -86,21 +87,22 @@ function Buscador({ isCoordinador }) {
       <input
         ref={ref} id="hub-buscar" type="search" autoComplete="off" placeholder="Buscar en el hub"
         value={q} onChange={(e) => { setQ(e.target.value); setSel(0); }} onKeyDown={onKeyDown}
-        aria-expanded={!!term} aria-controls="hub-resultados"
+        role="combobox" aria-autocomplete="list" aria-expanded={!!term} aria-controls="hub-resultados"
+        aria-activedescendant={hits.length ? `hub-res-${Math.min(sel, hits.length - 1)}` : undefined}
         className="h-[42px] w-full rounded-full border-[1.5px] border-white/30 bg-midnight pl-5 pr-12 text-[15px] text-sand placeholder:text-serene focus-visible:border-serene focus-visible:outline-none"
       />
       <kbd aria-hidden className="pointer-events-none absolute right-3.5 top-2.5 rounded border border-white/30 px-1.5 font-sans text-xs font-bold leading-5 text-serene">/</kbd>
       {term && (
-        <ul id="hub-resultados" className="absolute inset-x-0 top-[calc(100%+8px)] z-30 rounded-xl border border-white/25 bg-midnight p-1.5 shadow-[0_18px_40px_-16px_rgb(0_5_25/0.6)]">
+        <ul id="hub-resultados" role="listbox" aria-label="Resultados" className="absolute inset-x-0 top-[calc(100%+8px)] z-30 rounded-xl border border-white/25 bg-midnight p-1.5 shadow-[0_18px_40px_-16px_rgb(0_5_25/0.6)]">
           {hits.length ? hits.map((x, i) => (
-            <li key={x.ruta}>
-              <Link href={x.ruta} className={`flex items-center gap-3 rounded-lg px-2.5 py-2 text-sand ${i === sel ? "bg-white/10" : "hover:bg-white/10"} ${FOCO}`}>
+            <li key={x.ruta} id={`hub-res-${i}`} role="option" aria-selected={i === sel}>
+              <Link href={x.ruta} tabIndex={-1} onMouseEnter={() => setSel(i)} className={`flex items-center gap-3 rounded-lg px-2.5 py-2 text-sand ${CLASE[x.sec]} ${i === sel ? "hub-sel" : ""}`}>
                 <span aria-hidden className={`hub-placa ${CLASE[x.sec]} h-2.5 w-2.5 rounded-full`} />
                 {x.label}
                 <small className="ml-auto text-xs text-sand/70">{x.nombre}</small>
               </Link>
             </li>
-          )) : <li className="px-2.5 py-2 text-sand/75">Nada con «{q}». Prueba con vacaciones, guardias o pases.</li>}
+          )) : <li role="option" aria-selected="false" aria-disabled="true" className="px-2.5 py-2 text-sand/75">Nada con «{q}». Prueba con vacaciones, guardias o pases.</li>}
         </ul>
       )}
     </div>
@@ -130,8 +132,8 @@ export default function BentoHub() {
   const columnaEquipo = (
     <Seccion id="hub-equipo" sec="equipo" titulo="Equipo">
       {eq.slice(0, 3).map((it) => <Baldosa key={it.ruta} item={it} sec="equipo" grande />)}
-      <div className="grid grid-cols-1 gap-2.5 min-[420px]:grid-cols-2">
-        {eq.slice(3).map((it) => <Baldosa key={it.ruta} item={it} sec="equipo" suave />)}
+      <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
+        {eq.slice(3).map((it) => <Baldosa key={it.ruta} item={it} sec="equipo" suave arriba />)}
       </div>
     </Seccion>
   );
@@ -141,12 +143,15 @@ export default function BentoHub() {
       extra={misEquipos.length > 1 ? (
         <>
           <label htmlFor="hub-equipo-proyectos" className="sr-only">Equipo</label>
-          <select
-            id="hub-equipo-proyectos" value={equipoActual} onChange={(e) => cambiarEquipo(e.target.value)}
-            className={`rounded-lg border-[1.5px] border-white/30 bg-midnight px-2 py-1 text-sm font-bold text-sand ${FOCO}`}
-          >
-            {misEquipos.map((id) => <option key={id} value={id}>{EQUIPO[id].nombre}</option>)}
-          </select>
+          <span className="relative inline-flex">
+            <select
+              id="hub-equipo-proyectos" value={equipoActual} onChange={(e) => cambiarEquipo(e.target.value)}
+              className={`hub-chip hub-pr cursor-pointer appearance-none rounded-full py-[5px] pl-3 pr-8 text-[13px] font-bold leading-none text-sand ${FOCO}`}
+            >
+              {misEquipos.map((id) => <option key={id} value={id}>{EQUIPO[id].nombre}</option>)}
+            </select>
+            <IconoBBVA nombre="fold" size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rotate-180 text-sand" />
+          </span>
         </>
       ) : <span className="text-sm font-bold text-sand">{EQUIPO[equipoActual].nombre}</span>}
     >
@@ -170,18 +175,18 @@ export default function BentoHub() {
   );
 
   return (
-    <main className="mx-auto w-full max-w-[1376px] px-4 pb-6 pt-cabecera sm:px-8">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+    <main className="mx-auto w-full max-w-[1376px] px-4 pb-4 pt-[calc(var(--cabecera)+1rem)] sm:px-8">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
         <h1 className="text-balance font-display text-[clamp(24px,2.2vw,30px)] font-bold tracking-[-0.015em] text-sand">
           {hola}{nombre ? `, ${nombre}` : ""}
         </h1>
         <Buscador isCoordinador={isCoordinador} />
       </div>
       {/* Coordinación: Formación baja bajo Proyectos y Gestión ocupa la tercera columna. */}
-      <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 items-start gap-x-6 gap-y-5 md:grid-cols-2 lg:grid-cols-3">
         {columnaEquipo}
         {isCoordinador ? (
-          <div className="flex min-w-0 flex-col gap-[22px]">{columnaProyectos}{columnaFormacion}</div>
+          <div className="flex min-w-0 flex-col gap-4">{columnaProyectos}{columnaFormacion}</div>
         ) : columnaProyectos}
         {isCoordinador ? columnaGestion : columnaFormacion}
       </div>

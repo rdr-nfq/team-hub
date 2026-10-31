@@ -37,6 +37,7 @@ import Mergeos from "./Mergeos";
 import Resumen from "./Resumen";
 import CmdDrawer from "./CmdDrawer";
 import ArtBanner from "@/components/chrome/ArtBanner";
+import IconoBBVA from "@/components/iconosBBVA";
 import { ART } from "@/lib/art";
 
 /* ─────────────────────────────────────────────────────────────
@@ -916,10 +917,9 @@ export default function PasesRoute() {
           {/* Cabecera de página */}
           <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
             <div>
-              <p className="mb-2 font-sans text-xs font-bold uppercase tracking-[0.3em] text-lime/80">Proyectos</p>
               <h2 className="flex items-center gap-3 font-display text-3xl font-bold tracking-tight text-sand sm:text-4xl">
                 <span className="grid h-11 w-11 place-items-center rounded-xl border" style={{ borderColor: rgba(accent, 0.35), background: rgba(accent, 0.12), color: accent }}>
-                  <IconRocket size={24} />
+                  <IconoBBVA nombre="automate" size={26} />
                 </span>
                 Pases Calendados
               </h2>

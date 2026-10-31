@@ -8,7 +8,6 @@ import { IconBook } from "@/components/icons";
 export default function WelcomePacksPage() {
   return (
     <SelectorEquipo
-      kicker="Formación"
       titulo="Welcome Packs"
       intro="La presentación de bienvenida de cada equipo: qué hace, con quién trabaja y cómo encaja."
       opciones={[
