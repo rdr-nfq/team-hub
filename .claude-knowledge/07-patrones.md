@@ -142,19 +142,19 @@ Patrón clásico de la plantilla oficial para resumir 4 atributos / ideas:
   <div class="color-cards">
     <div class="color-card">
       <p><strong>Cercanía</strong> Acompañamos a cada cliente.</p>
-      <img src="./docs/visual/icons/bbvacontigo.svg" alt="" class="color-card__icon">
+      <img src="./.claude-knowledge/iconos-svg/bbvacontigo.svg" alt="" class="color-card__icon">
     </div>
     <div class="color-card">
       <p><strong>Innovación</strong> Tecnología al servicio.</p>
-      <img src="./docs/visual/icons/ai.svg" alt="" class="color-card__icon">
+      <img src="./.claude-knowledge/iconos-svg/ai.svg" alt="" class="color-card__icon">
     </div>
     <div class="color-card">
       <p><strong>Sostenibilidad</strong> Futuro responsable.</p>
-      <img src="./docs/visual/icons/climateaction.svg" alt="" class="color-card__icon">
+      <img src="./.claude-knowledge/iconos-svg/climateaction.svg" alt="" class="color-card__icon">
     </div>
     <div class="color-card">
       <p><strong>Salud financiera</strong> Decisiones conscientes.</p>
-      <img src="./docs/visual/icons/financialhealth.svg" alt="" class="color-card__icon">
+      <img src="./.claude-knowledge/iconos-svg/financialhealth.svg" alt="" class="color-card__icon">
     </div>
   </div>
 </section>

@@ -2,12 +2,14 @@
 
 ## Catálogo BBVA
 
-171 iconos oficiales BBVA disponibles en `./docs/visual/icons/` como SVG. Color por defecto: Electric Blue (`#001391`).
+171 iconos oficiales BBVA disponibles en `./.claude-knowledge/iconos-svg/` como SVG. Color por defecto: Electric Blue (`#001391`).
+
+> Los SVG se calcan con potrace de las imágenes oficiales que vienen dentro de cada `<icono>.pdf` (en realidad un ZIP con un JPEG). Para regenerarlos: `python3 .claude-knowledge/iconos-svg/_vectorizar.py .claude-knowledge .claude-knowledge/iconos-svg` (necesita `potracer`, `pillow` y `numpy`). En la web, mejor inline con `fill="currentColor"` para que tomen el color del tema.
 
 Úsalos así:
 
 ```html
-<img src="./docs/visual/icons/bank.svg" alt="Banco" width="32" height="32" class="bbva-icon">
+<img src="./.claude-knowledge/iconos-svg/bank.svg" alt="Banco" width="32" height="32" class="bbva-icon">
 ```
 
 Sobre fondos azules (Electric, Midnight), los iconos en azul no se ven. Para invertirlos a blanco:

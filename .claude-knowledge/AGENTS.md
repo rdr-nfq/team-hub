@@ -52,7 +52,7 @@ Lista corta. Todo lo demás es interpretable.
 3. **Tipografía**: Source Serif 4 (titulares) + Lato (todo lo demás). Importadas desde Google Fonts.
 4. **Logo BBVA presente** en todas las slides interiores (en color o blanco según el fondo).
 5. **Logo NFQ** en **todas** las slides: prominente en portada y contraportada ("Hecho por"), pequeño en pie de página en el resto. Más pequeño que el de BBVA.
-6. **Iconos**: solo de `./docs/visual/icons/SVG/` (lista en `05-iconografia.md`). No inventes ni mezcles librerías. Los iconos van siempre en **Electric Blue (`#001391`)** sobre fondos claros. Sobre fondos azules (Electric, Midnight) se invierten a blanco con `filter: brightness(0) invert(1)` (ya incluido en `tokens.css` para `.bbva-combo--electric` y `.bbva-combo--midnight`).
+6. **Iconos**: solo de `./.claude-knowledge/iconos-svg/` (lista en `05-iconografia.md`). No inventes ni mezcles librerías. Los iconos van siempre en **Electric Blue (`#001391`)** sobre fondos claros. Sobre fondos azules (Electric, Midnight) se invierten a blanco con `filter: brightness(0) invert(1)` (ya incluido en `tokens.css` para `.bbva-combo--electric` y `.bbva-combo--midnight`).
 7. **Sobre fotografía**, nunca uses opacity/velado para legibilidad: pon una caja sólida encima.
 8. **Presentaciones stand-alone**: los archivos HTML generados deben ser **autocontenidos** — no depender de rutas relativas al repositorio. Al crear o finalizar una presentación:
    - Inlinea `tokens.css` como `<style>` en el `<head>` (en lugar de `<link rel="stylesheet">`)

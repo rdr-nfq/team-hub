@@ -102,7 +102,7 @@ Pequeños elementos para destacar datos sobre imágenes o microilustraciones. Tr
 ```html
 <div class="bbva-sticker bbva-sticker--bubble">
   <div class="bbva-sticker__dot bbva-bg-lime">
-    <img src="./docs/visual/icons/climateaction.svg" alt="">
+    <img src="./.claude-knowledge/iconos-svg/climateaction.svg" alt="">
   </div>
   <div class="bbva-sticker__text">
     <strong>Sostenible</strong>
