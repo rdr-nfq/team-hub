@@ -1,0 +1,439 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-31T12:00:00Z",
+  "title": "Design System: Reference Data & Surveillance Hub",
+  "extensions": {
+    "note": "Las tonalRamp son una síntesis OKLCH solo para el panel; no son tokens BBVA y no deben usarse como colores en la web (regla: sin HEX inventados).",
+    "colorMeta": {
+      "electric-blue": {
+        "role": "primary",
+        "displayName": "Electric Blue",
+        "canonical": "oklch(31.2% 0.195 264)",
+        "tonalRamp": [
+          "#000331",
+          "#051B5C",
+          "#17378A",
+          "#2B55BB",
+          "#4074EE",
+          "#6799FF",
+          "#98C5FF",
+          "#C7EEFF"
+        ]
+      },
+      "serene": {
+        "role": "secondary",
+        "displayName": "Serene Blue",
+        "canonical": "oklch(80.9% 0.104 244)",
+        "tonalRamp": [
+          "#000C1E",
+          "#022640",
+          "#154365",
+          "#2B628C",
+          "#4283B6",
+          "#6BA5D4",
+          "#9ECDF6",
+          "#CDF4FF"
+        ]
+      },
+      "mandarin": {
+        "role": "tertiary",
+        "displayName": "Mandarin · Equipo",
+        "canonical": "oklch(82.8% 0.125 65)",
+        "tonalRamp": [
+          "#1B0400",
+          "#3C1A00",
+          "#603300",
+          "#864E01",
+          "#AF6B1A",
+          "#CE8F50",
+          "#F1BB88",
+          "#FFE5BB"
+        ]
+      },
+      "lime": {
+        "role": "tertiary",
+        "displayName": "Lime · Proyectos",
+        "canonical": "oklch(84.5% 0.163 143)",
+        "tonalRamp": [
+          "#001200",
+          "#002F00",
+          "#064E08",
+          "#1F701E",
+          "#359434",
+          "#64B560",
+          "#99DB94",
+          "#C9FFC5"
+        ]
+      },
+      "purple": {
+        "role": "tertiary",
+        "displayName": "Purple · Gestión",
+        "canonical": "oklch(71.4% 0.153 283)",
+        "tonalRamp": [
+          "#090328",
+          "#201A4E",
+          "#393478",
+          "#5550A5",
+          "#726ED4",
+          "#9392F0",
+          "#BCBEFF",
+          "#E5E8FF"
+        ]
+      },
+      "canary": {
+        "role": "tertiary",
+        "displayName": "Canary · solo páginas interiores",
+        "canonical": "oklch(92.3% 0.153 99)",
+        "tonalRamp": [
+          "#130900",
+          "#302300",
+          "#4F3F00",
+          "#715D00",
+          "#947D00",
+          "#B39F23",
+          "#D9C96F",
+          "#FDF0A9"
+        ]
+      },
+      "aqua": {
+        "role": "tertiary",
+        "displayName": "Aqua · solo páginas interiores",
+        "canonical": "oklch(85.8% 0.084 203)",
+        "tonalRamp": [
+          "#001013",
+          "#002B2F",
+          "#04494E",
+          "#1D6970",
+          "#348C93",
+          "#63ACB3",
+          "#98D4D9",
+          "#C9F9FD"
+        ]
+      },
+      "midnight": {
+        "role": "neutral",
+        "displayName": "Midnight",
+        "canonical": "oklch(20.9% 0.103 269)",
+        "tonalRamp": [
+          "#04091F",
+          "#172242",
+          "#2F3D68",
+          "#495B90",
+          "#647ABA",
+          "#879CD8",
+          "#B3C6F9",
+          "#DDEEFF"
+        ]
+      },
+      "sand": {
+        "role": "neutral",
+        "displayName": "Sand",
+        "canonical": "oklch(97.8% 0.001 197)",
+        "tonalRamp": [
+          "#0B0B0B",
+          "#242424",
+          "#3F4040",
+          "#5D5E5E",
+          "#7C7D7D",
+          "#9E9E9E",
+          "#C7C7C7",
+          "#EEEEEE"
+        ]
+      },
+      "gray-5": {
+        "role": "neutral",
+        "displayName": "Gray 5",
+        "canonical": "oklch(44.2% 0.046 264)",
+        "tonalRamp": [
+          "#070B14",
+          "#1D2432",
+          "#374052",
+          "#525E75",
+          "#6F7D99",
+          "#929FB9",
+          "#BCC8DE",
+          "#E5EFFF"
+        ]
+      },
+      "white": {
+        "role": "neutral",
+        "displayName": "White",
+        "canonical": "oklch(100.0% 0.000 90)",
+        "tonalRamp": [
+          "#0B0B0B",
+          "#242424",
+          "#404040",
+          "#5D5D5D",
+          "#7D7D7D",
+          "#9E9E9E",
+          "#C7C7C7",
+          "#EEEEEE"
+        ]
+      }
+    },
+    "themeMapping": {
+      "dark": {
+        "background": "midnight",
+        "text": "sand",
+        "line": "white (12–30 %)",
+        "accentText": "acento",
+        "tileTint": 0.15,
+        "tileTintSoft": 0.07
+      },
+      "light": {
+        "background": "sand",
+        "text": "electric-blue",
+        "line": "gray-5",
+        "accentText": "electric-blue",
+        "tileTint": 0.3,
+        "tileTintSoft": 0.16
+      },
+      "source": "app/globals.css (--c-*, --t-*, --cl-*, --ct-*, --ca-*, --hub-tinte*)"
+    },
+    "sections": {
+      "equipo": "mandarin",
+      "proyectos": "lime",
+      "formacion": "serene",
+      "gestion": "purple",
+      "source": "lib/seccion.js"
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Saludo",
+        "purpose": "Saludo de la portada."
+      },
+      "headline": {
+        "displayName": "Título de página",
+        "purpose": "Título de /gestion, junto a una placa de icono de 44px."
+      },
+      "brand-bar": {
+        "displayName": "Nombre del hub",
+        "purpose": "Barra superior; «RD&S Hub» por debajo de 1180px."
+      },
+      "title-lg": {
+        "displayName": "Título de baldosa grande",
+        "purpose": "Nombre del acceso en baldosa grande."
+      },
+      "title": {
+        "displayName": "Título de baldosa",
+        "purpose": "Nombre del acceso en baldosa pequeña."
+      },
+      "body": {
+        "displayName": "Texto",
+        "purpose": "Descripción de baldosa grande y texto de apoyo."
+      },
+      "body-sm": {
+        "displayName": "Texto pequeño",
+        "purpose": "Descripción de baldosa pequeña, pie."
+      },
+      "nav": {
+        "displayName": "Pestaña",
+        "purpose": "Pestañas de sección."
+      },
+      "label": {
+        "displayName": "Etiqueta",
+        "purpose": "Etiquetas de sección y títulos de grupo en mayúsculas; botones de la barra sin mayúsculas."
+      }
+    },
+    "shadows": [
+      {
+        "name": "tile-hover-dark",
+        "value": "0 8px 20px -10px rgb(0 5 25 / 0.6)",
+        "purpose": "Hover de baldosa en oscuro, con subida de 1px y tinte +0.12."
+      },
+      {
+        "name": "tile-hover-light",
+        "value": "0 8px 20px -10px rgb(7 14 70 / 0.25)",
+        "purpose": "Hover de baldosa en claro."
+      },
+      {
+        "name": "dropdown",
+        "value": "0 18px 40px -16px rgb(0 5 25 / 0.6)",
+        "purpose": "Panel de resultados del buscador."
+      },
+      {
+        "name": "inner-card-light",
+        "value": "0 1px 2px rgb(7 14 70 / 0.05), 0 6px 20px -10px rgb(7 14 70 / 0.18)",
+        "purpose": "Solo capa interior incumbente: tarjetas blancas en claro."
+      }
+    ],
+    "motion": [
+      {
+        "name": "tile-hover",
+        "value": "160ms cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Hover de baldosa (sombra y translateY(-1px))."
+      },
+      {
+        "name": "view-transition",
+        "value": "320ms cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "Crossfade entre rutas (next-view-transitions)."
+      },
+      {
+        "name": "theme-icon",
+        "value": "300ms",
+        "purpose": "Giro del icono de tema."
+      },
+      {
+        "name": "splash",
+        "value": "900ms visible, fundido 600ms ease-in-out",
+        "purpose": "Splash Electric, una vez por sesión."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "0.001ms",
+        "purpose": "prefers-reduced-motion corta animaciones y transiciones; el modo ligero (html.rdr-lite) quita desenfoque y tilt."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "min-420",
+        "value": "420px"
+      },
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      },
+      {
+        "name": "bar-full-name",
+        "value": "1180px"
+      }
+    ],
+    "layout": {
+      "headerHeightVar": "--cabecera: 56px; 101px con pestañas (html:has(.rdr-pestanas))",
+      "fitsViewport": "1280x720"
+    }
+  },
+  "components": [
+    {
+      "name": "Barra superior",
+      "kind": "nav",
+      "refersTo": "header-bar",
+      "description": "Barra Electric fija de 56px en los dos temas: nombre del hub en serif, Gestión, correo, tema, Salir y logo BBVA.",
+      "html": "<header class=\"ds-bar\"><a class=\"ds-bar-name\" href=\"#\">Reference Data &amp; Surveillance Hub</a><div class=\"ds-bar-end\"><a class=\"ds-bar-gestion\" href=\"#\"><svg viewBox=\"0 0 24 24\" width=\"17\" height=\"17\" fill=\"currentColor\" aria-hidden=\"true\"><path fill-rule=\"evenodd\" d=\"M6.61 22.37C5.93 22.27 5.29 21.79 5.00 21.15C4.83 20.78 4.79 20.51 4.79 19.74L4.79 19.21L4.00 19.21L3.21 19.21L3.21 18.41L3.21 17.60L4.00 17.60L4.79 17.60L4.79 16.80L4.79 16.00L4.00 16.00L3.21 16.00L3.21 15.20L3.21 14.40L4.00 14.40L4.79 14.40L4.79 13.59L4.79 12.79L4.00 12.79L3.21 12.79L3.21 12.00L3.21 11.21L4.00 11.21L4.79 11.21L4.79 10.41L4.79 9.60L4.00 9.60L3.21 9.60L3.21 8.80L3.21 8.00L4.00 8.00L4.79 8.00L4.79 7.20L4.79 6.40L4.00 6.40L3.21 6.40L3.21 5.59L3.21 4.79L4.00 4.79L4.79 4.79L4.80 4.13C4.81 3.42 4.82 3.33 4.93 3.01C5.15 2.38 5.73 1.86 6.41 1.67L6.58 1.62L12.68 1.61C17.02 1.60 18.83 1.61 18.96 1.63C19.84 1.75 20.57 2.43 20.75 3.31C20.79 3.51 20.79 3.71 20.79 12.07L20.78 20.63L20.73 20.80C20.51 21.56 19.95 22.12 19.19 22.33L19.00 22.38L12.87 22.39C9.50 22.39 6.68 22.38 6.61 22.37ZM18.89 20.74C19.02 20.68 19.14 20.55 19.18 20.41C19.23 20.23 19.21 3.65 19.16 3.54C19.11 3.42 19.00 3.31 18.89 3.26L18.79 3.21L12.80 3.21C7.77 3.21 6.80 3.21 6.74 3.24C6.64 3.28 6.51 3.40 6.45 3.50C6.41 3.59 6.41 3.62 6.40 4.19L6.39 4.79L7.19 4.80L7.99 4.80L7.99 5.60L8.00 6.40L7.20 6.40L6.40 6.40L6.40 7.20L6.40 8.00L7.20 8.00L8.00 8.00L8.00 8.80L8.00 9.60L7.20 9.60L6.40 9.60L6.40 10.41L6.40 11.21L7.20 11.21L8.00 11.21L8.00 12.00L8.00 12.79L7.20 12.79L6.40 12.79L6.40 13.59L6.40 14.40L7.20 14.40L8.00 14.40L8.00 15.20L8.00 16.00L7.20 16.00L6.40 16.00L6.40 16.80L6.40 17.60L7.20 17.60L8.00 17.60L7.99 18.40L7.99 19.20L7.19 19.20L6.39 19.21L6.40 19.81C6.41 20.38 6.41 20.41 6.45 20.50C6.51 20.60 6.63 20.72 6.73 20.76C6.79 20.78 7.84 20.79 12.80 20.79L18.79 20.79L18.89 20.74ZM9.61 14.96C9.62 13.81 9.63 13.74 9.77 13.26C10.05 12.34 10.65 11.54 11.44 11.04L11.60 10.94L11.51 10.76C11.39 10.55 11.31 10.35 11.26 10.13C11.20 9.89 11.21 9.26 11.27 9.03C11.51 8.14 12.14 7.52 13.03 7.27C13.30 7.20 13.91 7.20 14.20 7.28C15.71 7.69 16.44 9.35 15.71 10.72C15.65 10.84 15.61 10.94 15.62 10.95C15.63 10.95 15.71 11.01 15.81 11.07C16.83 11.75 17.47 12.83 17.58 14.05C17.59 14.19 17.60 14.68 17.60 15.15L17.60 16.00L13.60 16.00L9.60 16.00L9.61 14.96ZM15.99 14.21C15.84 12.39 13.77 11.39 12.26 12.41C11.64 12.83 11.21 13.59 11.21 14.27L11.21 14.40L13.61 14.40L16.01 14.40L15.99 14.21ZM13.94 10.32C14.09 10.25 14.25 10.09 14.32 9.93C14.38 9.83 14.38 9.79 14.38 9.60C14.38 9.41 14.38 9.38 14.31 9.25C14.06 8.74 13.40 8.65 13.01 9.07C12.62 9.50 12.81 10.19 13.36 10.36C13.52 10.41 13.78 10.40 13.94 10.32Z\"/></svg><span>Gestión</span></a><span class=\"ds-bar-mail\">persona@nfq.es</span><button class=\"ds-bar-pill\" type=\"button\">Salir</button><strong class=\"ds-bar-logo\">BBVA</strong></div></header>",
+      "css": ".ds-bar{display:flex;align-items:center;gap:16px;height:56px;padding:0 32px;background:#001391;color:#F7F8F8;font-family:Lato,system-ui,sans-serif}.ds-bar-name{font-family:\"Source Serif 4\",Georgia,serif;font-weight:700;font-size:19px;line-height:1;color:#F7F8F8;text-decoration:none;border-radius:6px}.ds-bar-end{margin-left:auto;display:flex;align-items:center;gap:10px}.ds-bar-mail{font-size:14px;color:#85C8FF}.ds-bar-pill,.ds-bar-gestion{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:9999px;border:1.5px solid rgb(247 248 248 / .55);background:transparent;color:#F7F8F8;font:700 13px Lato,system-ui,sans-serif;text-decoration:none;cursor:pointer;transition:background-color .15s,border-color .15s}.ds-bar-pill:hover{border-color:#F7F8F8}.ds-bar-gestion{background:#9694FF;border-color:#9694FF;color:#001391}.ds-bar-gestion:hover{background:#F7F8F8;border-color:#F7F8F8}.ds-bar-name:focus-visible,.ds-bar-pill:focus-visible,.ds-bar-gestion:focus-visible{outline:none;box-shadow:0 0 0 2px #85C8FF}.ds-bar-logo{font-weight:700;letter-spacing:.04em;margin-left:4px}"
+    },
+    {
+      "name": "Botón Gestión",
+      "kind": "button",
+      "refersTo": "button-gestion",
+      "description": "Píldora Purple con icono oficial y texto Electric sobre la barra; Sand al pasar el ratón o estando en Gestión.",
+      "html": "<div class=\"ds-bg-wrap\"><a class=\"ds-btn-gestion\" href=\"#\"><svg viewBox=\"0 0 24 24\" width=\"17\" height=\"17\" fill=\"currentColor\" aria-hidden=\"true\"><path fill-rule=\"evenodd\" d=\"M6.61 22.37C5.93 22.27 5.29 21.79 5.00 21.15C4.83 20.78 4.79 20.51 4.79 19.74L4.79 19.21L4.00 19.21L3.21 19.21L3.21 18.41L3.21 17.60L4.00 17.60L4.79 17.60L4.79 16.80L4.79 16.00L4.00 16.00L3.21 16.00L3.21 15.20L3.21 14.40L4.00 14.40L4.79 14.40L4.79 13.59L4.79 12.79L4.00 12.79L3.21 12.79L3.21 12.00L3.21 11.21L4.00 11.21L4.79 11.21L4.79 10.41L4.79 9.60L4.00 9.60L3.21 9.60L3.21 8.80L3.21 8.00L4.00 8.00L4.79 8.00L4.79 7.20L4.79 6.40L4.00 6.40L3.21 6.40L3.21 5.59L3.21 4.79L4.00 4.79L4.79 4.79L4.80 4.13C4.81 3.42 4.82 3.33 4.93 3.01C5.15 2.38 5.73 1.86 6.41 1.67L6.58 1.62L12.68 1.61C17.02 1.60 18.83 1.61 18.96 1.63C19.84 1.75 20.57 2.43 20.75 3.31C20.79 3.51 20.79 3.71 20.79 12.07L20.78 20.63L20.73 20.80C20.51 21.56 19.95 22.12 19.19 22.33L19.00 22.38L12.87 22.39C9.50 22.39 6.68 22.38 6.61 22.37ZM18.89 20.74C19.02 20.68 19.14 20.55 19.18 20.41C19.23 20.23 19.21 3.65 19.16 3.54C19.11 3.42 19.00 3.31 18.89 3.26L18.79 3.21L12.80 3.21C7.77 3.21 6.80 3.21 6.74 3.24C6.64 3.28 6.51 3.40 6.45 3.50C6.41 3.59 6.41 3.62 6.40 4.19L6.39 4.79L7.19 4.80L7.99 4.80L7.99 5.60L8.00 6.40L7.20 6.40L6.40 6.40L6.40 7.20L6.40 8.00L7.20 8.00L8.00 8.00L8.00 8.80L8.00 9.60L7.20 9.60L6.40 9.60L6.40 10.41L6.40 11.21L7.20 11.21L8.00 11.21L8.00 12.00L8.00 12.79L7.20 12.79L6.40 12.79L6.40 13.59L6.40 14.40L7.20 14.40L8.00 14.40L8.00 15.20L8.00 16.00L7.20 16.00L6.40 16.00L6.40 16.80L6.40 17.60L7.20 17.60L8.00 17.60L7.99 18.40L7.99 19.20L7.19 19.20L6.39 19.21L6.40 19.81C6.41 20.38 6.41 20.41 6.45 20.50C6.51 20.60 6.63 20.72 6.73 20.76C6.79 20.78 7.84 20.79 12.80 20.79L18.79 20.79L18.89 20.74ZM9.61 14.96C9.62 13.81 9.63 13.74 9.77 13.26C10.05 12.34 10.65 11.54 11.44 11.04L11.60 10.94L11.51 10.76C11.39 10.55 11.31 10.35 11.26 10.13C11.20 9.89 11.21 9.26 11.27 9.03C11.51 8.14 12.14 7.52 13.03 7.27C13.30 7.20 13.91 7.20 14.20 7.28C15.71 7.69 16.44 9.35 15.71 10.72C15.65 10.84 15.61 10.94 15.62 10.95C15.63 10.95 15.71 11.01 15.81 11.07C16.83 11.75 17.47 12.83 17.58 14.05C17.59 14.19 17.60 14.68 17.60 15.15L17.60 16.00L13.60 16.00L9.60 16.00L9.61 14.96ZM15.99 14.21C15.84 12.39 13.77 11.39 12.26 12.41C11.64 12.83 11.21 13.59 11.21 14.27L11.21 14.40L13.61 14.40L16.01 14.40L15.99 14.21ZM13.94 10.32C14.09 10.25 14.25 10.09 14.32 9.93C14.38 9.83 14.38 9.79 14.38 9.60C14.38 9.41 14.38 9.38 14.31 9.25C14.06 8.74 13.40 8.65 13.01 9.07C12.62 9.50 12.81 10.19 13.36 10.36C13.52 10.41 13.78 10.40 13.94 10.32Z\"/></svg>Gestión</a><a class=\"ds-btn-gestion\" aria-current=\"page\" href=\"#\"><svg viewBox=\"0 0 24 24\" width=\"17\" height=\"17\" fill=\"currentColor\" aria-hidden=\"true\"><path fill-rule=\"evenodd\" d=\"M6.61 22.37C5.93 22.27 5.29 21.79 5.00 21.15C4.83 20.78 4.79 20.51 4.79 19.74L4.79 19.21L4.00 19.21L3.21 19.21L3.21 18.41L3.21 17.60L4.00 17.60L4.79 17.60L4.79 16.80L4.79 16.00L4.00 16.00L3.21 16.00L3.21 15.20L3.21 14.40L4.00 14.40L4.79 14.40L4.79 13.59L4.79 12.79L4.00 12.79L3.21 12.79L3.21 12.00L3.21 11.21L4.00 11.21L4.79 11.21L4.79 10.41L4.79 9.60L4.00 9.60L3.21 9.60L3.21 8.80L3.21 8.00L4.00 8.00L4.79 8.00L4.79 7.20L4.79 6.40L4.00 6.40L3.21 6.40L3.21 5.59L3.21 4.79L4.00 4.79L4.79 4.79L4.80 4.13C4.81 3.42 4.82 3.33 4.93 3.01C5.15 2.38 5.73 1.86 6.41 1.67L6.58 1.62L12.68 1.61C17.02 1.60 18.83 1.61 18.96 1.63C19.84 1.75 20.57 2.43 20.75 3.31C20.79 3.51 20.79 3.71 20.79 12.07L20.78 20.63L20.73 20.80C20.51 21.56 19.95 22.12 19.19 22.33L19.00 22.38L12.87 22.39C9.50 22.39 6.68 22.38 6.61 22.37ZM18.89 20.74C19.02 20.68 19.14 20.55 19.18 20.41C19.23 20.23 19.21 3.65 19.16 3.54C19.11 3.42 19.00 3.31 18.89 3.26L18.79 3.21L12.80 3.21C7.77 3.21 6.80 3.21 6.74 3.24C6.64 3.28 6.51 3.40 6.45 3.50C6.41 3.59 6.41 3.62 6.40 4.19L6.39 4.79L7.19 4.80L7.99 4.80L7.99 5.60L8.00 6.40L7.20 6.40L6.40 6.40L6.40 7.20L6.40 8.00L7.20 8.00L8.00 8.00L8.00 8.80L8.00 9.60L7.20 9.60L6.40 9.60L6.40 10.41L6.40 11.21L7.20 11.21L8.00 11.21L8.00 12.00L8.00 12.79L7.20 12.79L6.40 12.79L6.40 13.59L6.40 14.40L7.20 14.40L8.00 14.40L8.00 15.20L8.00 16.00L7.20 16.00L6.40 16.00L6.40 16.80L6.40 17.60L7.20 17.60L8.00 17.60L7.99 18.40L7.99 19.20L7.19 19.20L6.39 19.21L6.40 19.81C6.41 20.38 6.41 20.41 6.45 20.50C6.51 20.60 6.63 20.72 6.73 20.76C6.79 20.78 7.84 20.79 12.80 20.79L18.79 20.79L18.89 20.74ZM9.61 14.96C9.62 13.81 9.63 13.74 9.77 13.26C10.05 12.34 10.65 11.54 11.44 11.04L11.60 10.94L11.51 10.76C11.39 10.55 11.31 10.35 11.26 10.13C11.20 9.89 11.21 9.26 11.27 9.03C11.51 8.14 12.14 7.52 13.03 7.27C13.30 7.20 13.91 7.20 14.20 7.28C15.71 7.69 16.44 9.35 15.71 10.72C15.65 10.84 15.61 10.94 15.62 10.95C15.63 10.95 15.71 11.01 15.81 11.07C16.83 11.75 17.47 12.83 17.58 14.05C17.59 14.19 17.60 14.68 17.60 15.15L17.60 16.00L13.60 16.00L9.60 16.00L9.61 14.96ZM15.99 14.21C15.84 12.39 13.77 11.39 12.26 12.41C11.64 12.83 11.21 13.59 11.21 14.27L11.21 14.40L13.61 14.40L16.01 14.40L15.99 14.21ZM13.94 10.32C14.09 10.25 14.25 10.09 14.32 9.93C14.38 9.83 14.38 9.79 14.38 9.60C14.38 9.41 14.38 9.38 14.31 9.25C14.06 8.74 13.40 8.65 13.01 9.07C12.62 9.50 12.81 10.19 13.36 10.36C13.52 10.41 13.78 10.40 13.94 10.32Z\"/></svg>Gestión</a></div>",
+      "css": ".ds-bg-wrap{display:flex;gap:10px;padding:10px 16px;background:#001391}.ds-btn-gestion{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:9999px;border:1.5px solid #9694FF;background:#9694FF;color:#001391;font:700 13px Lato,system-ui,sans-serif;text-decoration:none;transition:background-color .15s,border-color .15s}.ds-btn-gestion:hover,.ds-btn-gestion[aria-current=\"page\"]{background:#F7F8F8;border-color:#F7F8F8}.ds-btn-gestion:focus-visible{outline:none;box-shadow:0 0 0 2px #85C8FF}"
+    },
+    {
+      "name": "Etiqueta de sección",
+      "kind": "chip",
+      "refersTo": "section-label",
+      "description": "Encabezado de columna: píldora en el acento sólido con texto Electric, mayúsculas.",
+      "html": "<div class=\"ds-labels\"><h2 class=\"ds-label\" style=\"--acc:255 181 107\">Equipo</h2><h2 class=\"ds-label\" style=\"--acc:136 231 131\">Proyectos</h2><h2 class=\"ds-label\" style=\"--acc:133 200 255\">Formación</h2><h2 class=\"ds-label\" style=\"--acc:150 148 255\">Gestión</h2></div>",
+      "css": ".ds-labels{display:flex;gap:10px;flex-wrap:wrap;padding:12px;background:#070E46}.ds-label{margin:0;padding:7px 12px;border-radius:9999px;background:rgb(var(--acc));color:#001391;font:700 13px/1 Lato,system-ui,sans-serif;letter-spacing:.05em;text-transform:uppercase}"
+    },
+    {
+      "name": "Baldosa grande",
+      "kind": "card",
+      "refersTo": "tile-large",
+      "description": "Acceso principal: tinte y borde del acento de su sección, placa de icono sólida con el icono BBVA en Electric (tema oscuro).",
+      "html": "<div class=\"ds-canvas\"><a class=\"ds-tile\" href=\"#\" style=\"--acc:255 181 107\"><span class=\"ds-plate\"><svg viewBox=\"0 0 24 24\" width=\"28\" height=\"28\" fill=\"currentColor\" aria-hidden=\"true\"><path fill-rule=\"evenodd\" d=\"M11.54 21.59C10.91 21.56 10.12 21.43 9.50 21.27C5.85 20.28 3.11 17.22 2.52 13.49C2.37 12.55 2.37 11.46 2.52 10.51C3.16 6.42 6.42 3.16 10.51 2.52C11.46 2.37 12.56 2.37 13.48 2.52C15.52 2.84 17.34 3.78 18.79 5.23C20.93 7.37 21.91 10.32 21.50 13.33C20.94 17.49 17.66 20.82 13.49 21.48C12.96 21.57 12.06 21.62 11.54 21.59ZM12.57 19.98C13.88 19.88 15.12 19.48 16.21 18.80C20.21 16.30 21.22 10.96 18.39 7.20C16.47 4.63 13.20 3.47 10.09 4.23C7.18 4.95 4.89 7.27 4.21 10.18C3.47 13.36 4.71 16.62 7.40 18.54C8.87 19.59 10.75 20.11 12.57 19.98ZM15.42 16.55C15.01 16.42 14.74 15.99 14.81 15.58C14.94 14.81 15.84 14.54 16.36 15.10C16.53 15.28 16.58 15.42 16.58 15.70C16.58 15.92 16.58 15.93 16.50 16.09C16.40 16.29 16.27 16.41 16.07 16.51C15.88 16.60 15.62 16.62 15.42 16.55ZM12.28 13.41L11.21 12.34L11.21 9.37L11.21 6.40L12.00 6.40L12.79 6.40L12.79 9.03L12.79 11.66L13.64 12.51L14.49 13.36L13.93 13.92C13.63 14.23 13.37 14.48 13.36 14.48C13.36 14.48 12.87 14.00 12.28 13.41Z\"/></svg></span><span><span class=\"ds-tile-t\">Time Report</span><span class=\"ds-tile-d\">Tu imputación de la quincena</span></span></a></div>",
+      "css": ".ds-canvas{padding:16px;background:#070E46;font-family:Lato,system-ui,sans-serif}.ds-tile{display:flex;align-items:center;gap:14px;min-height:68px;padding:12px 16px;border-radius:12px;border:1px solid rgb(var(--acc));background:rgb(var(--acc) / .15);color:#F7F8F8;text-decoration:none;transition:box-shadow 160ms cubic-bezier(.16,1,.3,1),transform 160ms cubic-bezier(.16,1,.3,1),background-color 160ms}.ds-tile:hover{background:rgb(var(--acc) / .27);transform:translateY(-1px);box-shadow:0 8px 20px -10px rgb(0 5 25 / .6)}.ds-tile:active{transform:none}.ds-tile:focus-visible{outline:none;box-shadow:0 0 0 2px #070E46,0 0 0 4px #85C8FF}.ds-plate{display:grid;place-items:center;flex-shrink:0;width:44px;height:44px;border-radius:10px;background:rgb(var(--acc));color:#001391}.ds-tile-t{display:block;font-weight:700;font-size:17px;line-height:1.25}.ds-tile-d{display:block;margin-top:2px;font-size:14px;line-height:1.375}"
+    },
+    {
+      "name": "Baldosa pequeña (claro)",
+      "kind": "card",
+      "refersTo": "tile",
+      "description": "Acceso secundario en tema claro: tinte suave del acento sobre Sand, texto Electric, placa de 34px.",
+      "html": "<div class=\"ds-canvas-l\"><a class=\"ds-tile-s\" href=\"#\" style=\"--acc:150 148 255\"><span class=\"ds-plate-s\"><svg viewBox=\"0 0 24 24\" width=\"21\" height=\"21\" fill=\"currentColor\" aria-hidden=\"true\"><path fill-rule=\"evenodd\" d=\"M11.54 21.59C10.91 21.56 10.12 21.43 9.50 21.27C5.85 20.28 3.11 17.22 2.52 13.49C2.37 12.55 2.37 11.46 2.52 10.51C3.16 6.42 6.42 3.16 10.51 2.52C11.46 2.37 12.56 2.37 13.48 2.52C15.52 2.84 17.34 3.78 18.79 5.23C20.93 7.37 21.91 10.32 21.50 13.33C20.94 17.49 17.66 20.82 13.49 21.48C12.96 21.57 12.06 21.62 11.54 21.59ZM12.57 19.98C13.88 19.88 15.12 19.48 16.21 18.80C20.21 16.30 21.22 10.96 18.39 7.20C16.47 4.63 13.20 3.47 10.09 4.23C7.18 4.95 4.89 7.27 4.21 10.18C3.47 13.36 4.71 16.62 7.40 18.54C8.87 19.59 10.75 20.11 12.57 19.98ZM15.42 16.55C15.01 16.42 14.74 15.99 14.81 15.58C14.94 14.81 15.84 14.54 16.36 15.10C16.53 15.28 16.58 15.42 16.58 15.70C16.58 15.92 16.58 15.93 16.50 16.09C16.40 16.29 16.27 16.41 16.07 16.51C15.88 16.60 15.62 16.62 15.42 16.55ZM12.28 13.41L11.21 12.34L11.21 9.37L11.21 6.40L12.00 6.40L12.79 6.40L12.79 9.03L12.79 11.66L13.64 12.51L14.49 13.36L13.93 13.92C13.63 14.23 13.37 14.48 13.36 14.48C13.36 14.48 12.87 14.00 12.28 13.41Z\"/></svg></span><span><span class=\"ds-tile-st\">Time Report del equipo</span><span class=\"ds-tile-sd\">Proyectos y reparto de horas</span></span></a><div class=\"ds-tile-s ds-off\" aria-disabled=\"true\" style=\"--acc:136 231 131\"><span class=\"ds-plate-s\"><svg viewBox=\"0 0 24 24\" width=\"21\" height=\"21\" fill=\"currentColor\" aria-hidden=\"true\"><path fill-rule=\"evenodd\" d=\"M11.54 21.59C10.91 21.56 10.12 21.43 9.50 21.27C5.85 20.28 3.11 17.22 2.52 13.49C2.37 12.55 2.37 11.46 2.52 10.51C3.16 6.42 6.42 3.16 10.51 2.52C11.46 2.37 12.56 2.37 13.48 2.52C15.52 2.84 17.34 3.78 18.79 5.23C20.93 7.37 21.91 10.32 21.50 13.33C20.94 17.49 17.66 20.82 13.49 21.48C12.96 21.57 12.06 21.62 11.54 21.59ZM12.57 19.98C13.88 19.88 15.12 19.48 16.21 18.80C20.21 16.30 21.22 10.96 18.39 7.20C16.47 4.63 13.20 3.47 10.09 4.23C7.18 4.95 4.89 7.27 4.21 10.18C3.47 13.36 4.71 16.62 7.40 18.54C8.87 19.59 10.75 20.11 12.57 19.98ZM15.42 16.55C15.01 16.42 14.74 15.99 14.81 15.58C14.94 14.81 15.84 14.54 16.36 15.10C16.53 15.28 16.58 15.42 16.58 15.70C16.58 15.92 16.58 15.93 16.50 16.09C16.40 16.29 16.27 16.41 16.07 16.51C15.88 16.60 15.62 16.62 15.42 16.55ZM12.28 13.41L11.21 12.34L11.21 9.37L11.21 6.40L12.00 6.40L12.79 6.40L12.79 9.03L12.79 11.66L13.64 12.51L14.49 13.36L13.93 13.92C13.63 14.23 13.37 14.48 13.36 14.48C13.36 14.48 12.87 14.00 12.28 13.41Z\"/></svg></span><span><span class=\"ds-tile-st\">Planificación <em class=\"ds-pronto\">Pronto</em></span><span class=\"ds-tile-sd\">Aún no disponible</span></span></div></div>",
+      "css": ".ds-canvas-l{display:grid;gap:8px;padding:16px;background:#F7F8F8;font-family:Lato,system-ui,sans-serif}.ds-tile-s{display:flex;align-items:center;gap:14px;min-height:54px;padding:8px 12px;border-radius:12px;border:1px solid rgb(var(--acc));background:rgb(var(--acc) / .16);color:#001391;text-decoration:none;transition:box-shadow 160ms cubic-bezier(.16,1,.3,1),transform 160ms cubic-bezier(.16,1,.3,1)}.ds-tile-s:hover{background:rgb(var(--acc) / .28);transform:translateY(-1px);box-shadow:0 8px 20px -10px rgb(7 14 70 / .25)}.ds-tile-s:focus-visible{outline:none;box-shadow:0 0 0 2px #F7F8F8,0 0 0 4px #001391}.ds-off,.ds-off:hover{border-style:dashed;background:rgb(var(--acc) / .16);transform:none;box-shadow:none;cursor:default}.ds-plate-s{display:grid;place-items:center;flex-shrink:0;width:34px;height:34px;border-radius:8px;background:rgb(var(--acc));color:#001391}.ds-tile-st{display:block;font-weight:700;font-size:15px;line-height:1.25}.ds-tile-sd{display:block;margin-top:2px;font-size:13px;line-height:1.375}.ds-pronto{display:inline-block;margin-left:6px;padding:2px 6px;border:1px solid currentColor;border-radius:9999px;font-style:normal;font-size:11px;line-height:1;letter-spacing:.05em;text-transform:uppercase;vertical-align:2px}"
+    },
+    {
+      "name": "Buscador",
+      "kind": "input",
+      "refersTo": "search-input",
+      "description": "Campo en píldora con atajo «/»; el borde pasa a Serene al foco.",
+      "html": "<div class=\"ds-canvas\"><div class=\"ds-search\"><input class=\"ds-search-in\" type=\"search\" placeholder=\"Buscar en el hub\" aria-label=\"Buscar en el hub\"><kbd class=\"ds-kbd\">/</kbd></div></div>",
+      "css": ".ds-search{position:relative;width:440px;max-width:100%}.ds-search-in{box-sizing:border-box;width:100%;height:42px;padding:0 48px 0 20px;border-radius:9999px;border:1.5px solid rgb(255 255 255 / .3);background:#070E46;color:#F7F8F8;font:15px Lato,system-ui,sans-serif}.ds-search-in::placeholder{color:#85C8FF}.ds-search-in:focus-visible{outline:none;border-color:#85C8FF}.ds-kbd{position:absolute;right:14px;top:10px;padding:0 6px;border:1px solid rgb(255 255 255 / .3);border-radius:4px;color:#85C8FF;font:700 12px/20px Lato,system-ui,sans-serif}"
+    },
+    {
+      "name": "Pestañas de sección",
+      "kind": "nav",
+      "refersTo": "section-tab",
+      "description": "Bajo la barra en las páginas de una sección: punto y nombre de la sección, pestañas Lato 700, la activa con barra inferior de 3px (tema oscuro).",
+      "html": "<nav class=\"ds-tabs\" aria-label=\"Equipo\"><span class=\"ds-tabs-sec\"><span class=\"ds-dot\"></span>Equipo</span><a class=\"ds-tab\" aria-current=\"page\" href=\"#\">Time Report</a><a class=\"ds-tab\" href=\"#\">Vacaciones</a><a class=\"ds-tab\" href=\"#\">Guardias</a></nav>",
+      "css": ".ds-tabs{display:flex;align-items:stretch;gap:4px;height:44px;padding:0 32px;background:#070E46;border-bottom:1px solid rgb(255 255 255 / .15);font-family:Lato,system-ui,sans-serif}.ds-tabs-sec{display:flex;align-items:center;gap:8px;margin-right:8px;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgb(247 248 248 / .7)}.ds-dot{width:10px;height:10px;border-radius:9999px;background:#FFB56B}.ds-tab{display:flex;align-items:center;padding:3px 12px 0;border-bottom:3px solid transparent;font-size:14px;font-weight:700;color:rgb(247 248 248 / .65);text-decoration:none;transition:color .15s}.ds-tab:hover{color:#F7F8F8}.ds-tab[aria-current=\"page\"]{color:#F7F8F8;border-bottom-color:#FFB56B}.ds-tab:focus-visible{outline:none;box-shadow:inset 0 0 0 2px #85C8FF}"
+    },
+    {
+      "name": "Pie de co-branding",
+      "kind": "custom",
+      "refersTo": "",
+      "description": "«Hecho por» con el logo NFQ de 18px al pie de cada página; siempre menor que el BBVA de la barra.",
+      "html": "<footer class=\"ds-foot\">Hecho por <strong class=\"ds-nfq\">nfq</strong></footer>",
+      "css": ".ds-foot{display:flex;align-items:center;gap:10px;padding:8px 32px 20px;background:#070E46;color:rgb(247 248 248 / .75);font:13px Lato,system-ui,sans-serif}.ds-nfq{font-size:18px;line-height:18px;color:#F7F8F8}"
+    }
+  ],
+  "narrative": {
+    "northStar": "La puerta de la oficina",
+    "overview": "**Creative North Star: \"La puerta de la oficina\"**\n\nUn lanzador estándar, compacto y bien hecho, con la marca BBVA × NFQ. Quien entra ve su saludo, el buscador y todas sus herramientas en una sola pantalla de portátil (1280×720), sin desplazarse. La marca se nota en la precisión de paleta, tipografía y logos, no en efectos: el fondo es plano, el color llega en bloques y cada sección tiene un único acento BBVA que la identifica en la portada, en las pestañas y en /gestion. El listón de acabado es el de una herramienta tipo Google Workspace: denso, legible, sin ornamento.\n\nEl sistema vive en dos temas obligatorios que comparten estructura. La barra superior es Electric en los dos; debajo, el fondo es Midnight (oscuro) o Sand (claro). El tema claro sigue la combinación Sand del manual BBVA: todo lo que sea texto, icono o línea pasa a Electric, y los acentos solo aparecen como relleno. El rechazo confirmado de este rediseño es el bento anterior de cuatro columnas iguales con cristal, tilt 3D y manchas difuminadas: en la portada y el chrome no hay vidrio, ni brillo, ni arte generativo.\n\nLas páginas interiores (vacaciones, time report, pases, retro, recursos…) conservan una capa anterior de tarjetas de cristal que comparte tokens con este sistema pero no su forma; se describe al final como capa incumbente, no como modelo.",
+    "keyCharacteristics": [
+      "Barra Electric fija de 56px en los dos temas, con el logo BBVA blanco a la derecha.",
+      "Una sección = un acento BBVA: Equipo Mandarin, Proyectos Lime, Formación Serene, Gestión Purple.",
+      "Baldosas teñidas con el acento, borde del acento y placa de icono en acento sólido con el icono oficial BBVA en Electric.",
+      "Source Serif 4 solo en el nombre del hub, el saludo y los títulos de página; Lato para todo lo demás.",
+      "Plano por defecto; la elevación solo responde al estado (hover, desplegable)."
+    ],
+    "rules": [
+      {
+        "name": "The Color Block Rule",
+        "body": "Un acento aparece como relleno: tinte de baldosa, placa de icono, etiqueta de sección, punto. Su único trazo admitido es el borde de un bloque teñido con ese mismo acento. Nunca como texto, icono ni línea suelta sobre fondo claro; encima de un acento, el contenido va siempre en Electric.",
+        "section": "colors"
+      },
+      {
+        "name": "The Electric Bar Rule",
+        "body": "La barra superior es Electric en los dos temas, con texto Sand, detalles en Serene y el logo BBVA blanco. No cambia con el tema; por eso usa literales y no las variables temáticas.",
+        "section": "colors"
+      },
+      {
+        "name": "The No Pure Black Rule",
+        "body": "Ni `#000000` ni grises inventados: lo más oscuro es Midnight, y las sombras se tiñen de Deep (`rgb(0 5 25)`) o de Midnight.",
+        "section": "colors"
+      },
+      {
+        "name": "The Serif Scarcity Rule",
+        "body": "Source Serif 4 solo en el nombre del hub, el saludo, los títulos de página y el splash. Nada de serif en baldosas, botones, etiquetas ni navegación.",
+        "section": "typography"
+      },
+      {
+        "name": "The One Screen Rule",
+        "body": "La portada cabe completa en 1280×720: si un acceso nuevo la desborda, pasa a una baldosa pequeña o a /gestion, no a un segundo pliegue.",
+        "section": "layout"
+      },
+      {
+        "name": "The Flat Until Touched Rule",
+        "body": "Ninguna superficie de la portada tiene sombra en reposo. Si la sombra sola no se lee (sobre Midnight), el estado se marca intensificando el tinte, no endureciendo la sombra.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do asignar a cada sección su acento de `lib/seccion.js` y repetirlo en etiqueta, baldosas, placa y punto de pestaña.",
+      "Do poner texto e iconos en Electric sobre cualquier acento, en los dos temas.",
+      "Do usar solo iconos del catálogo oficial BBVA, vectorizados en `components/iconosBBVA.jsx` y rellenos con `currentColor`.",
+      "Do mantener la barra Electric con el logo BBVA blanco en todas las páginas y el pie «Hecho por» con el logo NFQ de 18px en todas.",
+      "Do reservar el hueco de la cabecera con `--cabecera` en lugar de alturas fijas.",
+      "Do marcar el hover de una superficie sobre Midnight intensificando su tinte, y respetar `prefers-reduced-motion` y el modo ligero."
+    ],
+    "donts": [
+      "Don't usar un acento como texto, icono o línea suelta sobre Sand; solo como relleno o como borde de su propio bloque teñido.",
+      "Don't usar `#000000`, grises fuera de la paleta BBVA ni HEX nuevos.",
+      "Don't volver al bento de columnas iguales con cristal, tilt 3D, manchas difuminadas o arte generativo en la portada o el chrome.",
+      "Don't usar Source Serif 4 en baldosas, botones, etiquetas o navegación.",
+      "Don't dar sombra en reposo a las superficies de la portada.",
+      "Don't tomar las tarjetas de cristal de las páginas interiores como patrón para pantallas nuevas."
+    ]
+  }
+}
