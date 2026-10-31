@@ -116,6 +116,20 @@ html:has(.rdr-pestanas) {
   border-color: #f7f8f8;
 }
 
+/* Mi Time Report (components/timereport/MiTimeReportRoute.jsx): el resumen
+   de la quincena es un bloque teñido de su sección y cada proyecto lleva una
+   barra proporcional a sus horas. */
+.tr-resumen {
+  border: 1px solid rgb(var(--hub-acc));
+  background: rgb(var(--hub-acc) / var(--hub-tinte-suave));
+}
+.tr-barra {
+  background: rgb(var(--hub-acc) / var(--hub-tinte));
+}
+.tr-barra i {
+  background: rgb(var(--hub-acc));
+}
+
 /* Pestaña activa de la cabecera: en oscuro, raya del acento de la sección;
    en claro un acento como línea fina no se lee sobre Sand, así que raya
    Electric sobre el tinte de la sección (patrón «caja de color»). */
