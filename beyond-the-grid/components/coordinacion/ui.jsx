@@ -1,5 +1,7 @@
 "use client";
 
+import Cargando from "@/components/chrome/Cargando";
+
 // Primitivas visuales de Coordinación (/simulador, /capacidad): tarjetas glass, chips, inputs,
 // badges y tablas. Misma escala de esquinas (rounded-2xl) y glass que el hub.
 
@@ -126,20 +128,21 @@ export function CargandoExcel({ actualizando = false }) {
 }
 
 /* ---------- skeleton de carga (shimmer .rdr-skel) ---------- */
-export function PanelSkeleton() {
+export function PanelSkeleton({ que }) {
   return (
-    <div aria-hidden className="space-y-4">
-      <div className="flex flex-wrap gap-2">
+    <div aria-busy="true" className="space-y-4">
+      {que && <Cargando que={que} />}
+      <div aria-hidden className="flex flex-wrap gap-2">
         {[0, 1, 2, 3].map((i) => (
           <span key={i} className="rdr-skel h-9 w-28 rounded-full" />
         ))}
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div aria-hidden className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[0, 1, 2, 3].map((i) => (
           <span key={i} className="rdr-skel h-24 rounded-2xl" />
         ))}
       </div>
-      <span className="rdr-skel block h-72 rounded-2xl" />
+      <span aria-hidden className="rdr-skel block h-72 rounded-2xl" />
     </div>
   );
 }

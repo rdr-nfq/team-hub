@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Cargando from "@/components/chrome/Cargando";
 import { useLinks } from "@/lib/links";
 import IconoBBVA from "../iconosBBVA";
 import { useTimeReport, useFestivos, useEquipo, EVIDENCIAS_KEY, equipoValido } from "./datos";
@@ -1186,10 +1187,11 @@ export default function GestionRoute() {
       {snap?.error && <Aviso className="self-start">{snap.error}</Aviso>}
 
       {cargando ? (
-        <div aria-busy="true" aria-label="Cargando el Time Report" className="flex flex-col gap-3">
-          <div className="h-24 animate-pulse rounded-xl bg-white/10" />
-          <div className="h-16 animate-pulse rounded-xl bg-white/10" />
-          <div className="h-16 animate-pulse rounded-xl bg-white/10" />
+        <div aria-busy="true" className="flex flex-col gap-3">
+          <Cargando que={`el Time Report de ${nombreEq}`} />
+          <div aria-hidden className="rdr-skel h-24 rounded-xl" />
+          <div aria-hidden className="rdr-skel h-16 rounded-xl" />
+          <div aria-hidden className="rdr-skel h-16 rounded-xl" />
         </div>
       ) : tab === "resumen" ? seccionResumen()
         : tab === "imputacion" ? seccionImputacion()

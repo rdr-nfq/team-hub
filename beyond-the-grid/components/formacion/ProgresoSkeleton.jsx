@@ -1,6 +1,7 @@
 "use client";
 
 import { PALETTE } from "@/lib/palette";
+import Cargando from "@/components/chrome/Cargando";
 
 /**
  * Skeleton de /formacion con la MISMA estructura que ProgresoTorre, para cubrir
@@ -22,9 +23,7 @@ export default function ProgresoSkeleton() {
           <div className="mx-auto mt-4 h-9 w-64 rounded-lg rdr-skel" />
           <div className="mx-auto mt-3 h-3 w-72 max-w-full rounded-full rdr-skel" />
           <div className="mx-auto mt-7 h-2 w-64 max-w-full rounded-full rdr-skel" />
-          <p className="mt-6 font-sans text-xs font-bold uppercase tracking-[0.3em] text-serene/80" role="status" aria-live="polite">
-            Cargando tu progreso…
-          </p>
+          <Cargando que="tu progreso" className="mt-6 text-left" />
         </div>
 
         {/* Niveles */}

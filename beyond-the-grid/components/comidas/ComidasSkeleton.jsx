@@ -1,6 +1,7 @@
 "use client";
 
 import { PALETTE } from "@/lib/palette";
+import Cargando from "@/components/chrome/Cargando";
 
 /**
  * Skeleton de /comidas con la MISMA estructura que la vista real (hero, tabs,
@@ -17,6 +18,7 @@ export default function ComidasSkeleton() {
       </div>
 
       <div className="relative z-10 mx-auto w-full max-w-5xl px-5 pb-24 pt-cabecera sm:px-6">
+        <Cargando que="las comidas" className="mb-6" />
         {/* Hero */}
         <div className="mb-8">
           <div className="h-3 w-32 rounded-full rdr-skel" />
@@ -37,9 +39,6 @@ export default function ComidasSkeleton() {
             <div key={i} className="h-56 rounded-2xl rdr-skel" />
           ))}
         </div>
-        <p className="mt-8 text-center font-sans text-xs font-bold uppercase tracking-[0.3em] text-mandarin/80" role="status" aria-live="polite">
-          Cargando comidas…
-        </p>
       </div>
     </main>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Cargando from "@/components/chrome/Cargando";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useLinks } from "@/lib/links";
 import { useTilt } from "@/hooks/useTilt";
@@ -46,9 +47,7 @@ export function VacacionesSkeleton() {
         <div className="mt-4 h-9 w-72 max-w-full rounded-lg rdr-skel" />
         <div className="mt-3 h-3 w-80 max-w-full rounded-full rdr-skel" />
       </div>
-      <p className="mb-6 font-sans text-xs font-bold uppercase tracking-[0.3em] text-serene/80" role="status" aria-live="polite">
-        Cargando calendario…
-      </p>
+      <Cargando que="el calendario de vacaciones" className="mb-6" />
       {/* Resumen "Ahora" */}
       <div className="mb-6 h-40 rounded-2xl rdr-skel" />
       {/* Conmutador de vista */}

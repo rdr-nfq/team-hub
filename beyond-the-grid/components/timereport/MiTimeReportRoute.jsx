@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Cargando from "@/components/chrome/Cargando";
 import { useLinks } from "@/lib/links";
 import { useAuth } from "../chrome/AuthGate";
 import IconoBBVA from "../iconosBBVA";
@@ -141,9 +142,10 @@ export default function MiTimeReportRoute() {
   let cuerpo;
   if (!snap || equipo == null) {
     cuerpo = (
-      <div aria-hidden className="space-y-6">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]"><span className="rdr-skel h-48 rounded-xl" /><span className="rdr-skel h-48 rounded-xl" /></div>
-        <span className="rdr-skel block h-56 rounded-xl" />
+      <div className="space-y-6">
+        <Cargando que="tu Time Report" />
+        <div aria-hidden className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]"><span className="rdr-skel h-48 rounded-xl" /><span className="rdr-skel h-48 rounded-xl" /></div>
+        <span aria-hidden className="rdr-skel block h-56 rounded-xl" />
       </div>
     );
   } else if (snap.error && !data) {

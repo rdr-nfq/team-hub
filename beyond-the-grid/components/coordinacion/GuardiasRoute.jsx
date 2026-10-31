@@ -334,7 +334,7 @@ export default function GuardiasRoute() {
         </header>
 
         {!snap ? (
-          <PanelSkeleton />
+          <PanelSkeleton que="las guardias del equipo" />
         ) : snap.error ? (
           <p className="inline-flex items-center gap-2 rounded-lg border border-canary/40 bg-canary/10 px-3 py-2 text-xs font-bold text-canary">
             <IconAlert size={13} /> {snap.error}

@@ -391,6 +391,9 @@ html.rdr-lite .rdr-tilt {
   overflow: hidden;
   background: rgb(var(--c-white) / 0.06);
 }
+html.rdr-light .rdr-skel {
+  background: rgb(var(--c-white) / 0.12);
+}
 .rdr-skel::after {
   content: "";
   position: absolute;

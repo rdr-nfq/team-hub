@@ -160,7 +160,7 @@ export default function MisGuardiasRoute() {
         <section className="mt-6">
           <h2 className="mb-3 font-display text-lg font-bold text-sand">Mis últimas guardias</h2>
           {!snap ? (
-            <PanelSkeleton />
+            <PanelSkeleton que="tus guardias" />
           ) : snap.error ? (
             <p className="inline-flex items-center gap-2 rounded-lg border border-canary/40 bg-canary/10 px-3 py-2 text-xs font-bold text-canary">
               <IconAlert size={13} /> {snap.error}
