@@ -108,7 +108,15 @@ export function useVacaciones(anio, { activo = true } = {}) {
     return res.data;
   }, [email]);
 
-  return { snap, reload: load, post };
+  // Envío que sobrevive al cierre de la página (para una retirada que estaba
+  // esperando el «Deshacer» cuando la persona se va).
+  const beacon = useCallback((action, body) => {
+    const url = urlRef.current;
+    if (!url || typeof navigator === "undefined" || !navigator.sendBeacon) return false;
+    return navigator.sendBeacon(url, new Blob([JSON.stringify({ action, email, ...body })], { type: "text/plain;charset=utf-8" }));
+  }, [email]);
+
+  return { snap, reload: load, post, beacon };
 }
 
 /* ── Utilidades de fechas/estado compartidas por las dos vistas ── */

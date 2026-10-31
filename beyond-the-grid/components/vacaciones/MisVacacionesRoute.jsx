@@ -1,187 +1,281 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import { PALETTE } from "@/lib/palette";
-import { useTheme, useAccentMap } from "@/lib/theme";
-import ArtBanner from "@/components/chrome/ArtBanner";
-import { ART } from "@/lib/art";
-import { normalizarColores, dateKey } from "./constants";
-import FiltroPersonas from "./FiltroPersonas";
-import Calendario from "./Calendario";
-import DaySheet from "./DaySheet";
-import { AmbientBackground, VacacionesSkeleton, ErrorCard } from "./VacacionesRoute";
-import { SolicitudForm, MisSolicitudes, MisDias, useMisBloques } from "./SolicitudPanel";
-import CampanaForm from "./CampanaForm";
-import { useVacaciones, festivosVistaGrupo, festivosDeGrupo, laborables, conEneroSiguiente } from "./datos";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import IconoBBVA from "../iconosBBVA";
+import { useLinks } from "@/lib/links";
+import { VacacionesSkeleton, ErrorCard } from "./VacacionesRoute";
+import { useVacaciones, festivosDeGrupo, laborables, conEneroSiguiente, isoDe } from "./datos";
+import CalendarioTrimestres from "./CalendarioTrimestres";
+import PanelMisVacaciones from "./PanelMisVacaciones";
+import { COLOR_YO, colorMotivo, textoMotivo, fLarga, masDias, qDe, nombresCortos, vuelve } from "./vistaUsuario";
 
-const ACCENT = PALETTE.mandarin;
+/* /vacaciones (vista de usuario, backend v2). A un lado «Mis vacaciones»
+   (pedir días, formularios especiales como Navidad, aprobados y solicitudes);
+   al otro, el calendario del equipo por trimestres con los nombres en cada
+   día. Los días se pueden elegir en el calendario o escribir en el
+   formulario; lo que pides se marca con borde y lo pendiente, discontinuo.
+   «Mis vacaciones» va antes en el código (orden del teclado) y se coloca a
+   la derecha con áreas de rejilla. */
 
-/* «Mis vacaciones»: una tarjeta con pestañas, una cosa a la vez (pedir días,
-   el formulario especial abierto, lo aprobado y las solicitudes). Por
-   defecto, el formulario especial si hay uno abierto. */
-function MisVacaciones({ datos, post, onHecho }) {
-  const campanas = (datos.campanas || []).filter((c) => c.activa);
-  const bloques = useMisBloques(datos);
-  const sols = datos.misSolicitudes || [];
-  const pendientes = sols.filter((s) => s.estado === "PENDIENTE").length;
-  const pestanas = [
-    ...campanas.map((c) => ({ id: `c-${c.id}`, label: `${c.emoji ? `${c.emoji} ` : ""}${c.nombre}`, campana: c })),
-    { id: "pedir", label: "Pedir días" },
-    { id: "aprobados", label: "Aprobados", n: bloques.length },
-    { id: "solicitudes", label: "Solicitudes", n: pendientes, aviso: pendientes > 0 },
-  ];
-  const [tab, setTab] = useState(pestanas[0].id);
-  const actual = pestanas.find((p) => p.id === tab) || pestanas[0];
+const VACIO = { tipo: "VA", desde: "", hasta: "", comentario: "" };
+const ESPERA_RETIRAR = 8000;
 
-  if (!datos.yo) return <SolicitudForm datos={datos} post={post} onHecho={onHecho} />;
-
+/* Detalle de un día: quién está fuera, por qué y cuándo vuelve. */
+function HojaDia({ s, d, festPorGrupo, festVista, onCerrar }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const prev = document.activeElement;
+    ref.current?.querySelector("button")?.focus();
+    return () => prev?.focus?.();
+  }, []);
+  const lista = d.ausenciasPorDia[s] || [];
+  const yo = d.yo?.nombre;
+  const teclas = (e) => {
+    if (e.key === "Escape") { e.stopPropagation(); onCerrar(); }
+    if (e.key === "Tab") { // el foco se queda dentro del diálogo
+      const f = [...ref.current.querySelectorAll("button")];
+      const i = f.indexOf(document.activeElement);
+      e.preventDefault();
+      f[(i + (e.shiftKey ? -1 : 1) + f.length) % f.length]?.focus();
+    }
+  };
+  const titulo = fLarga(s, d.year);
   return (
-    <section aria-label="Mis vacaciones" className="rounded-2xl border border-white/12 bg-white/[0.055] backdrop-blur-md">
-      <div className="px-4 pt-4">
-        <h2 className="font-display text-lg font-bold text-sand">Mis vacaciones</h2>
-        <div role="tablist" aria-label="Mis vacaciones" className="mt-3 flex flex-wrap gap-1.5">
-          {pestanas.map((p) => {
-            const on = p.id === actual.id;
-            return (
-              <button
-                key={p.id} type="button" role="tab" aria-selected={on} onClick={() => setTab(p.id)}
-                className={`inline-flex min-h-[32px] items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene ${
-                  on ? "bg-[#FFB56B] text-[#001391]" : "border border-white/12 text-sand/75 hover:border-white/30 hover:text-sand"
-                }`}
-              >
-                {p.label}
-                {p.n > 0 && (
-                  <span className={`rounded-full px-1.5 text-[10.5px] tabular-nums ${on ? "bg-[#001391]/15" : p.aviso ? "bg-canary/20 text-canary" : "bg-white/10 text-sand/70"}`}>{p.n}</span>
-                )}
-              </button>
-            );
-          })}
+    <div className="v-velo" onMouseDown={(e) => e.target === e.currentTarget && onCerrar()}>
+      <div ref={ref} className="v-hoja" role="dialog" aria-modal="true" aria-labelledby="v-hoja-t" onKeyDown={teclas}>
+        <div className="flex items-start justify-between gap-2.5">
+          <div>
+            <h2 id="v-hoja-t" className="text-lg font-bold">{titulo[0].toUpperCase() + titulo.slice(1)}</h2>
+            <p className="v-nota">{lista.length ? `${lista.length} ${lista.length === 1 ? "persona fuera" : "personas fuera"}` : "Nadie fuera"}{festVista[s] ? ` · festivo: ${festVista[s]}` : ""}</p>
+          </div>
+          <button type="button" className="v-btn v-btn-t" aria-label="Cerrar" onClick={onCerrar}><IconoBBVA nombre="close" size={18} /></button>
         </div>
-      </div>
-      <div role="tabpanel" aria-label={actual.label} className="mt-3 border-t border-white/10 p-4">
-        {actual.campana ? (
-          <CampanaForm campana={actual.campana} datos={datos} post={post} onHecho={onHecho} sinMarco />
-        ) : actual.id === "pedir" ? (
-          <SolicitudForm datos={datos} post={post} onHecho={onHecho} sinMarco />
-        ) : actual.id === "aprobados" ? (
-          <MisDias datos={datos} post={post} onHecho={onHecho} sinMarco />
-        ) : (
-          <MisSolicitudes solicitudes={sols} post={post} onHecho={onHecho} sinMarco />
+        {lista.length > 0 && (
+          <ul className="mt-3 flex flex-col gap-2">
+            {lista.map((a) => {
+              const grupo = d.empleadosMap?.[a.nombre]?.grupo;
+              const v = vuelve(a.nombre, s, d.ausenciasPorDia, festPorGrupo[grupo]);
+              return (
+                <li key={a.nombre} className="flex items-center justify-between gap-2 text-sm">
+                  <span>
+                    {a.nombre}{a.nombre === yo ? " (tú)" : ""}
+                    {v && <><br /><small className="v-soft">Vuelve el {fLarga(v, d.year)}</small></>}
+                  </span>
+                  <span className="v-motivo" style={{ background: a.nombre === yo ? COLOR_YO : colorMotivo(a.motivo) }}>{textoMotivo(a.motivo)}</span>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </div>
-    </section>
+    </div>
   );
 }
 
-/* /vacaciones (vista de EQUIPO, backend v2): a la izquierda «Mis vacaciones»;
-   a la derecha, el filtro por persona con la leyenda y el calendario de todo
-   el equipo, con tus días en Lime y lo pendiente con borde discontinuo. Sin
-   saldos: cuántos días le quedan a cada uno solo se ve en Coordinación. */
 export default function MisVacacionesRoute() {
-  const { theme } = useTheme();
-  const mapAccent = useAccentMap();
+  const { showToast } = useLinks();
   const [anio, setAnio] = useState(null);
-  const { snap, reload, post } = useVacaciones(anio);
+  const { snap, reload, post, beacon } = useVacaciones(anio);
   const base = snap?.data;
-  // Enero del año siguiente (si existe su pestaña): se carga aparte y se
-  // suma al final del calendario, para gestionar Navidad sin cambiar de año.
+  // Enero del año siguiente (4º mes del último trimestre): se carga aparte.
   const anioSig = base?.anios?.includes(base.year + 1) ? base.year + 1 : null;
   const { snap: snapSig, reload: reloadSig } = useVacaciones(anioSig, { activo: !!anioSig });
   const d = useMemo(() => conEneroSiguiente(base, snapSig?.data), [base, snapSig]);
-  const [filtros, setFiltros] = useState(() => new Set());
-  const [sheet, setSheet] = useState(null);
-  const [hoy] = useState(() => new Date());
+  const [hoy] = useState(() => isoDe(new Date()));
 
-  const toggleFiltro = useCallback((nombre) => {
-    setFiltros((prev) => {
-      const next = new Set(prev);
-      if (next.has(nombre)) next.delete(nombre); else next.add(nombre);
-      return next;
+  const [tab, setTabRaw] = useState("pedir");
+  const [form, setForm] = useState(VACIO);
+  const [elegir, setElegir] = useState(false); // false | "desde" | "hasta"
+  const [semSel, setSemSel] = useState(() => new Set());
+  const [qs, setQs] = useState(() => new Set([Math.floor(new Date().getMonth() / 3) + 1]));
+  const [filtro, setFiltro] = useState("");
+  const [dia, setDia] = useState(null);
+  const [focoDia, setFocoDia] = useState(null);
+  const [irA, setIrA] = useState(null);
+  const [ocultas, setOcultas] = useState(() => new Set());
+  const [deshacer, setDeshacer] = useState(null); // { msg, fn }
+  const retiradas = useRef({}); // id -> timer
+  const tDeshacer = useRef(null);
+
+  const recargar = useCallback(() => { reload(true); if (anioSig) reloadSig(true); }, [reload, reloadSig, anioSig]);
+  const setTab = (t) => { setTabRaw(t); setElegir(false); setSemSel(new Set()); };
+
+  // Festivos por grupo ({grupo: {iso: nombre}}) y país de cada grupo.
+  const { festPorGrupo, paisDe } = useMemo(() => {
+    const fpg = {};
+    (d?.festivosDetalle || []).forEach((f) => { (fpg[f.grupo] = fpg[f.grupo] || {})[f.fecha] = f.nombre || "Festivo"; });
+    return { festPorGrupo: fpg, paisDe: Object.fromEntries((d?.grupos || []).map((g) => [g.grupo, g.pais])) };
+  }, [d]);
+  const fxg = useMemo(() => festivosDeGrupo(d?.festivosDetalle, d?.yo?.grupo), [d]);
+  const grupoVista = filtro ? d?.empleadosMap?.[filtro]?.grupo : d?.yo?.grupo;
+  const festVista = festPorGrupo[grupoVista] || {};
+  const festOtros = useMemo(() => {
+    const out = {};
+    Object.entries(festPorGrupo).forEach(([g, m]) => {
+      if (g === grupoVista) return;
+      Object.entries(m).forEach(([iso, n]) => { if (!out[iso]) out[iso] = `${n} (${paisDe[g] || g})`; });
     });
-  }, []);
+    return out;
+  }, [festPorGrupo, paisDe, grupoVista]);
 
-  // Con UNA persona filtrada, los festivos que se pintan son los de su grupo.
-  const datosVis = useMemo(() => {
-    if (!d) return null;
-    let festivos = d.festivos;
-    if (filtros.size === 1) {
-      const emp = d.empleadosMap[Array.from(filtros)[0]];
-      if (emp?.grupo) festivos = festivosVistaGrupo(d.festivosDetalle, d.grupos, emp.grupo);
-    }
-    return normalizarColores({ ...d, festivos }, theme);
-  }, [d, filtros, theme]);
+  const personas = useMemo(() => (d?.empleados || []).filter((e) => e.activo).map((e) => e.nombre).sort((a, b) => a.localeCompare(b, "es")), [d]);
+  const cortos = useMemo(() => nombresCortos((d?.empleados || []).map((e) => e.nombre)), [d]);
 
-  // Días de mis solicitudes pendientes (contorno discontinuo en el calendario).
-  const misPendientes = useMemo(() => {
+  // Mis días pendientes (borde discontinuo), sin las que estoy retirando.
+  const pend = useMemo(() => {
     const set = new Set();
-    const fxg = festivosDeGrupo(d?.festivosDetalle, d?.yo?.grupo);
-    (d?.misSolicitudes || []).filter((s) => s.estado === "PENDIENTE" && s.clase !== "CANCELACION")
+    (d?.misSolicitudes || []).filter((s) => s.estado === "PENDIENTE" && s.clase !== "CANCELACION" && !ocultas.has(s.id))
       .forEach((s) => laborables(s.desde, s.hasta, fxg).forEach((iso) => set.add(iso)));
     return set;
-  }, [d]);
+  }, [d, fxg, ocultas]);
+  // Lo que estoy pidiendo: el rango del formulario o las semanas marcadas.
+  const pide = useMemo(() => {
+    if (tab === "pedir") return new Set(form.desde && form.desde >= hoy ? laborables(form.desde, form.hasta || form.desde, fxg) : []);
+    const set = new Set();
+    semSel.forEach((w) => laborables(w, masDias(w, 4), fxg).forEach((s) => set.add(s)));
+    return set;
+  }, [tab, form.desde, form.hasta, semSel, fxg, hoy]);
 
-  const totalActivos = base ? base.empleados.filter((e) => e.activo).length : 0;
-  const ausentesHoy = d && d.year === hoy.getFullYear() ? (d.ausenciasPorDia?.[dateKey(hoy)] || []).length : 0;
-  const recargar = () => { reload(true); if (anioSig) reloadSig(true); };
+  // Abre los trimestres de un rango y baja hasta su primer día.
+  const verRango = useCallback((f = form) => {
+    if (!d || !f.desde) return;
+    const dias = laborables(f.desde, f.hasta || f.desde, fxg);
+    if (!dias.length) return;
+    setQs((prev) => new Set([...prev, ...dias.map((s) => qDe(s, d.year))]));
+    setIrA(dias[0]);
+  }, [d, form, fxg]);
+  useEffect(() => {
+    if (!irA) return;
+    const el = document.querySelector(`[data-dia="${irA}"]`);
+    if (el) el.scrollIntoView({ block: "center", behavior: "smooth" });
+    setIrA(null);
+  }, [irA, qs]);
+
+  const fijarFechas = (cambio) => {
+    const f = { ...form, ...cambio };
+    if (cambio.desde && (!f.hasta || f.hasta < f.desde)) f.hasta = f.desde;
+    setForm(f);
+    if (f.desde >= hoy) verRango(f);
+  };
+
+  const onDia = (s) => {
+    setFocoDia(s);
+    if (elegir && tab === "pedir" && s >= hoy) {
+      if (elegir === "desde") { setForm({ ...form, desde: s, hasta: s }); setElegir("hasta"); }
+      else {
+        const [a, z] = s < form.desde ? [s, form.desde] : [form.desde, s];
+        setForm({ ...form, desde: a, hasta: z }); setElegir(false);
+      }
+      return;
+    }
+    setDia(s);
+  };
+  const cambiarElegir = (v) => {
+    setElegir(v);
+    if (v && d && !qs.size) setQs(new Set([qDe(hoy, d.year)]));
+  };
+  useEffect(() => {
+    if (!elegir) return;
+    const f = (e) => { if (e.key === "Escape") setElegir(false); };
+    window.addEventListener("keydown", f);
+    return () => window.removeEventListener("keydown", f);
+  }, [elegir]);
+
+  // Retirar con «Deshacer»: se oculta al momento y se envía a los 8 s; si la
+  // persona se va antes, sale con sendBeacon.
+  const enviarRetirada = useCallback(async (id) => {
+    delete retiradas.current[id];
+    try { await post("cancelar", { id }); recargar(); }
+    catch (e) {
+      setOcultas((prev) => { const n = new Set(prev); n.delete(id); return n; });
+      showToast(`No se pudo retirar: ${e.message || e}`);
+    }
+  }, [post, recargar, showToast]);
+  const retirar = (s) => {
+    setOcultas((prev) => new Set(prev).add(s.id));
+    retiradas.current[s.id] = setTimeout(() => enviarRetirada(s.id), ESPERA_RETIRAR);
+    clearTimeout(tDeshacer.current);
+    setDeshacer({
+      msg: `Solicitud del ${fLarga(s.desde, d.year).replace(/^\S+ /, "")} retirada`,
+      fn: () => {
+        clearTimeout(retiradas.current[s.id]); delete retiradas.current[s.id];
+        setOcultas((prev) => { const n = new Set(prev); n.delete(s.id); return n; });
+        showToast("Solicitud recuperada");
+      },
+    });
+    tDeshacer.current = setTimeout(() => setDeshacer(null), ESPERA_RETIRAR);
+  };
+  useEffect(() => {
+    const salir = () => Object.keys(retiradas.current).forEach((id) => { clearTimeout(retiradas.current[id]); beacon("cancelar", { id }); });
+    window.addEventListener("pagehide", salir);
+    return () => { window.removeEventListener("pagehide", salir); salir(); };
+  }, [beacon]);
+
+  const onEnviada = (msg, de) => {
+    showToast(msg);
+    if (de === "campana") setSemSel(new Set());
+    else { setForm(VACIO); setTabRaw("solicitudes"); }
+    recargar();
+  };
+  const pedirOtras = (s) => { setTabRaw("pedir"); setForm({ ...VACIO, tipo: s.tipo }); };
+
+  const ctx = {
+    form, setForm, fijarFechas, elegir, setElegir: cambiarElegir, semSel, setSemSel, fxg, pend, hoy, qs,
+    post, onHecho: recargar, onEnviada, verRango: () => verRango(), retirar, ocultas, pedirOtras, anio: d?.year,
+  };
 
   return (
-    <main className="relative min-h-dvh w-full">
-      <ArtBanner src={ART.equipo} />
-      <AmbientBackground />
-      <div className="mx-auto w-full max-w-7xl px-5 pb-24 pt-cabecera sm:px-6">
-        <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1 className="mt-2 font-display text-3xl font-bold tracking-tight text-sand sm:text-4xl">Vacaciones</h1>
-            <p className="mt-2 max-w-xl text-pretty text-sm text-sand/65">
-              Quién está fuera cada día. Tus días aprobados van en verde y los pendientes con borde discontinuo; pide los tuyos desde «Mis vacaciones».
-            </p>
-          </div>
-          {d?.anios?.length > 1 && (
-            <div className="inline-flex gap-1 rounded-full border border-white/12 bg-white/[0.055] p-1" role="tablist" aria-label="Año">
-              {d.anios.map((a) => (
-                <button key={a} type="button" role="tab" aria-selected={a === d.year} onClick={() => setAnio(a)}
-                  className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition ${a === d.year ? "bg-[#FFB56B] text-[#001391]" : "text-sand/70 hover:text-sand"}`}>
-                  {a}
-                </button>
-              ))}
-            </div>
-          )}
-        </header>
-
-        {snap?.actualizando && <p className="mb-3 text-xs text-sand/50" role="status">Actualizando…</p>}
-        {snap?.avisoRecarga && <p className="mb-3 text-xs text-canary">No se pudo refrescar: {snap.avisoRecarga}</p>}
-        {snap?.error ? (
-          <ErrorCard mensaje={snap.error} onRetry={() => reload()} />
-        ) : !d ? (
-          <VacacionesSkeleton />
-        ) : (
-          <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
-            <div className="lg:sticky lg:top-cabecera lg:max-h-[calc(100dvh-7rem)] lg:overflow-y-auto">
-              <MisVacaciones key={d.year} datos={d} post={post} onHecho={recargar} />
-            </div>
-            <div className="min-w-0 space-y-4">
-              <FiltroPersonas
-                empleados={datosVis.empleados}
-                filtros={filtros}
-                onToggle={toggleFiltro}
-                onClear={() => setFiltros(new Set())}
-                ausentesHoy={ausentesHoy}
-                yo={d.yo?.nombre}
-              />
-              <Calendario
-                datos={datosVis}
-                filtros={filtros}
-                totalActivos={totalActivos}
-                onOpenDay={(dateStr, ausencias) => setSheet({ dateStr, ausencias })}
-                yo={d.yo?.nombre}
-                marca={misPendientes}
-                marcaTexto="tienes una solicitud pendiente"
-              />
-            </div>
+    <main className="vacu mx-auto flex w-full max-w-[1376px] flex-col gap-4 px-4 pb-10 pt-cabecera sm:px-8">
+      <a className="v-salto" href="#calendario">Saltar al calendario</a>
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+        <div className="flex items-center gap-3.5">
+          <span className="hub-placa hub-eq grid h-11 w-11 shrink-0 place-items-center rounded-[10px]"><IconoBBVA nombre="aeroplane" size={28} /></span>
+          <h1 className="font-display text-[clamp(26px,2.4vw,32px)] font-bold tracking-[-0.015em] text-sand">Vacaciones</h1>
+        </div>
+        {d?.anios?.length > 1 && (
+          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Año">
+            <span className="mr-1 text-[13px] font-bold">Año</span>
+            {d.anios.map((a) => (
+              <button key={a} type="button" className="v-chip" aria-pressed={a === d.year} onClick={() => setAnio(a)}>{a}</button>
+            ))}
           </div>
         )}
-        {datosVis && <DaySheet sheet={sheet} empleadosMap={datosVis.empleadosMap || {}} onClose={() => setSheet(null)} />}
       </div>
+
+      {snap?.actualizando && <p className="v-nota" role="status">Actualizando…</p>}
+      {snap?.avisoRecarga && <p className="v-aviso">No se pudo refrescar: {snap.avisoRecarga}</p>}
+      {snap?.error ? (
+        <ErrorCard mensaje={snap.error} onRetry={() => reload()} />
+      ) : !d ? (
+        <VacacionesSkeleton />
+      ) : (
+        <div className="v-rejilla">
+          <div className="v-lado">
+            <PanelMisVacaciones key={d.year} datos={d} tab={tab} setTab={setTab} ctx={ctx} />
+          </div>
+          <CalendarioTrimestres
+            anio={d.year} hoy={hoy} qs={qs}
+            onToggleQ={(q) => setQs((prev) => { const n = new Set(prev); if (n.has(q)) n.delete(q); else n.add(q); return n; })}
+            aus={d.ausenciasPorDia || {}} personas={personas} filtro={filtro} setFiltro={setFiltro}
+            yo={d.yo?.nombre} cortos={cortos} festVista={festVista} festOtros={festOtros} grupoVista={grupoVista}
+            pend={pend} pide={pide} elegir={tab === "pedir" ? elegir : false} onDia={onDia} focoDia={focoDia}
+            sinEnero={!d.anioSiguiente}
+          />
+        </div>
+      )}
+      {dia && d && (
+        <HojaDia s={dia} d={d} festPorGrupo={Object.fromEntries(Object.entries(festPorGrupo).map(([g, m]) => [g, Object.fromEntries(Object.keys(m).map((k) => [k, true]))]))}
+          festVista={festVista} onCerrar={() => setDia(null)} />
+      )}
+      {deshacer && (
+        <div role="status" className="fixed bottom-8 left-1/2 z-[110] flex -translate-x-1/2 items-center gap-3 rounded-full bg-sand px-5 py-2.5 text-sm font-bold text-midnight shadow-xl">
+          {deshacer.msg}
+          <button type="button" onClick={() => { const f = deshacer.fn; setDeshacer(null); clearTimeout(tDeshacer.current); f(); }}
+            className="rounded-full border-[1.5px] border-midnight px-3 py-0.5 hover:bg-midnight/10">
+            Deshacer
+          </button>
+        </div>
+      )}
     </main>
   );
 }
