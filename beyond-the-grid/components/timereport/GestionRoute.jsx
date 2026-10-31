@@ -5,7 +5,7 @@ import Cargando from "@/components/chrome/Cargando";
 import { useLinks } from "@/lib/links";
 import IconoBBVA from "../iconosBBVA";
 import { useTimeReport, useFestivos, useEquipo, EVIDENCIAS_KEY, equipoValido } from "./datos";
-import { EQUIPOS, EQUIPO, equiposDe } from "@/lib/equipos";
+import { EQUIPOS, EQUIPO, equipoTRDe } from "@/lib/equipos";
 import { useAuth } from "../chrome/AuthGate";
 import {
   num, curQ, hoyISO, quincenasDeQ, quincenaDe, horasDe, esLaborable, jornada,
@@ -24,7 +24,8 @@ import { abrirResumenPdf } from "./resumenPdf";
    IMPUTACIÓN: todas las personas en una quincena, editable (flechas, Enter,
      pegar desde Excel), con avisos de jornada y fines de semana.
    EVIDENCIAS: quién falta por subir su PDF, ZIP con todas y carpeta de Drive.
-   Un Time Report POR EQUIPO: el selector de arriba cambia de «mundo». */
+   Un Time Report POR EQUIPO, totalmente separados: el selector de arriba
+   cambia de «mundo» y cada persona solo está en el de su equipo principal. */
 
 const CLAVE_EQUIPO_TR = "rdr_tr_equipo";
 
@@ -108,8 +109,10 @@ export default function GestionRoute() {
   const [deshacer, setDeshacer] = useState(null); // { msg, fn }
   const focoTras = useRef(null);
 
+  // Equipos totalmente separados: cada persona solo entra en el Time Report de
+  // su equipo PRINCIPAL ("equipoTR"), aunque pertenezca a varios.
   const personas = useMemo(
-    () => (equipo || []).filter((m) => m.activo !== false && m.baja !== true && equiposDe(m).includes(eqTR)).map((m) => m.nombre),
+    () => (equipo || []).filter((m) => m.activo !== false && m.baja !== true && equipoTRDe(m) === eqTR).map((m) => m.nombre),
     [equipo, eqTR]
   );
   const raizEvidencias = getUrl(EVIDENCIAS_KEY[eqTR]);

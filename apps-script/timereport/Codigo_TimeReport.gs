@@ -6,8 +6,9 @@
  *  UN Time Report POR EQUIPO (param. `equipo`: rdr · market-abuse ·
  *  comms-surveillance; sin él, rdr): proyectos, reparto, bloqueos, cálculos y
  *  evidencias completamente separados. Quien está en dos equipos (equipo.json,
- *  "equipos") sale en el reparto de los dos, pero su evidencia y sus avisos
- *  van a su equipo PRINCIPAL ("equipoTR"); "activo": false lo saca de todo.
+ *  "equipos") solo cuenta en el de su equipo PRINCIPAL ("equipoTR"): reparto
+ *  (la web solo le reparte allí), evidencia y avisos; "activo": false lo saca
+ *  de todo.
  *  Las filas de las hojas llevan la columna «Equipo» (vacía = rdr: lo
  *  guardado antes de separarlos).
  *
