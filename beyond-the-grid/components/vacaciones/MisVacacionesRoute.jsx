@@ -21,7 +21,7 @@ const VACIO = { tipo: "VA", desde: "", hasta: "", comentario: "" };
 const ESPERA_RETIRAR = 8000;
 
 /* Detalle de un día: quién está fuera, por qué y cuándo vuelve. */
-function HojaDia({ s, d, festPorGrupo, festVista, onCerrar }) {
+function HojaDia({ s, d, cortos, festPorGrupo, festVista, onCerrar }) {
   const ref = useRef(null);
   useEffect(() => {
     const prev = document.activeElement;
@@ -58,7 +58,7 @@ function HojaDia({ s, d, festPorGrupo, festVista, onCerrar }) {
               return (
                 <li key={a.nombre} className="flex items-center justify-between gap-2 text-sm">
                   <span>
-                    {a.nombre}{a.nombre === yo ? " (tú)" : ""}
+                    {cortos[a.nombre] || a.nombre}{a.nombre === yo ? " (tú)" : ""}
                     {v && <><br /><small className="v-soft">Vuelve el {fLarga(v, d.year)}</small></>}
                   </span>
                   <span className="v-motivo" style={{ background: a.nombre === yo ? COLOR_YO : colorMotivo(a.motivo) }}>{textoMotivo(a.motivo)}</span>
@@ -118,8 +118,8 @@ export default function MisVacacionesRoute() {
     return out;
   }, [festPorGrupo, paisDe, grupoVista]);
 
-  const personas = useMemo(() => (d?.empleados || []).filter((e) => e.activo).map((e) => e.nombre).sort((a, b) => a.localeCompare(b, "es")), [d]);
   const cortos = useMemo(() => nombresCortos((d?.empleados || []).map((e) => e.nombre)), [d]);
+  const personas = useMemo(() => (d?.empleados || []).filter((e) => e.activo).map((e) => e.nombre).sort((a, b) => (cortos[a] || a).localeCompare(cortos[b] || b, "es")), [d, cortos]);
 
   // Mis días pendientes (borde discontinuo), sin las que estoy retirando.
   const pend = useMemo(() => {
@@ -264,7 +264,7 @@ export default function MisVacacionesRoute() {
         </div>
       )}
       {dia && d && (
-        <HojaDia s={dia} d={d} festPorGrupo={Object.fromEntries(Object.entries(festPorGrupo).map(([g, m]) => [g, Object.fromEntries(Object.keys(m).map((k) => [k, true]))]))}
+        <HojaDia s={dia} d={d} cortos={cortos} festPorGrupo={Object.fromEntries(Object.entries(festPorGrupo).map(([g, m]) => [g, Object.fromEntries(Object.keys(m).map((k) => [k, true]))]))}
           festVista={festVista} onCerrar={() => setDia(null)} />
       )}
       {deshacer && (

@@ -53,15 +53,16 @@ function Tira({ anio, qs, onToggleQ, aus }) {
   );
 }
 
-function Filtro({ personas, filtro, setFiltro }) {
+function Filtro({ personas, filtro, setFiltro, cortos }) {
+  const c = (n) => cortos[n] || n;
   const [buscar, setBuscar] = useState("");
-  const texto = filtro || buscar;
-  const coinc = buscar && !filtro ? personas.filter((n) => coincide(n, buscar)).slice(0, 6) : [];
+  const texto = filtro ? c(filtro) : buscar;
+  const coinc = buscar && !filtro ? personas.filter((n) => coincide(`${n} ${c(n)}`, buscar)).slice(0, 6) : [];
   return (
     <span className="flex flex-wrap items-center gap-2">
       {filtro && (
         <span className="inline-flex items-center gap-1 text-[13px] font-bold">
-          Viendo solo a {filtro}
+          Viendo solo a {c(filtro)}
           <button type="button" className="v-btn v-btn-t" onClick={() => { setFiltro(""); setBuscar(""); }}>Quitar</button>
         </span>
       )}
@@ -72,12 +73,12 @@ function Filtro({ personas, filtro, setFiltro }) {
           <input className="v-inp v-con-icono" autoComplete="off" placeholder="Ver solo a una persona…" value={texto}
             aria-describedby="v-filtro-res"
             onChange={(e) => { setBuscar(e.target.value); if (filtro) setFiltro(""); }}
-            onKeyDown={(e) => { if (e.key === "Enter" && coinc.length) { setFiltro(coinc[0]); setBuscar(coinc[0]); } if (e.key === "Escape") { setBuscar(""); setFiltro(""); } }} />
+            onKeyDown={(e) => { if (e.key === "Enter" && coinc.length) { setFiltro(coinc[0]); setBuscar(c(coinc[0])); } if (e.key === "Escape") { setBuscar(""); setFiltro(""); } }} />
         </label>
         {buscar && !filtro ? (
           <span id="v-filtro-res" className="v-hoja absolute left-0 right-0 top-11 z-20 flex flex-col gap-0.5 !p-1.5">
             {coinc.length ? coinc.map((n) => (
-              <button key={n} type="button" className="v-btn v-btn-t justify-start" onClick={() => { setFiltro(n); setBuscar(n); }}>{n}</button>
+              <button key={n} type="button" className="v-btn v-btn-t justify-start" onClick={() => { setFiltro(n); setBuscar(c(n)); }}>{c(n)}</button>
             )) : <span className="v-nota p-1.5">Sin coincidencias</span>}
           </span>
         ) : <span id="v-filtro-res" className="sr-only" />}
@@ -174,7 +175,7 @@ export default function CalendarioTrimestres({
           <span><i className="v-sw" style={{ boxShadow: "inset 0 0 0 2px var(--v-ink)" }} />Lo que estás pidiendo</span>
           {grupoVista && <span><i className="v-sw" style={{ background: "var(--v-rayas)" }} />Festivo de {grupoVista}</span>}
         </div>
-        <Filtro personas={personas} filtro={filtro} setFiltro={setFiltro} />
+        <Filtro personas={personas} filtro={filtro} setFiltro={setFiltro} cortos={cortos} />
       </div>
       {trimestres.map(({ q, ms, foco }) => (
         <section key={q} className="flex flex-col gap-2.5" aria-labelledby={`v-q${q}`}>
