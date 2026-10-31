@@ -212,6 +212,51 @@ html.rdr-light .hub-tile:hover {
   color: #001391;
 }
 
+/* Time Report del equipo (components/timereport/GestionRoute.jsx).
+   · .trg-aten: bloque de «atención» (bloqueadas, faltan horas, reescribir
+     quincenas imputadas): tinte Mandarin con su borde; texto Electric en claro.
+   · .trg-solido: superficie opaca de las celdas fijas de la tabla de
+     imputación (igual que la tarjeta: blanco al 6 % sobre Midnight / blanco).
+   · .trg-est: estado Nivel 2 (A/C/P) relleno de su acento; .trg-hoy marca la
+     quincena actual. .trg-celda: casillas editables de la imputación. */
+.trg-aten {
+  background: rgb(255 181 107 / var(--hub-tinte));
+  border: 1px solid #ffb56b;
+}
+.trg-solido {
+  background: linear-gradient(rgb(255 255 255 / 0.06), rgb(255 255 255 / 0.06)), rgb(var(--c-midnight));
+}
+html.rdr-light .trg-solido {
+  background: #ffffff;
+}
+.trg-est {
+  color: #001391;
+}
+.trg-est-A { background: #8be1e9; }
+.trg-est-C { background: #85c8ff; }
+.trg-est-P { background: #ffe761; }
+.trg-hoy {
+  box-shadow: 0 0 0 2px rgb(var(--c-midnight)), 0 0 0 3.5px rgb(var(--c-sand));
+}
+.trg-celda {
+  width: 34px;
+  border: 1.5px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  text-align: center;
+  padding: 5px 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: rgb(var(--c-sand));
+}
+.trg-celda:hover { border-color: rgb(var(--c-white) / 0.45); }
+.trg-celda:focus { outline: none; border-color: rgb(var(--c-sand)); }
+.trg-celda.cero { font-weight: 400; color: rgb(var(--c-sand) / 0.6); }
+.trg-celda.corta { background: rgb(255 181 107 / var(--hub-tinte-suave)); }
+.trg-celda.editada { background: rgb(150 148 255 / var(--hub-tinte)); border-color: #9694ff; }
+.trg-celda.mal { background: rgb(255 181 107 / var(--hub-tinte)); border-color: #ffb56b; }
+.trg-celda.editada:focus, .trg-celda.mal:focus { border-color: rgb(var(--c-sand)); }
+
 /* BBVA: fondo Midnight (nunca negro puro) / Sand en claro. */
 html,
 body {

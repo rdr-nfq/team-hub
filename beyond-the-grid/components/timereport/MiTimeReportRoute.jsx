@@ -21,9 +21,8 @@ import {
      TR de BBVA (en la 2ª quincena, el mes entero) y el enlace del TR.
    - "Subir evidencias" abre la carpeta de Drive de ESA quincena (el backend la
      crea si no existe y renombra los ficheros al nombre canónico).
-   Cada equipo tiene su propio Time Report: quien está en dos elige cuál ver
-   (por defecto, el del enlace ?equipo=… del recordatorio, o su equipo
-   principal: "equipoTR" en Gestión de equipo). */
+   Cada persona ve el Time Report de su equipo principal ("equipoTR" en
+   Gestión de equipo): no hay selector de equipo aunque esté en varios. */
 
 const qsSelector = (extra) => {
   const año = new Date().getFullYear();
@@ -47,13 +46,8 @@ export default function MiTimeReportRoute() {
   const yo = useMemo(() => {
     return (equipo || []).find((m) => mismoEmail(m.email, email)) || null;
   }, [equipo, email]);
-  const misEquipos = useMemo(() => (yo ? equiposDe(yo) : ["rdr"]), [yo]);
-  const [eqPedido] = useState(() => {
-    try { return new URLSearchParams(window.location.search).get("equipo") || ""; } catch { return ""; }
-  });
-  const [eqElegido, setEqElegido] = useState("");
-  const principal = yo ? equipoTRDe(yo) : "rdr";
-  const eqTR = [eqElegido, eqPedido].find((x) => x && misEquipos.includes(x)) || principal;
+  const varios = yo ? equiposDe(yo).length > 1 : false;
+  const eqTR = yo ? equipoTRDe(yo) : "rdr";
   const { snap, post, reload } = useTimeReport(q, eqTR);
   const [abriendo, setAbriendo] = useState(false);
   const qs = quincenasDeQ(q);
@@ -218,11 +212,7 @@ export default function MiTimeReportRoute() {
               <IconoBBVA nombre="cloud" size={18} />
               {abriendo ? "Abriendo carpeta…" : "Subir evidencias (Drive)"}
             </button>
-            {evid && eqTR !== principal ? (
-              <p className="mx-0.5 text-[13px] leading-snug text-serene">
-                Tu evidencia va en la carpeta de tu equipo principal, <b className="text-sand">{EQUIPO[principal]?.nombre}</b>: cámbialo arriba para subirla.
-              </p>
-            ) : evid ? (
+            {evid ? (
               <p className="mx-0.5 text-[13px] leading-snug text-serene">
                 Carpeta <b className="text-sand">{evid.ruta}</b>; tu fichero quedará como{" "}
                 <b className="tabular-nums text-sand">{evid.fichero(yo.nombre)}</b> (se renombra solo al subirlo).
@@ -283,18 +273,9 @@ export default function MiTimeReportRoute() {
           <span className="hub-placa hub-eq grid h-11 w-11 shrink-0 place-items-center rounded-[10px]"><IconoBBVA nombre="clock" size={28} /></span>
           <h1 className="font-display text-[clamp(26px,2.4vw,32px)] font-bold tracking-[-0.015em] text-sand">Mi Time Report</h1>
         </div>
-        {/* Quien está en varios equipos: un Time Report por equipo */}
-        {misEquipos.length > 1 && (
-          <div role="tablist" aria-label="Equipo del Time Report" className="flex flex-wrap gap-1.5">
-            {misEquipos.map((id) => (
-              <button
-                key={id} type="button" role="tab" aria-selected={eqTR === id} onClick={() => setEqElegido(id)}
-                className={`${CHIP} ${eqTR === id ? "hub-etiqueta hub-pr border-transparent" : CHIP_OFF}`}
-              >
-                {EQUIPO[id]?.nombre || id}
-              </button>
-            ))}
-          </div>
+        {/* Quien está en varios equipos ve el de su equipo principal, sin selector */}
+        {varios && (
+          <p className="text-[13px] text-sand/80">Equipo principal: <b className="text-sand">{EQUIPO[eqTR]?.nombre || eqTR}</b></p>
         )}
       </header>
 
