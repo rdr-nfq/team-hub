@@ -391,7 +391,7 @@ export default function BoardView({ gasGet, gasPost, sessionId, nombre, role, on
         <div className="mx-auto mt-6 w-full max-w-md">{termometro}</div>
       ) : (
         <div className="mt-6 grid grid-cols-1 items-start gap-4 xl:grid-cols-[18rem_minmax(0,1fr)]">
-          <div className="xl:sticky xl:top-24">{termometro}</div>
+          <div className="xl:sticky xl:top-cabecera">{termometro}</div>
           <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 2xl:grid-cols-3">
             {CATEGORIAS.map((cat, i) => {
               const items = ordenadas.filter((t) => t.categoria === cat.id);

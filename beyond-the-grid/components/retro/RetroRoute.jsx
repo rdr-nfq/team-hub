@@ -147,7 +147,7 @@ export default function RetroRoute() {
       <ArtBanner src={ART.equipo} />
       <Blobs />
 
-      <div className="relative z-10 mx-auto w-full max-w-7xl px-5 pb-24 pt-28 sm:px-6">
+      <div className="relative z-10 mx-auto w-full max-w-7xl px-5 pb-24 pt-cabecera sm:px-6">
         {/* Cabecera de página (el chrome fijo lo pone AppFrame/Header) */}
         {view !== "archive" && (
           <header className="rdr-rise mb-8">

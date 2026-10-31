@@ -128,7 +128,7 @@ export default function MisVacacionesRoute() {
     <main className="relative min-h-dvh w-full">
       <ArtBanner src={ART.equipo} />
       <AmbientBackground />
-      <div className="mx-auto w-full max-w-7xl px-5 pb-24 pt-28 sm:px-6">
+      <div className="mx-auto w-full max-w-7xl px-5 pb-24 pt-cabecera sm:px-6">
         <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="font-sans text-xs font-bold uppercase tracking-[0.4em]" style={{ color: mapAccent(ACCENT) }}>Equipo · RDR</p>
@@ -157,7 +157,7 @@ export default function MisVacacionesRoute() {
           <VacacionesSkeleton />
         ) : (
           <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
-            <div className="lg:sticky lg:top-24 lg:max-h-[calc(100dvh-7rem)] lg:overflow-y-auto">
+            <div className="lg:sticky lg:top-cabecera lg:max-h-[calc(100dvh-7rem)] lg:overflow-y-auto">
               <MisVacaciones key={d.year} datos={d} post={post} onHecho={recargar} />
             </div>
             <div className="min-w-0 space-y-4">

@@ -293,7 +293,7 @@ export default function EquipoProgreso({ team, teamError, backend }) {
       <ArtBanner src={ART.formacion} />
       <Fondo />
 
-      <div className="relative z-10 mx-auto w-full max-w-6xl px-5 pb-24 pt-28 sm:px-6">
+      <div className="relative z-10 mx-auto w-full max-w-6xl px-5 pb-24 pt-cabecera sm:px-6">
         {/* ── Hero ─────────────────────────────────────────────────── */}
         <header className="mb-10">
           <Link

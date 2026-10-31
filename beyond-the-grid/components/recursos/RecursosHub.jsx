@@ -74,7 +74,7 @@ export default function RecursosHub() {
         <span className="rdr-blob bottom-[-10%] right-[-2%] h-96 w-96" style={{ background: PALETTE.royal }} />
       </div>
 
-      <div className="mx-auto w-full max-w-4xl px-5 pb-24 pt-28 sm:px-6">
+      <div className="mx-auto w-full max-w-4xl px-5 pb-24 pt-cabecera sm:px-6">
         <header className="mb-8">
           <p className="font-sans text-xs font-bold uppercase tracking-[0.4em]" style={{ color: acc(ACCENT) }}>
             Proyectos · Biblioteca

@@ -13,9 +13,15 @@ function SincronizarTema() {
   return <TemaDeCuenta email={email} url={getUrl("preferenciasBackend")} />;
 }
 
-/* Logo NFQ: el isotipo en color (PNG transparente), igual en los dos modos. */
+/* Logo NFQ con nombre (PNG transparente): «nfq» en Midnight sobre claro y en
+   blanco sobre oscuro; globals.css enseña el del tema activo. */
 function NfqLogo() {
-  return <img src="/team-hub/logos/nfq-white.png?v=2" alt="NFQ" className="h-6 w-auto" />;
+  return (
+    <>
+      <img src="/team-hub/logos/nfq-claro.png" alt="NFQ" className="rdr-solo-claro h-[18px] w-auto" />
+      <img src="/team-hub/logos/nfq-oscuro.png" alt="NFQ" className="rdr-solo-oscuro h-[18px] w-auto" />
+    </>
+  );
 }
 
 /**
@@ -37,10 +43,10 @@ export default function AppFrame({ children }) {
           <div className="relative isolate min-h-dvh w-full">
             <Header />
             {children}
-            {/* Co-branding NFQ (regla nº5 CLAUDE.md: presente y menor que BBVA). */}
-            <footer className="pointer-events-none fixed bottom-3 left-5 z-30 flex items-center gap-2">
-              <span className="text-[10px] uppercase tracking-[0.25em] text-sand/60">Hecho por</span>
-              <NfqLogo />
+            {/* Co-branding NFQ (regla nº5 CLAUDE.md: presente y menor que BBVA).
+                Al final de la página, sin tapar contenido. */}
+            <footer className="mx-auto flex w-full max-w-[1376px] items-center gap-2.5 px-4 pb-5 pt-2 text-[13px] text-sand/75 sm:px-8">
+              Hecho por <NfqLogo />
             </footer>
           </div>
         </AuthGate>

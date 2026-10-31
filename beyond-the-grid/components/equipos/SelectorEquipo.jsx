@@ -70,7 +70,7 @@ export default function SelectorEquipo({ kicker, titulo, intro, opciones, color 
         <span className="rdr-blob right-[2%] top-[20%] h-72 w-72" style={{ background: PALETTE.serene, animationDelay: "-4s" }} />
         <span className="rdr-blob bottom-[-10%] left-[30%] h-96 w-96" style={{ background: PALETTE.royal, animationDelay: "-8s" }} />
       </div>
-      <div className="mx-auto w-full max-w-6xl px-5 pb-24 pt-28 sm:px-6">
+      <div className="mx-auto w-full max-w-6xl px-5 pb-24 pt-cabecera sm:px-6">
         <header className="mb-8">
           <p className="font-sans text-xs font-bold uppercase tracking-[0.4em] text-serene/80">{kicker}</p>
           <h1 className="mt-2 font-display text-4xl font-bold leading-none tracking-tight text-sand sm:text-5xl">{titulo}</h1>

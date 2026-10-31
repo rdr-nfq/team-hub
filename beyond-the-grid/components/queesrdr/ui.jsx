@@ -193,7 +193,7 @@ export function Slide({ id, kicker, title, lead, color = "#85C8FF", wide = false
       id={id}
       aria-roledescription="diapositiva"
       aria-label={title || id}
-      className={`rdr-slide relative flex h-dvh w-full flex-none snap-start snap-always flex-col overflow-y-auto overscroll-contain px-5 pb-24 pt-20 sm:px-8 sm:pt-24 ${className}`}
+      className={`rdr-slide relative flex h-dvh w-full flex-none snap-start snap-always flex-col overflow-y-auto overscroll-contain px-5 pb-24 pt-cabecera sm:px-8 ${className}`}
     >
       {/* m-auto centra el contenido cuando cabe y, cuando no cabe, no lo recorta
           (a diferencia de justify-center en un contenedor con scroll). */}

@@ -224,7 +224,7 @@ export default function FlowMap() {
         <span className="rdr-blob bottom-[-10%] right-[-2%] h-96 w-96" style={{ background: PALETTE.royal }} />
       </div>
 
-      <div className="mx-auto flex min-h-dvh w-full max-w-7xl flex-col px-4 pb-8 pt-24 sm:px-6 sm:pt-28">
+      <div className="mx-auto flex min-h-dvh w-full max-w-7xl flex-col px-4 pb-8 pt-cabecera sm:px-6">
         <header className="mb-4">
           <p className="font-sans text-xs font-bold uppercase tracking-[0.4em]" style={{ color: acc(ACCENT) }}>
             Recursos · Mapa

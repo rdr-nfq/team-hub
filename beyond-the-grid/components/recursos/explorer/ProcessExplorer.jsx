@@ -392,7 +392,7 @@ export default function ProcessExplorer() {
         <span className="rdr-blob bottom-[-10%] right-[-2%] h-96 w-96" style={{ background: PALETTE.royal }} />
       </div>
 
-      <div className="mx-auto w-full max-w-6xl px-5 pb-24 pt-28 sm:px-6">
+      <div className="mx-auto w-full max-w-6xl px-5 pb-24 pt-cabecera sm:px-6">
         <header className="mb-8">
           <p className="font-sans text-xs font-bold uppercase tracking-[0.4em]" style={{ color: acc(ACCENT) }}>
             Recursos · Biblioteca
@@ -442,7 +442,7 @@ export default function ProcessExplorer() {
             {/* Sidebar: en <lg se oculta cuando el detalle está abierto. */}
             <div
               onKeyDown={onListKeyDown}
-              className={`${mobileDetail ? "hidden lg:block" : ""} lg:sticky lg:top-24 lg:h-[calc(100dvh-8rem)] [&>div]:max-h-[70dvh] lg:[&>div]:h-full lg:[&>div]:max-h-none`}
+              className={`${mobileDetail ? "hidden lg:block" : ""} lg:sticky lg:top-cabecera lg:h-[calc(100dvh-8rem)] [&>div]:max-h-[70dvh] lg:[&>div]:h-full lg:[&>div]:max-h-none`}
             >
               <Sidebar
                 eje={eje}

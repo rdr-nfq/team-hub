@@ -498,7 +498,7 @@ export default function GestionVacacionesRoute() {
 
   if (v2 === false) {
     return (
-      <main className="mx-auto w-full max-w-3xl px-5 pb-24 pt-28">
+      <main className="mx-auto w-full max-w-3xl px-5 pb-24 pt-cabecera">
         <EmptyCard>
           El sistema nuevo de vacaciones aún no está desplegado: falta la clave <code className="text-sand">{CLAVE_V2}</code> en links.json
           (desplegar apps-script/vacaciones/). Hasta entonces las solicitudes se gestionan en el panel antiguo.
@@ -514,7 +514,7 @@ export default function GestionVacacionesRoute() {
         <span className="rdr-blob left-[-6%] top-[8%] h-80 w-80" style={{ background: PALETTE.purple }} />
         <span className="rdr-blob bottom-[-10%] right-[-2%] h-96 w-96" style={{ background: PALETTE.mandarin }} />
       </div>
-      <div className="mx-auto w-full max-w-7xl px-5 pb-24 pt-28 sm:px-6">
+      <div className="mx-auto w-full max-w-7xl px-5 pb-24 pt-cabecera sm:px-6">
         <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="font-sans text-xs font-bold uppercase tracking-[0.4em] text-purple/80">Coordinación</p>

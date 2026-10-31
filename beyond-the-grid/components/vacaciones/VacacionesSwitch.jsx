@@ -12,7 +12,7 @@ export default function VacacionesSwitch() {
   if (v2 === null)
     return (
       <main className="relative min-h-dvh w-full">
-        <div className="mx-auto w-full max-w-7xl px-5 pb-24 pt-28 sm:px-6"><VacacionesSkeleton /></div>
+        <div className="mx-auto w-full max-w-7xl px-5 pb-24 pt-cabecera sm:px-6"><VacacionesSkeleton /></div>
       </main>
     );
   return v2 ? <MisVacacionesRoute /> : <VacacionesRoute />;

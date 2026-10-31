@@ -5,127 +5,99 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "./AuthGate";
 import { useTheme } from "@/lib/theme";
 import { seccionDe } from "@/lib/seccion";
+import IconoBBVA from "@/components/iconosBBVA";
+
+const PILL =
+  "inline-flex h-9 items-center gap-2 rounded-full border-[1.5px] px-3.5 text-[13px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#85C8FF]";
 
 /**
- * Cabecera fija, idéntica en todas las páginas (vive en AppFrame): botón
- * Inicio, título, subtítulo de la página, sesión, tema y logo BBVA, y debajo
- * la franja de la sección. En el índice el botón Inicio se queda en su sitio
- * marcado como página actual y la franja va del color de la barra (las
- * columnas ya llevan el suyo), con la misma altura para que nada salte.
+ * Cabecera fija, igual en todas las páginas (vive en AppFrame).
+ * - Barra Electric en los dos temas: nombre del hub (vuelve al inicio),
+ *   Gestión (solo coordinación), correo, tema, Salir y logo BBVA.
+ * - En las páginas de una sección, debajo, sus pestañas (lib/seccion.js):
+ *   se salta de Time Report a Vacaciones sin pasar por la portada.
+ * Altura: 56px la barra + 45px las pestañas. globals.css la publica en
+ * --cabecera para que las páginas dejen su hueco (.pt-cabecera, .top-cabecera).
  */
 export default function Header() {
-  const { email, logout } = useAuth();
+  const { email, isCoordinador, logout } = useAuth();
   const { theme, toggle } = useTheme();
   const pathname = usePathname();
-  // Subtítulo por sección (la coincidencia más específica primero).
-  const SUBTITLES = [
-    ["/formaciones", "HUB Formativo · elige equipo"],
-    ["/formacion/equipo", "Formaciones del equipo"],
-    ["/formacion", "Formaciones RDR · niveles 00–06"],
-    ["/welcome-packs", "Welcome Packs · elige equipo"],
-    ["/comidas", "Comidas del equipo"],
-    ["/vacaciones-gestion", "Vacaciones · Coordinación"],
-    ["/vacaciones", "Vacaciones del equipo"],
-    ["/retro", "Retrospectivas del equipo"],
-    ["/simulador", "Simulador de rentabilidad · Coordinación"],
-    ["/capacidad", "Capacidad del equipo · Coordinación"],
-    ["/ofertas", "Generación de ofertas · Coordinación"],
-    ["/equipo-gestion", "Gestión del equipo · Coordinación"],
-    ["/timereport-gestion", "Time Report · Coordinación"],
-    ["/timereport", "Mi Time Report · Equipo"],
-    ["/guardias-gestion", "Guardias · Coordinación"],
-    ["/guardias", "Guardias del equipo"],
-    ["/seguimiento", "Seguimiento RDR · Coordinación"],
-    ["/pases", "Pases calendados · Releases"],
-    ["/recursos", "Recursos · Biblioteca RDR"],
-    ["/que-es-rdr", "¿Qué es RDR? · Introducción"],
-  ];
-  const p = pathname || "/";
-  const match = SUBTITLES.find(([base]) => p.startsWith(base));
-  const backHref = match ? "/" : null;
-  const subtitle = match ? match[1] : "RDR · Market Abuse · Comms Surveillance · BBVA × NFQ";
-  const seccion = seccionDe(p);
+  const actual = seccionDe(pathname);
+  const enGestion = (pathname || "").replace(/\/+$/, "") === "/gestion" || actual?.seccion.id === "gestion";
+  const pestanas = actual && (!actual.seccion.coordinacion || isCoordinador)
+    ? actual.seccion.paginas.filter((pg) => !pg.soloActiva || pg === actual.pagina)
+    : null;
+  const textoTema = theme === "dark" ? "Cambiar a tema claro" : "Cambiar a tema oscuro";
 
   return (
-    // Barra sólida con blur: el contenido pasa POR DEBAJO al hacer scroll,
-    // nunca se superpone con el título/sesión.
-    // «Isla» (globals.css: .rdr-isla) con la paleta del oscuro encima:
-    // Midnight elevado en oscuro, Electric en claro.
-    <header className="rdr-isla fixed inset-x-0 top-0 z-40 bg-midnight">
-      <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-5 py-3 sm:px-6">
-      <div className="flex min-w-0 items-center gap-3">
-        {(() => {
-          const pill = "inline-flex shrink-0 items-center gap-0 rounded-full border-[1.5px] p-2.5 font-sans text-xs font-bold uppercase tracking-[0.08em] text-sand min-[460px]:gap-2 min-[460px]:px-4 min-[460px]:py-2.5";
-          const icono = (d) => (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>
-          );
-          const texto = <span className="hidden min-[460px]:inline">Inicio</span>;
-          return backHref ? (
-            <Link
-              href={backHref}
-              aria-label="Volver al inicio"
-              className={`${pill} border-serene/35 bg-midnight/70 transition hover:-translate-y-px hover:border-serene/70 hover:bg-midnight/90 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene`}
+    <header className="fixed inset-x-0 top-0 z-40">
+      <div className="bg-electric text-[#F7F8F8]">
+        <div className="mx-auto flex h-14 w-full max-w-[1376px] items-center gap-4 px-4 sm:px-8">
+          <Link href="/" className="whitespace-nowrap rounded-md font-display text-[19px] font-bold leading-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#85C8FF]">
+            <span className="hidden min-[1180px]:inline">Reference Data &amp; Surveillance Hub</span>
+            <span className="min-[1180px]:hidden">RD&amp;S Hub</span>
+          </Link>
+
+          <div className="ml-auto flex items-center gap-2.5">
+            {isCoordinador && (
+              <Link
+                href="/gestion"
+                aria-current={enGestion ? "page" : undefined}
+                aria-label="Gestión"
+                className={`${PILL} rdr-btn-gestion text-[#001391]`}
+              >
+                <IconoBBVA nombre="directory" size={17} />
+                <span className="hidden sm:inline">Gestión</span>
+              </Link>
+            )}
+            {email && <span className="hidden text-sm text-[#85C8FF] lg:inline">{email}</span>}
+            <button
+              type="button"
+              onClick={toggle}
+              title={textoTema}
+              aria-label={textoTema}
+              className="grid h-9 w-9 place-items-center rounded-full border-[1.5px] border-[#F7F8F8]/55 transition-colors hover:border-[#F7F8F8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#85C8FF]"
             >
-              {icono("M19 12H5M12 19l-7-7 7-7")}{texto}
-            </Link>
-          ) : (
-            <span aria-current="page" className={`${pill} border-serene/70 bg-serene/15`}>
-              {icono("M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z")}{texto}
-            </span>
-          );
-        })()}
-        {/* Marca compacta en móviles muy estrechos (<460px), donde el título completo se oculta */}
-        <span className="font-display text-lg font-bold leading-none text-sand min-[460px]:hidden">RD&amp;S Hub</span>
-        <div className="hidden min-w-0 min-[460px]:block">
-          <h1 className="truncate font-display text-lg font-bold leading-tight tracking-tight text-sand sm:text-2xl lg:text-3xl">
-            Reference Data &amp; Surveillance Hub
-          </h1>
-          <p className="mt-0.5 truncate text-xs text-serene/80 sm:text-sm">{subtitle}</p>
+              {/* Contraste: el círculo medio relleno gira al cambiar de tema. */}
+              <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" className={`transition-transform duration-300 ${theme === "dark" ? "rotate-180" : ""}`}>
+                <circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" strokeWidth="2" />
+                <path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor" />
+              </svg>
+            </button>
+            <button type="button" onClick={logout} className={`${PILL} border-[#F7F8F8]/55 hover:border-[#F7F8F8]`}>
+              Salir
+            </button>
+            {/* Logo oficial BBVA en blanco: la barra es Electric en los dos temas. */}
+            <img src="/team-hub/logos/bbva-white.png?v=2" alt="BBVA" className="ml-1 h-5 w-auto" />
+          </div>
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-3 sm:gap-4">
-        {email && <span className="hidden text-xs text-sand/70 lg:inline">{email}</span>}
-        {/* Conmutador de tema claro/oscuro (persistente, sin FOUC) */}
-        <button
-          type="button"
-          onClick={toggle}
-          title={theme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
-          aria-label={theme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
-          className="grid h-9 w-9 place-items-center rounded-full border border-serene/30 bg-midnight/70 text-sand transition-colors hover:border-serene active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene"
-        >
-          {theme === "dark" ? (
-            // Sol -> pasar a claro
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <circle cx="12" cy="12" r="4" />
-              <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
-            </svg>
-          ) : (
-            // Luna -> pasar a oscuro
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />
-            </svg>
-          )}
-        </button>
-        <button
-          type="button"
-          onClick={logout}
-          className="rounded-full border border-serene/30 bg-midnight/70 px-3 py-2 font-sans text-xs font-bold uppercase tracking-wider text-sand backdrop-blur transition-colors hover:border-serene active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene sm:px-4"
-        >
-          Salir
-        </button>
-        {/* Logo oficial BBVA — regla dura nº4: WHITE sobre Midnight y sobre
-            Electric (la cabecera en claro). */}
-        <img
-          src="/team-hub/logos/bbva-white.png?v=2"
-          alt="BBVA"
-          className="h-6 w-auto md:h-7"
-        />
-      </div>
-      </div>
-      {/* Franja del color de la sección: dónde se está (igual en los dos modos).
-          En el índice, del color de la barra: misma altura, sin raya. */}
-      <div aria-hidden className="h-1.5 w-full" style={seccion ? { background: seccion.color } : undefined} />
+      {pestanas && (
+        <nav aria-label={actual.seccion.nombre} className="rdr-pestanas border-b border-white/15 bg-midnight">
+          <div className="mx-auto flex h-11 w-full max-w-[1376px] items-stretch gap-1 overflow-x-auto px-4 [scrollbar-width:none] sm:px-8">
+            <span className="mr-2 flex shrink-0 items-center gap-2 text-xs font-bold uppercase tracking-[0.05em] text-sand/70">
+              <span aria-hidden className="h-2.5 w-2.5 rounded-full" style={{ background: actual.seccion.color }} />
+              {actual.seccion.nombre}
+            </span>
+            {pestanas.map((pg) => {
+              const activa = pg === actual.pagina;
+              return (
+                <Link
+                  key={pg.label}
+                  href={pg.rutas[0]}
+                  aria-current={activa ? "page" : undefined}
+                  className={`flex shrink-0 items-center whitespace-nowrap border-b-[3px] px-3 pt-[3px] text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-serene ${activa ? "text-sand" : "border-transparent text-sand/65 hover:text-sand"}`}
+                  style={activa ? { borderColor: actual.seccion.color } : undefined}
+                >
+                  {pg.label}
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+      )}
     </header>
   );
 }

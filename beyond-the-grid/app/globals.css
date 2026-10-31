@@ -85,39 +85,91 @@ html.rdr-light {
   --ca-mandarin: 0 19 145;
   --ca-tinta: #f7f8f8;
 }
-/* Isla de la cabecera, con la paleta del modo oscuro encima. En oscuro, un
-   Midnight elevado (Midnight + 7 % de Sand, el mismo tono que las tarjetas):
-   se distingue del fondo sin destacar. En claro, Electric (combinación
-   «Electric» del manual). */
-.rdr-isla {
-  --c-midnight: 24 31 82;
+/* Altura de la cabecera fija (components/chrome/Header.jsx): la barra (56px)
+   y, en las páginas de una sección, sus pestañas (45px). Las páginas dejan
+   su hueco con .pt-cabecera y lo pegajoso se ancla con .top-cabecera. */
+:root {
+  --cabecera: 56px;
 }
-html.rdr-light .rdr-isla {
-  --c-midnight: 0 19 145;
-  --c-sand: 247 248 248;
-  --c-white: 255 255 255;
-  --k-bg: 1;
-  --k-linea: 1;
-  --k-tarjeta: 1;
-  --t-serene: 133 200 255;
-  --t-lime: 136 231 131;
-  --t-canary: 255 231 97;
-  --t-aqua: 139 225 233;
-  --t-purple: 150 148 255;
-  --t-mandarin: 255 181 107;
-  --cl-serene: 133 200 255;
-  --cl-lime: 136 231 131;
-  --cl-canary: 255 231 97;
-  --cl-aqua: 139 225 233;
-  --cl-purple: 150 148 255;
-  --cl-mandarin: 255 181 107;
-  --ct-serene: 133 200 255;
-  --ct-lime: 136 231 131;
-  --ct-canary: 255 231 97;
-  --ct-aqua: 139 225 233;
-  --ct-purple: 150 148 255;
-  --ct-mandarin: 255 181 107;
-  color-scheme: dark;
+html:has(.rdr-pestanas) {
+  --cabecera: 101px;
+}
+@layer utilities {
+  .pt-cabecera {
+    padding-top: calc(var(--cabecera) + 1.5rem);
+  }
+  .top-cabecera {
+    top: calc(var(--cabecera) + 1rem);
+  }
+}
+
+/* Botón Gestión de la cabecera: Purple sobre la barra Electric en los dos
+   temas (con clase propia para que la regla de botones de acento del modo
+   claro no lo vuelva Electric); Sand al pasar el ratón o estando en Gestión. */
+.rdr-btn-gestion {
+  background: #9694ff;
+  border-color: #9694ff;
+}
+.rdr-btn-gestion:hover,
+.rdr-btn-gestion[aria-current="page"] {
+  background: #f7f8f8;
+  border-color: #f7f8f8;
+}
+
+/* Piezas que solo van en un tema (logo NFQ: «nfq» Midnight en claro, blanco en oscuro). */
+html.rdr-light .rdr-solo-oscuro,
+html:not(.rdr-light) .rdr-solo-claro {
+  display: none;
+}
+
+/* ── Portada (components/hub/BentoHub.jsx): baldosas teñidas con el color de
+   su sección, borde del acento y placa de icono en el acento sólido con el
+   icono en Electric (patrón «caja de color»: acento + Electric en los dos
+   temas). --hub-acc es la tripleta RGB del acento; la intensidad del tinte
+   depende del tema. ── */
+:root {
+  --hub-tinte: 0.15;
+  --hub-tinte-suave: 0.07;
+}
+html.rdr-light {
+  --hub-tinte: 0.3;
+  --hub-tinte-suave: 0.16;
+}
+.hub-eq { --hub-acc: 255 181 107; }
+.hub-pr { --hub-acc: 136 231 131; }
+.hub-fo { --hub-acc: 133 200 255; }
+.hub-ge { --hub-acc: 150 148 255; }
+.hub-tile {
+  border: 1px solid rgb(var(--hub-acc));
+  background: rgb(var(--hub-acc) / var(--hub-tinte));
+  transition: box-shadow 160ms cubic-bezier(0.16, 1, 0.3, 1), transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.hub-tile.hub-suave {
+  background: rgb(var(--hub-acc) / var(--hub-tinte-suave));
+}
+.hub-tile:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px -10px rgb(0 5 25 / 0.6);
+}
+html.rdr-light .hub-tile:hover {
+  box-shadow: 0 8px 20px -10px rgb(7 14 70 / 0.25);
+}
+.hub-tile:active {
+  transform: none;
+}
+.hub-tile[aria-disabled="true"] {
+  border-style: dashed;
+  cursor: default;
+  transform: none;
+  box-shadow: none;
+}
+.hub-placa {
+  background: rgb(var(--hub-acc));
+  color: #001391;
+}
+.hub-etiqueta {
+  background: rgb(var(--hub-acc));
+  color: #001391;
 }
 
 /* BBVA: fondo Midnight (nunca negro puro) / Sand en claro. */
@@ -309,7 +361,7 @@ html.rdr-light input {
 
 /* Tarjetas en claro: blancas (--k-tarjeta) con una sombra suave para
    separarlas del fondo Sand; sin cristal translúcido gris. */
-html.rdr-light .backdrop-blur-md:not(.rdr-isla *) {
+html.rdr-light .backdrop-blur-md {
   box-shadow: 0 1px 2px rgb(7 14 70 / 0.05), 0 6px 20px -10px rgb(7 14 70 / 0.18);
 }
 /* Sombra de las tarjetas glass: en claro una elevación suave y neutra. */

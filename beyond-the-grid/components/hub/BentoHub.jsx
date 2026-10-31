@@ -1,292 +1,123 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "next-view-transitions";
-import { useReducedMotion } from "framer-motion";
-import { useTilt } from "@/hooks/useTilt";
-import { useLowPower } from "@/hooks/useLowPower";
-import { useLinks } from "@/lib/links";
+import { useRouter } from "next/navigation";
 import { useAuth } from "../chrome/AuthGate";
-import { rgba, solido } from "@/lib/ui";
-import { PALETTE } from "@/lib/palette";
-import { useAccentMap, useTheme } from "@/lib/theme";
 import { EQUIPO } from "@/lib/equipos";
-import {
-  IconBook, IconLink, IconUtensils, IconCalendar, IconRefresh, IconClock,
-  IconRocket, IconCode, IconFolder, IconShield, IconArrow, IconExternal,
-  IconCopy, IconGrad, IconOrbit, IconLock,
-} from "../icons";
+import { accesos, seccion } from "@/lib/seccion";
+import Baldosa, { CLASE, FOCO } from "./Baldosa";
 
-// Estructura por TIPO. Cada sección = una columna. Acciones:
-// page (html), route (ruta Next), open (externo links.json), copy (portapapeles).
-// Tarjetas multi-acción: varias pills (Time Report NFQ+BBVA, Repositorio GitHub+Drive).
-const SECTIONS = [
-  {
-    id: "form", n: "01", title: "Formación", color: PALETTE.serene,
-    items: [
-      { kind: "feature", label: "HUB Formativo", desc: "RDR · Market Abuse · Comms Surveillance", icon: IconGrad, action: "route", target: "/formaciones" },
-      { label: "Welcome Packs", desc: "¿Qué es RDR, Market Abuse y Comms Surveillance?", icon: IconBook, action: "route", target: "/welcome-packs" },
-      { label: "Portal BBVA CIB", desc: "Portal corporativo del equipo", icon: IconLink, action: "copy", target: "portalBBVACIB" },
-    ],
-  },
-  {
-    id: "equipo", n: "02", title: "Equipo", color: PALETTE.mandarin,
-    items: [
-      { label: "Comidas", desc: "Restaurante de los jueves", icon: IconUtensils, action: "route", target: "/comidas" },
-      { label: "Vacaciones", desc: "Calendario y política", icon: IconCalendar, action: "route", target: "/vacaciones" },
-      { label: "Retrospectiva", desc: "Retros y mejoras", icon: IconRefresh, action: "route", target: "/retro" },
-      { label: "Time Report", desc: "Tu imputación de la quincena", icon: IconClock, action: "route", target: "/timereport" },
-      { label: "Guardias", desc: "Solicita y consulta tus guardias", icon: IconShield, action: "route", target: "/guardias" },
-    ],
-  },
-];
+/* Portada: todos los accesos a la vista en una pantalla de portátil, en tres
+   columnas por sección (colores e iconos de lib/seccion.js). Equipo con lo
+   más usado en grande; Proyectos según el equipo elegido; Gestión (solo
+   coordinación) o Formación en la tercera. Buscador con la tecla «/». */
 
-/* Columna 03: los proyectos del EQUIPO de quien entra (equipo.json →
-   "equipos", se edita en Gestión de equipo). Lo que aún no existe sale
-   bloqueado («En progreso»). */
+/* Proyectos del equipo elegido (equipo.json → "equipos"). Pases solo existe
+   en RDR. Los enlaces externos salen de public/links/links.json. */
 const PROYECTOS = {
   rdr: [
-    { label: "Pases Calendados", desc: "Releases por entorno", icon: IconRocket, action: "route", target: "/pases" },
-    { label: "Recursos", desc: "Biblioteca de referencia RDR", icon: IconBook, action: "route", target: "/recursos" },
-    { label: "Planificación", desc: "Hoja de planificación", icon: IconCalendar, action: "open", target: "planificacionNFQ" },
-    { label: "Repositorio", desc: "Código y documentación", icon: IconFolder, actions: [
-      { label: "GitHub", action: "copy", target: "githubBBVA", icon: IconCode },
-      { label: "Drive", action: "copy", target: "driveBBVA", icon: IconFolder },
-    ] },
+    { ...accesos("proyectos")[0], grande: true },
+    { label: "Planificación", desc: "Hoja de planificación · otra pestaña", icono: "frequency", abrir: "planificacionNFQ" },
+    { label: "Repositorio", desc: "Copia el enlace de GitHub", icono: "folder", copiar: "githubBBVA" },
+    { label: "Drive", desc: "Copia el enlace de la carpeta", icono: "cloud", copiar: "driveBBVA" },
   ],
   "market-abuse": [
     // Hoja en el Google de BBVA: se copia el enlace (como el Drive), no se abre.
-    { label: "Planificación", desc: "Planificación del equipo", icon: IconCalendar, action: "copy", target: "planificacionMarketAbuse" },
-    { label: "Repositorio", desc: "Documentación del equipo", icon: IconFolder, actions: [
-      { label: "Drive", action: "copy", target: "driveMarketAbuse", icon: IconFolder },
-    ] },
+    { label: "Planificación", desc: "Copia el enlace de la hoja", icono: "frequency", copiar: "planificacionMarketAbuse" },
+    { label: "Drive", desc: "Copia el enlace de la documentación", icono: "cloud", copiar: "driveMarketAbuse" },
   ],
   "comms-surveillance": [
-    { label: "Planificación", desc: "Planificación del equipo", icon: IconCalendar, enProgreso: true },
-    { label: "Repositorio", desc: "Documentación del equipo", icon: IconFolder, actions: [
-      { label: "Drive", action: "copy", target: "driveCommsSurveillance", icon: IconFolder },
-    ] },
+    { label: "Planificación", desc: "Aún no disponible", icono: "frequency", pronto: true },
+    { label: "Drive", desc: "Copia el enlace de la documentación", icono: "cloud", copiar: "driveCommsSurveillance" },
   ],
 };
-const seccionEquipo = (id) => ({ id: "proy", n: "03", title: EQUIPO[id].nombre, color: EQUIPO[id].color, items: PROYECTOS[id] || [] });
 const CLAVE_EQUIPO_HUB = "rdr_hub_equipo";
 
-const COORD_SECTION = {
-  id: "coord", n: "04", title: "Coordinación", color: PALETTE.purple,
-  items: [
-    { label: "Simulador", desc: "Rentabilidad por Q", icon: IconShield, action: "route", target: "/simulador", oculto: true },
-    { label: "Capacidad", desc: "Personas y proyectos", icon: IconShield, action: "route", target: "/capacidad", oculto: true },
-    { label: "Ofertas", desc: "Generador de ofertas", icon: IconRocket, action: "route", target: "/ofertas" },
-    { label: "Time Report", desc: "Proyectos y reparto de horas", icon: IconClock, action: "route", target: "/timereport-gestion" },
-    { label: "Guardias", desc: "Solicitudes del equipo", icon: IconShield, action: "route", target: "/guardias-gestion" },
-    { label: "Vacaciones", desc: "Solicitudes, saldos y festivos", icon: IconCalendar, action: "route", target: "/vacaciones-gestion" },
-    { label: "Seguimiento RDR", desc: "Presentación de seguimiento (.pptx)", icon: IconCalendar, action: "route", target: "/seguimiento" },
-    { label: "Gestión de equipo", desc: "Miembros, roles y tracks", icon: IconShield, action: "route", target: "/equipo-gestion" },
-    // oculto: true -> no sale en el hub, pero la página y su código siguen
-    // intactos (para recuperarla basta con quitar la marca).
-  ].filter((it) => !it.oculto),
-};
-
-const HintIcon = (action) => (action === "copy" ? IconCopy : action === "open" ? IconExternal : IconArrow);
-
-function AmbientBackground({ lite }) {
-  const ref = useRef(null);
-  const reduce = useReducedMotion();
-  useEffect(() => {
-    if (reduce || lite) return;
-    let raf = 0;
-    const onMove = (e) => {
-      const x = e.clientX / window.innerWidth - 0.5;
-      const y = e.clientY / window.innerHeight - 0.5;
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        if (ref.current) ref.current.style.transform = `translate3d(${(x * 28).toFixed(1)}px, ${(y * 28).toFixed(1)}px, 0)`;
-      });
-    };
-    window.addEventListener("pointermove", onMove);
-    return () => { window.removeEventListener("pointermove", onMove); cancelAnimationFrame(raf); };
-  }, [reduce, lite]);
+function Seccion({ id, sec, titulo, extra, children }) {
   return (
-    <div ref={ref} aria-hidden className="pointer-events-none fixed inset-[-3%] -z-10 overflow-hidden transition-transform duration-300 ease-out">
-      <span className="rdr-blob left-[-8%] top-[6%] h-80 w-80" style={{ background: PALETTE.royal }} />
-      <span className="rdr-blob right-[4%] top-[-8%] h-72 w-72" style={{ background: PALETTE.serene, animationDelay: "-3s" }} />
-      <span className="rdr-blob bottom-[-12%] right-[-4%] h-96 w-96" style={{ background: PALETTE.purple, animationDelay: "-7s" }} />
-      <span className="rdr-blob bottom-[4%] left-[16%] h-72 w-72" style={{ background: PALETTE.lime, animationDelay: "-11s" }} />
-    </div>
-  );
-}
-
-// Pill de acción (para tarjetas multi-acción).
-function ActionPill({ a, accent }) {
-  const { getUrl, copyLink } = useLinks();
-  const mapAccent = useAccentMap();
-  const Glyph = a.icon || HintIcon(a.action);
-  const cls = "inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-bold transition active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene";
-  // Texto/icono con acento temado (legible en claro); tintes de fondo/borde con el hex original.
-  const style = { borderColor: rgba(accent, 0.3), background: rgba(accent, 0.1), color: mapAccent(accent) };
-  const inner = (<><Glyph size={14} /> {a.label}</>);
-  if (a.action === "page") return <a href={a.target} className={cls} style={style}>{inner}</a>;
-  if (a.action === "open") {
-    const url = getUrl(a.target);
-    if (!url) return <span className={`${cls} cursor-not-allowed opacity-50`} style={style} title="No disponible">{inner}</span>;
-    return <a href={url} target="_blank" rel="noopener noreferrer" className={cls} style={style}>{inner}</a>;
-  }
-  return <button type="button" onClick={() => copyLink(a.target)} className={cls} style={style}>{inner}</button>;
-}
-
-// rounded-2xl: mismo radio de tarjeta que FeatureCard, TypeColumn y las
-// tarjetas de /formacion (CursoCard, Node) — una sola escala de esquinas en toda la app.
-const CARD =
-  "rdr-rise rdr-tilt group relative box-border flex w-full items-center gap-3.5 overflow-hidden rounded-2xl border p-4 backdrop-blur-md lg:min-h-0 lg:flex-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene focus-visible:ring-offset-2 focus-visible:ring-offset-midnight";
-
-function CardInner({ item, accent }) {
-  const { icon: Icon } = item;
-  const mapAccent = useAccentMap();
-  const Hint = HintIcon(item.action);
-  return (
-    <>
-      <span aria-hidden className="rdr-spot" style={{ background: `radial-gradient(140px circle at var(--mx,50%) var(--my,50%), ${rgba(accent, 0.22)}, transparent 70%)` }} />
-      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border" style={{ borderColor: rgba(accent, 0.3), background: rgba(accent, 0.12), color: mapAccent(accent) }}>
-        <Icon size={22} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[15px] font-bold text-sand">{item.label}</span>
-        {item.desc && <span className="block truncate text-[13px] text-sand/70">{item.desc}</span>}
-      </span>
-      <Hint size={17} className="shrink-0 text-sand/40 transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-sand/85" />
-    </>
-  );
-}
-
-function Card({ item, accent, delay }) {
-  const { getUrl, copyLink } = useLinks();
-  const mapAccent = useAccentMap();
-  const reduce = useReducedMotion();
-  const tilt = useTilt(reduce);
-  const style = { animationDelay: `${delay}ms`, borderColor: rgba(accent, 0.5), "--pc": rgba(accent, 0.75) };
-  const cls = `${CARD} bg-white/[0.055] hover:bg-white/[0.1]`;
-  const aria = item.label;
-
-  // Aún no existe: bloqueada, con «En progreso».
-  if (item.enProgreso) {
-    return (
-      <div aria-disabled="true" title="En progreso: todavía no está disponible" className={`${CARD} cursor-not-allowed bg-white/[0.03] opacity-60`} style={{ ...style, borderColor: rgba(accent, 0.25) }}>
-        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border" style={{ borderColor: rgba(accent, 0.25), background: rgba(accent, 0.08), color: mapAccent(accent) }}>
-          <IconLock size={20} />
-        </span>
-        <span className="min-w-0 flex-1" title={item.desc}>
-          <span className="block truncate text-[15px] font-bold text-sand">{item.label}</span>
-          {/* La etiqueta va debajo del título: a la derecha lo cortaba con 4 columnas. */}
-          <span className="mt-1 inline-block rounded-full border border-white/20 px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-wider text-sand/60">En progreso</span>
-        </span>
+    <section aria-labelledby={id} className="flex min-w-0 flex-col gap-2.5">
+      <div className="flex min-h-[30px] items-center gap-2.5">
+        <h2 id={id} className={`hub-etiqueta ${CLASE[sec]} rounded-full px-3 py-[7px] text-[13px] font-bold uppercase leading-none tracking-[0.05em]`}>{titulo}</h2>
+        {extra}
       </div>
-    );
-  }
-
-  // Multi-acción: título + pills (no es un único enlace).
-  if (item.actions) {
-    const { icon: Icon } = item;
-    return (
-      <div {...tilt} className="rdr-rise rdr-tilt group relative box-border flex w-full flex-col justify-center gap-3 overflow-hidden rounded-2xl border bg-white/[0.055] p-4 backdrop-blur-md lg:min-h-0 lg:flex-1" style={style}>
-        <span aria-hidden className="rdr-spot" style={{ background: `radial-gradient(160px circle at var(--mx,50%) var(--my,50%), ${rgba(accent, 0.2)}, transparent 70%)` }} />
-        <div className="relative flex items-center gap-3.5">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border" style={{ borderColor: rgba(accent, 0.3), background: rgba(accent, 0.12), color: mapAccent(accent) }}>
-            <Icon size={22} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-[15px] font-bold text-sand">{item.label}</span>
-            {item.desc && <span className="block truncate text-[13px] text-sand/70">{item.desc}</span>}
-          </span>
-        </div>
-        <div className="relative flex gap-2">
-          {item.actions.map((a) => <ActionPill key={a.label} a={a} accent={accent} />)}
-        </div>
-      </div>
-    );
-  }
-
-  if (item.action === "route")
-    return <Link {...tilt} href={item.target} aria-label={aria} className={cls} style={style}><CardInner item={item} accent={accent} /></Link>;
-  if (item.action === "page")
-    return <a {...tilt} href={item.target} data-prerender aria-label={aria} className={cls} style={style}><CardInner item={item} accent={accent} /></a>;
-  if (item.action === "open") {
-    const url = getUrl(item.target);
-    if (!url) return <div {...tilt} aria-disabled="true" title="Enlace no disponible aún" className={`${cls} cursor-not-allowed opacity-50`} style={style}><CardInner item={item} accent={accent} /></div>;
-    return <a {...tilt} href={url} target="_blank" rel="noopener noreferrer" aria-label={aria} className={cls} style={style}><CardInner item={item} accent={accent} /></a>;
-  }
-  return <button {...tilt} type="button" onClick={() => copyLink(item.target)} aria-label={aria} className={`${cls} text-left`} style={style}><CardInner item={item} accent={accent} /></button>;
-}
-
-function FeatureCard({ item, accent, delay }) {
-  const reduce = useReducedMotion();
-  const tilt = useTilt(reduce);
-  return (
-    <Link
-      {...tilt}
-      href={item.target}
-      aria-label={`${item.label} — ${item.desc}`}
-      className="rdr-rise rdr-tilt group relative box-border flex w-full flex-col justify-center gap-2 overflow-hidden rounded-2xl border bg-white/[0.055] p-5 backdrop-blur-md lg:min-h-0 lg:flex-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene focus-visible:ring-offset-2 focus-visible:ring-offset-midnight"
-      style={{ animationDelay: `${delay}ms`, borderColor: rgba(accent, 0.5), "--pc": rgba(accent, 0.75) }}
-    >
-      <span aria-hidden className="rdr-spot" style={{ background: "radial-gradient(200px circle at var(--mx,50%) var(--my,50%), rgba(133,200,255,.22), transparent 70%)" }} />
-      <span aria-hidden className="pointer-events-none absolute -right-5 -top-5 text-serene/15 transition-transform duration-500 group-hover:rotate-12"><IconOrbit size={140} /></span>
-      <span className="grid h-12 w-12 place-items-center rounded-xl border border-serene/40 text-serene" style={{ background: rgba(PALETTE.serene, 0.15) }}><IconGrad size={26} /></span>
-      <div className="relative mt-1">
-        <span className="block font-display text-xl font-bold text-sand">{item.label}</span>
-        <span className="block text-sm text-sand/70">{item.desc}</span>
-      </div>
-      <span className="relative mt-1 flex items-center gap-1.5 text-sm font-bold text-serene">Explorar la ruta <IconArrow size={16} className="transition-transform group-hover:translate-x-1" /></span>
-    </Link>
-  );
-}
-
-function TypeColumn({ sec, delay, selector }) {
-  const mapAccent = useAccentMap();
-  const { theme } = useTheme();
-  // En claro, la columna lleva el tinte de su sección (las tarjetas, blancas encima).
-  const fondo = theme === "light" ? { background: rgba(sec.color, 0.09) } : null;
-  return (
-    <section aria-labelledby={`col-${sec.id}`} className="flex min-h-0 flex-col rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 backdrop-blur-sm" style={{ boxShadow: `inset 0 4px 0 ${solido(sec.color)}`, ...fondo }}>
-      <div className="mb-4 flex items-center gap-2 px-1">
-        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: solido(sec.color) }} />
-        <span className="font-display text-xs font-bold tabular-nums" style={{ color: mapAccent(sec.color) }}>{sec.n}</span>
-        {selector || <h2 id={`col-${sec.id}`} className="font-display text-sm font-bold uppercase tracking-[0.15em] text-sand">{sec.title}</h2>}
-      </div>
-      <div className="flex flex-1 flex-col gap-3 lg:min-h-0">
-        {sec.items.map((item, i) =>
-          item.kind === "feature"
-            ? <FeatureCard key={item.label} item={item} accent={sec.color} delay={delay + i * 35} />
-            : <Card key={item.label} item={item} accent={sec.color} delay={delay + i * 35} />
-        )}
-      </div>
+      {children}
     </section>
   );
 }
 
-/* Quien está en varios equipos elige cuál ver en la columna de proyectos: el
-   propio título es el selector (un <select> nativo invisible encima), así
-   cabe en una línea con cualquier nombre (antes las pills RDR/MA/CS se
-   salían de la columna con «Comms Surveillance»). */
-function SelectorEquipos({ id, equipos, actual, onCambio }) {
+const sinTildes = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+
+/* Buscador: filtra las páginas del hub; flechas para elegir, Enter para ir. */
+function Buscador({ isCoordinador }) {
+  const router = useRouter();
+  const ref = useRef(null);
+  const [q, setQ] = useState("");
+  const [sel, setSel] = useState(0);
+  const indice = useMemo(() => {
+    const ids = ["equipo", "proyectos", "formacion"].concat(isCoordinador ? ["gestion"] : []);
+    const base = ids.flatMap((id) => accesos(id).map((a) => ({ ...a, sec: id, nombre: seccion(id).nombre })));
+    return isCoordinador ? base.concat({ label: "Gestión", ruta: "/gestion", sec: "gestion", nombre: "Gestión" }) : base;
+  }, [isCoordinador]);
+  const term = sinTildes(q.trim());
+  const hits = term ? indice.filter((x) => sinTildes(x.label).includes(term)) : [];
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== "/" || /input|select|textarea/i.test(e.target.tagName) || e.target.isContentEditable) return;
+      e.preventDefault();
+      ref.current?.focus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const onKeyDown = (e) => {
+    if (e.key === "Escape") setQ("");
+    if (!hits.length) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); setSel((s) => (s + 1) % hits.length); }
+    if (e.key === "ArrowUp") { e.preventDefault(); setSel((s) => (s - 1 + hits.length) % hits.length); }
+    if (e.key === "Enter") { e.preventDefault(); router.push(hits[Math.min(sel, hits.length - 1)].ruta); }
+  };
+
   return (
-    <h2 id={id} title={EQUIPO[actual].nombre} className={`relative flex min-w-0 items-center gap-1.5 rounded-md font-display text-sm font-bold uppercase text-sand transition hover:text-white focus-within:ring-2 focus-within:ring-serene ${EQUIPO[actual].nombre.length > 14 ? "tracking-[0.06em]" : "tracking-[0.15em]"}`}>
-      <span className="truncate">{EQUIPO[actual].nombre}</span>
-      <svg aria-hidden="true" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-70"><path d="m6 9 6 6 6-6" /></svg>
-      <select
-        aria-label="Equipo" value={actual} onChange={(e) => onCambio(e.target.value)}
-        className="absolute inset-0 cursor-pointer appearance-none opacity-0" style={{ colorScheme: "dark" }}
-      >
-        {equipos.map((eq) => <option key={eq} value={eq}>{EQUIPO[eq].nombre}</option>)}
-      </select>
-    </h2>
+    <div role="search" className="relative w-full sm:w-[440px]">
+      <label htmlFor="hub-buscar" className="sr-only">Buscar en el hub</label>
+      <input
+        ref={ref} id="hub-buscar" type="search" autoComplete="off" placeholder="Buscar en el hub"
+        value={q} onChange={(e) => { setQ(e.target.value); setSel(0); }} onKeyDown={onKeyDown}
+        aria-expanded={!!term} aria-controls="hub-resultados"
+        className="h-[42px] w-full rounded-full border-[1.5px] border-white/30 bg-midnight pl-5 pr-12 text-[15px] text-sand placeholder:text-serene focus-visible:border-serene focus-visible:outline-none"
+      />
+      <kbd aria-hidden className="pointer-events-none absolute right-3.5 top-2.5 rounded border border-white/30 px-1.5 font-sans text-xs font-bold leading-5 text-serene">/</kbd>
+      {term && (
+        <ul id="hub-resultados" className="absolute inset-x-0 top-[calc(100%+8px)] z-30 rounded-xl border border-white/25 bg-midnight p-1.5 shadow-[0_18px_40px_-16px_rgb(0_5_25/0.6)]">
+          {hits.length ? hits.map((x, i) => (
+            <li key={x.ruta}>
+              <Link href={x.ruta} className={`flex items-center gap-3 rounded-lg px-2.5 py-2 text-sand ${i === sel ? "bg-white/10" : "hover:bg-white/10"} ${FOCO}`}>
+                <span aria-hidden className={`hub-placa ${CLASE[x.sec]} h-2.5 w-2.5 rounded-full`} />
+                {x.label}
+                <small className="ml-auto text-xs text-sand/70">{x.nombre}</small>
+              </Link>
+            </li>
+          )) : <li className="px-2.5 py-2 text-sand/75">Nada con «{q}». Prueba con vacaciones, guardias o pases.</li>}
+        </ul>
+      )}
+    </div>
   );
 }
 
+const saludo = () => {
+  const h = new Date().getHours();
+  return h < 14 ? "Buenos días" : h < 21 ? "Buenas tardes" : "Buenas noches";
+};
+
 export default function BentoHub() {
-  const { isCoordinador, equipos } = useAuth();
-  const lite = useLowPower();
+  const { nombre, isCoordinador, equipos } = useAuth();
   const misEquipos = equipos && equipos.length ? equipos : ["rdr"];
   const [equipo, setEquipo] = useState(misEquipos[0]);
+  const [hola, setHola] = useState("Hola");
+  useEffect(() => setHola(saludo()), []);
   useEffect(() => {
     let guardado = null;
     try { guardado = localStorage.getItem(CLAVE_EQUIPO_HUB); } catch {}
@@ -294,24 +125,65 @@ export default function BentoHub() {
   }, [misEquipos.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
   const cambiarEquipo = (id) => { setEquipo(id); try { localStorage.setItem(CLAVE_EQUIPO_HUB, id); } catch {} };
   const equipoActual = misEquipos.includes(equipo) ? equipo : misEquipos[0];
-  const proyectos = seccionEquipo(equipoActual);
-  const base = [...SECTIONS, proyectos];
-  const sections = isCoordinador ? [...base, COORD_SECTION] : base;
-  const gridCols = sections.length >= 4 ? "lg:grid-cols-4" : "lg:grid-cols-3";
+
+  const eq = accesos("equipo");
+  const columnaEquipo = (
+    <Seccion id="hub-equipo" sec="equipo" titulo="Equipo">
+      {eq.slice(0, 3).map((it) => <Baldosa key={it.ruta} item={it} sec="equipo" grande />)}
+      <div className="grid grid-cols-1 gap-2.5 min-[420px]:grid-cols-2">
+        {eq.slice(3).map((it) => <Baldosa key={it.ruta} item={it} sec="equipo" suave />)}
+      </div>
+    </Seccion>
+  );
+  const columnaProyectos = (
+    <Seccion
+      id="hub-proyectos" sec="proyectos" titulo="Proyectos"
+      extra={misEquipos.length > 1 ? (
+        <>
+          <label htmlFor="hub-equipo-proyectos" className="sr-only">Equipo</label>
+          <select
+            id="hub-equipo-proyectos" value={equipoActual} onChange={(e) => cambiarEquipo(e.target.value)}
+            className={`rounded-lg border-[1.5px] border-white/30 bg-midnight px-2 py-1 text-sm font-bold text-sand ${FOCO}`}
+          >
+            {misEquipos.map((id) => <option key={id} value={id}>{EQUIPO[id].nombre}</option>)}
+          </select>
+        </>
+      ) : <span className="text-sm font-bold text-sand">{EQUIPO[equipoActual].nombre}</span>}
+    >
+      {(PROYECTOS[equipoActual] || []).map((it) => (
+        <Baldosa key={it.label} item={it} sec="proyectos" grande={it.grande} suave={!it.grande} />
+      ))}
+    </Seccion>
+  );
+  const columnaFormacion = (
+    <Seccion id="hub-formacion" sec="formacion" titulo="Formación">
+      {accesos("formacion").map((it) => <Baldosa key={it.ruta} item={it} sec="formacion" />)}
+    </Seccion>
+  );
+  const columnaGestion = (
+    <Seccion
+      id="hub-gestion" sec="gestion" titulo="Gestión"
+      extra={<Link href="/gestion" className={`ml-auto text-[13px] font-bold text-sand underline decoration-[#9694FF] decoration-2 underline-offset-[5px] hover:decoration-current ${FOCO}`}>Ver todo</Link>}
+    >
+      {accesos("gestion").map((it) => <Baldosa key={it.ruta} item={it} sec="gestion" suave />)}
+    </Seccion>
+  );
 
   return (
-    <main className="relative min-h-dvh w-full lg:h-dvh lg:overflow-hidden">
-      <AmbientBackground lite={lite} />
-      <div className="mx-auto flex w-full max-w-7xl flex-col px-5 pb-8 pt-28 sm:px-6 lg:h-full lg:pb-8">
-        {/* Columnas por tipo (el título va en el header) */}
-        <div className={`grid grid-cols-1 gap-4 sm:grid-cols-2 ${gridCols} lg:min-h-0 lg:flex-1`}>
-          {sections.map((sec, i) => (
-            <TypeColumn
-              key={sec.id} sec={sec} delay={i * 60}
-              selector={sec.id === "proy" && misEquipos.length > 1 ? <SelectorEquipos id={`col-${sec.id}`} equipos={misEquipos} actual={equipoActual} onCambio={cambiarEquipo} /> : null}
-            />
-          ))}
-        </div>
+    <main className="mx-auto w-full max-w-[1376px] px-4 pb-6 pt-cabecera sm:px-8">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+        <h1 className="text-balance font-display text-[clamp(24px,2.2vw,30px)] font-bold tracking-[-0.015em] text-sand">
+          {hola}{nombre ? `, ${nombre}` : ""}
+        </h1>
+        <Buscador isCoordinador={isCoordinador} />
+      </div>
+      {/* Coordinación: Formación baja bajo Proyectos y Gestión ocupa la tercera columna. */}
+      <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {columnaEquipo}
+        {isCoordinador ? (
+          <div className="flex min-w-0 flex-col gap-[22px]">{columnaProyectos}{columnaFormacion}</div>
+        ) : columnaProyectos}
+        {isCoordinador ? columnaGestion : columnaFormacion}
       </div>
     </main>
   );

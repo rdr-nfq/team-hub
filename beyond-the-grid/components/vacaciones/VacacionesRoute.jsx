@@ -224,7 +224,7 @@ export default function VacacionesRoute() {
     <main className="relative min-h-dvh w-full">
       <ArtBanner src={ART.equipo} />
       <AmbientBackground />
-      <div className="mx-auto w-full max-w-7xl px-5 pb-24 pt-28 sm:px-6">
+      <div className="mx-auto w-full max-w-7xl px-5 pb-24 pt-cabecera sm:px-6">
         {error ? (
           <>
             <Hero actualizado={null} />
@@ -298,7 +298,7 @@ export default function VacacionesRoute() {
                 >
                   <div className="grid grid-cols-1 gap-6 lg:grid-cols-[300px_minmax(0,1fr)]">
                     {/* Columna izquierda: solicitar + equipo/filtros + nota (sticky en desktop) */}
-                    <div className="space-y-4 lg:sticky lg:top-24 lg:self-start">
+                    <div className="space-y-4 lg:sticky lg:top-cabecera lg:self-start">
                       <SolicitarCard formUrl={formUrl} />
                       <EquipoPanel
                         empleados={datosVis.empleados}

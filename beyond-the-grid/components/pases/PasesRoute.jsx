@@ -912,7 +912,7 @@ export default function PasesRoute() {
       <main className="relative min-h-dvh w-full">
       <ArtBanner src={ART.proyectos} />
         <AmbientBackground />
-        <div className="mx-auto w-full max-w-[1600px] px-5 pb-24 pt-28 sm:px-6">
+        <div className="mx-auto w-full max-w-[1600px] px-5 pb-24 pt-cabecera sm:px-6">
           {/* Cabecera de página */}
           <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
             <div>

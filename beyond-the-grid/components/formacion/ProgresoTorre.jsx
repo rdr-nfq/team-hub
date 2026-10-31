@@ -183,7 +183,7 @@ export default function ProgresoTorre({ niveles, completadas, current, onMarcar 
         </div>
       )}
 
-      <div className="relative z-10 mx-auto w-full max-w-2xl px-5 pb-32 pt-28 sm:px-6">
+      <div className="relative z-10 mx-auto w-full max-w-2xl px-5 pb-32 pt-cabecera sm:px-6">
         {/* Hero */}
         <header className="mb-14 rounded-3xl bg-midnight/35 px-4 py-6 text-center backdrop-blur-sm">
           <p className="font-sans text-xs font-bold uppercase tracking-[0.4em] text-serene/80">Ruta formativa</p>

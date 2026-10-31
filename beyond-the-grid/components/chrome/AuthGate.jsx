@@ -31,7 +31,7 @@ const EQUIPO_URL = "/team-hub/equipo/equipo.json"; // absoluto: funciona desde /
 const GOOGLE_CLIENT_ID =
   "535974839401-54e3t5n61nbc0c31corcfr56gplj8svl.apps.googleusercontent.com";
 
-const AuthContext = createContext({ email: null, isCoordinador: false, equipos: [EQUIPO_DEFECTO], logout: () => {} });
+const AuthContext = createContext({ email: null, nombre: "", isCoordinador: false, equipos: [EQUIPO_DEFECTO], logout: () => {} });
 export const useAuth = () => useContext(AuthContext);
 
 function decodeJwt(tok) {
@@ -51,6 +51,7 @@ export default function AuthGate({ children, onAuthed }) {
   const [email, setEmail] = useState(null);
   const [isCoordinador, setCoord] = useState(false);
   const [equipos, setEquipos] = useState([EQUIPO_DEFECTO]);
+  const [nombre, setNombre] = useState("");
   const [msg, setMsg] = useState("");
   const [configErr, setConfigErr] = useState("");
   const [teamErr, setTeamErr] = useState("");
@@ -81,7 +82,9 @@ export default function AuthGate({ children, onAuthed }) {
       localStorage.setItem(AUTH_KEY, lower);
       setEmail(lower);
       setCoord(esCoordinador(lower));
-      setEquipos(equiposDe(team.current.find((p) => normEmail(p.email) === normEmail(lower))));
+      const m = team.current.find((p) => normEmail(p.email) === normEmail(lower));
+      setEquipos(equiposDe(m));
+      setNombre(String((m && m.nombre) || "").trim().split(/\s+/)[0] || "");
       setAuthed(true);
       onAuthed && onAuthed();
     },
@@ -187,7 +190,7 @@ export default function AuthGate({ children, onAuthed }) {
   }, [emailPermitido, entrar, miembro]);
 
   return (
-    <AuthContext.Provider value={{ email, isCoordinador, equipos, logout }}>
+    <AuthContext.Provider value={{ email, nombre, isCoordinador, equipos, logout }}>
       {/* Carga la librería de Google Identity Services */}
       <Script src="https://accounts.google.com/gsi/client" strategy="afterInteractive" />
 

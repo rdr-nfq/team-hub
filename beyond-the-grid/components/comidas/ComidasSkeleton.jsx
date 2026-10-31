@@ -16,7 +16,7 @@ export default function ComidasSkeleton() {
         <span className="rdr-blob bottom-[-10%] left-[24%] h-72 w-72" style={{ background: PALETTE.canary, animationDelay: "-9s" }} />
       </div>
 
-      <div className="relative z-10 mx-auto w-full max-w-5xl px-5 pb-24 pt-28 sm:px-6">
+      <div className="relative z-10 mx-auto w-full max-w-5xl px-5 pb-24 pt-cabecera sm:px-6">
         {/* Hero */}
         <div className="mb-8">
           <div className="h-3 w-32 rounded-full rdr-skel" />

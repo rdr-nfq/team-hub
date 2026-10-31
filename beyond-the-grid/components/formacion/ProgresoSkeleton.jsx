@@ -15,7 +15,7 @@ export default function ProgresoSkeleton() {
         <span className="rdr-blob bottom-[-8%] right-[-4%] h-72 w-72" style={{ background: PALETTE.purple, animationDelay: "-6s" }} />
       </div>
 
-      <div className="relative z-10 mx-auto w-full max-w-2xl px-5 pb-32 pt-28 sm:px-6">
+      <div className="relative z-10 mx-auto w-full max-w-2xl px-5 pb-32 pt-cabecera sm:px-6">
         {/* Hero */}
         <div className="mb-14 rounded-3xl bg-midnight/35 px-4 py-7 text-center backdrop-blur-sm">
           <div className="mx-auto h-3 w-28 rounded-full rdr-skel" />

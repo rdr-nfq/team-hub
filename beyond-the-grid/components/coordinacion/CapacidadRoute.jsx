@@ -335,7 +335,7 @@ export default function CapacidadRoute() {
         <span className="rdr-blob bottom-[-10%] right-[-2%] h-96 w-96" style={{ background: PALETTE.royal }} />
       </div>
 
-      <div className="mx-auto w-full max-w-7xl px-5 pb-24 pt-28 sm:px-6">
+      <div className="mx-auto w-full max-w-7xl px-5 pb-24 pt-cabecera sm:px-6">
         <header className="mb-6">
           <p className="font-sans text-xs font-bold uppercase tracking-[0.4em] text-purple/80">Coordinación</p>
           <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
@@ -521,7 +521,7 @@ export default function CapacidadRoute() {
               </section>
 
               {/* ── Personas: carga asignada ── */}
-              <section className={`${GLASS} sticky top-24 p-4`} aria-label="Carga por persona">
+              <section className={`${GLASS} sticky top-cabecera p-4`} aria-label="Carga por persona">
                 <h2 className="mb-1 font-display text-lg font-bold text-sand">Carga por persona</h2>
                 <p className="mb-3 text-[11px] text-sand/50">
                   % asignado entre todos los proyectos del Q (las horas de cada persona salen del Control Económico).

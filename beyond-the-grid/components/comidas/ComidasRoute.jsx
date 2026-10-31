@@ -220,7 +220,7 @@ export default function ComidasRoute() {
       <ArtBanner src={ART.equipo} />
       <AmbientBackground />
 
-      <div className="relative z-10 mx-auto w-full max-w-5xl px-5 pb-24 pt-28 sm:px-6">
+      <div className="relative z-10 mx-auto w-full max-w-5xl px-5 pb-24 pt-cabecera sm:px-6">
         {/* Hero */}
         <header className="mb-8">
           <p className="font-sans text-xs font-bold uppercase tracking-[0.4em] text-mandarin/90">Equipo · 02</p>
