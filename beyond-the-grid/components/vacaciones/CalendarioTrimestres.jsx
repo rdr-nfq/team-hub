@@ -105,7 +105,11 @@ function Mes({ y, m, ctx, foco }) {
         {Array.from({ length: off }, (_, i) => <span key={`v${i}`} className="v-vacio" />)}
         {diasDeMes(y, m).map((s) => {
           const d = Number(s.slice(8));
-          if (esFinde(s)) return <span key={s} className="v-dia v-finde" aria-hidden><span className="v-num">{d}</span></span>;
+          if (esFinde(s)) {
+            return s === hoy
+              ? <span key={s} className="v-dia v-finde v-hoy" aria-label={`Hoy, ${fLarga(s, anio)}`} role="img"><span className="v-num">{d}</span><span className="v-hoy-txt">Hoy</span></span>
+              : <span key={s} className="v-dia v-finde" aria-hidden><span className="v-num">{d}</span></span>;
+          }
           const fest = festVista[s];
           const festOtro = !fest ? festOtros[s] : null;
           const todos = aus[s] || [];
@@ -115,11 +119,11 @@ function Mes({ y, m, ctx, foco }) {
           const ord = [...lista].sort((a, b) => (a.nombre === yo ? -1 : b.nombre === yo ? 1 : 0));
           const corto = (a) => (a.nombre === yo ? "Tú" : cortos[a.nombre] || a.nombre);
           const quien = ord.slice(0, 3).map((a) => (a.nombre === yo ? "tú" : corto(a))).join(", ") + (lista.length > 3 ? ` y ${lista.length - 3} más` : "");
-          const etiqueta = `${fLarga(s, anio)}: ${lista.length ? `${lista.length} fuera (${quien})` : "nadie fuera"}${fest ? ` · festivo ${fest}` : ""}${pide.has(s) ? " · lo estás pidiendo" : ""}${pend.has(s) ? " · pendiente de aprobar" : ""}${eleg ? (elegir === "desde" ? " · pulsa para empezar aquí" : " · pulsa para terminar aquí") : ""}`;
+          const etiqueta = `${s === hoy ? "Hoy, " : ""}${fLarga(s, anio)}: ${lista.length ? `${lista.length} fuera (${quien})` : "nadie fuera"}${fest ? ` · festivo ${fest}` : ""}${pide.has(s) ? " · lo estás pidiendo" : ""}${pend.has(s) ? " · pendiente de aprobar" : ""}${eleg ? (elegir === "desde" ? " · pulsa para empezar aquí" : " · pulsa para terminar aquí") : ""}`;
           const cls = ["v-dia", fest && "v-festivo", mio && "v-mio", pend.has(s) && "v-pend", pide.has(s) && "v-pide", s < hoy && "v-pasado", s === hoy && "v-hoy", eleg && "v-elegible"].filter(Boolean).join(" ");
           return (
             <button key={s} type="button" className={cls} data-dia={s} tabIndex={s === foco ? 0 : -1} aria-label={etiqueta} onClick={() => onDia(s)}>
-              <span className="v-num">{d}</span>
+              <span className="v-num">{d}{s === hoy && <span className="v-hoy-txt"> Hoy</span>}</span>
               {(fest || festOtro) && <span className="v-fest">{fest || festOtro}</span>}
               {ord.slice(0, 3).map((a, i) => (
                 <span key={a.nombre} className={`v-nom ${i === 2 ? "v-tercero" : ""}`} style={{ background: a.nombre === yo ? COLOR_YO : colorMotivo(a.motivo) }}>{corto(a)}</span>

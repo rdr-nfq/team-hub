@@ -611,7 +611,11 @@ button.v-semana { cursor: pointer; }
 .v-dia.v-elegible { cursor: copy; }
 .v-dia.v-elegible:hover { box-shadow: inset 0 0 0 2px var(--v-ink); }
 .v-dia .v-num { font-size: 12px; font-weight: 700; line-height: 1.2; }
-.v-dia.v-hoy .v-num { background: var(--v-ink); color: rgb(var(--c-midnight)); border-radius: 999px; padding: 0 5px; align-self: flex-start; }
+.v-dia.v-hoy { border: 2px solid var(--v-ink); }
+.v-dia.v-hoy .v-num { background: var(--v-ink); color: rgb(var(--c-midnight)); border-radius: 999px; padding: 0 6px; align-self: flex-start; }
+.v-dia.v-finde.v-hoy .v-num { align-self: center; color: rgb(var(--c-midnight)); font-weight: 700; padding: 0 4px; }
+.v-hoy-txt { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.v-dia.v-finde .v-hoy-txt { text-align: center; color: var(--v-ink); margin-top: 2px; }
 .v-dia .v-nom { display: block; font-size: 11px; font-weight: 700; line-height: 15px; color: #001391; border-radius: 3px; padding: 0 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .v-dia .v-mas { font-size: 11px; font-weight: 700; }
 .v-dia .v-fest { font-size: 11px; color: var(--v-soft); line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
