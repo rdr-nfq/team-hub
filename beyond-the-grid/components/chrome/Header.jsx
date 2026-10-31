@@ -1,10 +1,11 @@
 "use client";
 
+import { useEffect } from "react";
 import { Link } from "next-view-transitions";
 import { usePathname } from "next/navigation";
 import { useAuth } from "./AuthGate";
 import { useTheme } from "@/lib/theme";
-import { seccionDe } from "@/lib/seccion";
+import { seccionDe, GESTION } from "@/lib/seccion";
 import IconoBBVA from "@/components/iconosBBVA";
 
 const PILL =
@@ -29,6 +30,11 @@ export default function Header() {
     ? actual.seccion.paginas.filter((pg) => !pg.soloActiva || pg === actual.pagina)
     : null;
   const textoTema = theme === "dark" ? "Cambiar a tema claro" : "Cambiar a tema oscuro";
+  // En pantallas estrechas las pestañas se desplazan: la activa, siempre a la vista.
+  useEffect(() => {
+    document.querySelector(".rdr-pestanas [aria-current='page']")?.scrollIntoView({ block: "nearest", inline: "center" });
+  }, [pathname]);
+  const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(" ");
 
   return (
     <header className="fixed inset-x-0 top-0 z-40">
@@ -47,7 +53,7 @@ export default function Header() {
                 aria-label="Gestión"
                 className={`${PILL} rdr-btn-gestion text-[#001391]`}
               >
-                <IconoBBVA nombre="directory" size={17} />
+                <IconoBBVA nombre={GESTION.icono} size={17} />
                 <span className="hidden sm:inline">Gestión</span>
               </Link>
             )}
@@ -77,10 +83,19 @@ export default function Header() {
       {pestanas && (
         <nav aria-label={actual.seccion.nombre} className="rdr-pestanas border-b border-white/15 bg-midnight">
           <div className="mx-auto flex h-11 w-full max-w-[1376px] items-stretch gap-1 overflow-x-auto px-4 [scrollbar-width:none] sm:px-8">
-            <span className="mr-2 flex shrink-0 items-center gap-2 text-xs font-bold uppercase tracking-[0.05em] text-sand/70">
-              <span aria-hidden className="h-2.5 w-2.5 rounded-full" style={{ background: actual.seccion.color }} />
-              {actual.seccion.nombre}
-            </span>
+            {(() => {
+              // El nombre de la sección; en Gestión, además, vuelve a /gestion.
+              const nombre = (
+                <>
+                  <span aria-hidden className="h-2.5 w-2.5 rounded-full" style={{ background: actual.seccion.color }} />
+                  {actual.seccion.nombre}
+                </>
+              );
+              const cls = "mr-2 flex shrink-0 items-center gap-2 text-xs font-bold uppercase tracking-[0.05em] text-sand/70";
+              return actual.seccion.id === "gestion"
+                ? <Link href={GESTION.ruta} className={`${cls} hover:text-sand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-serene`}>{nombre}</Link>
+                : <span className={cls}>{nombre}</span>;
+            })()}
             {pestanas.map((pg) => {
               const activa = pg === actual.pagina;
               return (
@@ -88,8 +103,8 @@ export default function Header() {
                   key={pg.label}
                   href={pg.rutas[0]}
                   aria-current={activa ? "page" : undefined}
-                  className={`flex shrink-0 items-center whitespace-nowrap border-b-[3px] px-3 pt-[3px] text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-serene ${activa ? "text-sand" : "border-transparent text-sand/65 hover:text-sand"}`}
-                  style={activa ? { borderColor: actual.seccion.color } : undefined}
+                  className={`flex shrink-0 items-center whitespace-nowrap border-b-[3px] px-3 pt-[3px] text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-serene ${activa ? "rdr-pestana-activa text-sand" : "border-transparent text-sand/65 hover:text-sand"}`}
+                  style={activa ? { "--acc": rgb(actual.seccion.color) } : undefined}
                 >
                   {pg.label}
                 </Link>

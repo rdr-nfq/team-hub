@@ -517,7 +517,7 @@ export default function GestionVacacionesRoute() {
       <div className="mx-auto w-full max-w-7xl px-5 pb-24 pt-cabecera sm:px-6">
         <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="mt-2 font-display text-4xl font-bold leading-none tracking-tight text-sand sm:text-5xl">Vacaciones</h1>
+            <h1 className="mt-2 font-display text-4xl font-bold leading-none tracking-tight text-sand sm:text-5xl">Vacaciones del equipo</h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {d?.anios?.length > 1 && d.anios.map((a) => (

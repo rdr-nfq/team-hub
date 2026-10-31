@@ -352,7 +352,7 @@ function Hero({ actualizado }) {
   return (
     <header className="mb-8">
       <h1 className="mt-2 font-display text-3xl font-bold tracking-tight text-sand sm:text-4xl">
-        Vacaciones del equipo
+        Vacaciones
       </h1>
       <p className="mt-2 max-w-xl text-pretty text-sm text-sand/65">
         Ausencias del equipo en solo lectura: quién falta hoy, calendario anual con nº de ausentes por día

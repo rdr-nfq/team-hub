@@ -332,7 +332,7 @@
       "name": "Etiqueta de sección",
       "kind": "chip",
       "refersTo": "section-label",
-      "description": "Encabezado de columna: píldora en el acento sólido con texto Electric, mayúsculas.",
+      "description": "Encabezado de columna: rectángulo de 6px en el acento sólido con texto Electric, mayúsculas.",
       "html": "<div class=\"ds-labels\"><h2 class=\"ds-label\" style=\"--acc:255 181 107\">Equipo</h2><h2 class=\"ds-label\" style=\"--acc:136 231 131\">Proyectos</h2><h2 class=\"ds-label\" style=\"--acc:133 200 255\">Formación</h2><h2 class=\"ds-label\" style=\"--acc:150 148 255\">Gestión</h2></div>",
       "css": ".ds-labels{display:flex;gap:10px;flex-wrap:wrap;padding:12px;background:#070E46}.ds-label{margin:0;padding:7px 12px;border-radius:9999px;background:rgb(var(--acc));color:#001391;font:700 13px/1 Lato,system-ui,sans-serif;letter-spacing:.05em;text-transform:uppercase}"
     },

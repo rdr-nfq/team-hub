@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { PALETTE } from "@/lib/palette";
 import { useLinks } from "@/lib/links";
 import { GLASS, FIELD, TEXT, Kpi, EmptyCard, PanelSkeleton } from "../coordinacion/ui";
-import { IconClock, IconAlert, IconPlus, IconX, IconReload, IconExternal } from "../coordinacion/icons";
+import { IconAlert, IconPlus, IconX, IconReload, IconExternal } from "../coordinacion/icons";
+import IconoBBVA from "../iconosBBVA";
 import { useTimeReport, useFestivos, useEquipo, EVIDENCIAS_KEY, equipoValido } from "./datos";
 import { EQUIPOS, EQUIPO, equiposDe } from "@/lib/equipos";
 import { useAuth } from "../chrome/AuthGate";
@@ -450,7 +451,7 @@ export default function GestionRoute() {
       <div className="mx-auto w-full max-w-7xl px-5 pb-24 pt-cabecera sm:px-6">
         <header className="mb-6">
           <h1 className="mt-2 flex items-center gap-3 font-display text-4xl font-bold leading-none tracking-tight text-sand sm:text-5xl">
-            <IconClock size={34} className="text-canary" /> Time Report <span className="text-canary">{nombreEq}</span>
+            <IconoBBVA nombre="wikimetrics" size={34} className="text-canary" /> Time Report <span className="text-canary">{nombreEq}</span>
           </h1>
           <p className="mt-3 max-w-2xl text-pretty text-sm text-sand/65">
             Proyectos del trimestre, reparto de horas por quincena, corrección de imputaciones y evidencias del equipo.

@@ -1,6 +1,6 @@
 "use client";
 
-import { accesos } from "@/lib/seccion";
+import { accesos, GESTION } from "@/lib/seccion";
 import Baldosa from "@/components/hub/Baldosa";
 import IconoBBVA from "@/components/iconosBBVA";
 
@@ -18,7 +18,7 @@ export default function GestionHub() {
     <main className="mx-auto w-full max-w-[1376px] px-4 pb-10 pt-cabecera sm:px-8">
       <div className="flex items-center gap-3.5">
         <span className="hub-placa hub-ge grid h-11 w-11 shrink-0 place-items-center rounded-[10px]">
-          <IconoBBVA nombre="directory" size={28} />
+          <IconoBBVA nombre={GESTION.icono} size={28} />
         </span>
         <h1 className="font-display text-[clamp(26px,2.4vw,32px)] font-bold tracking-[-0.015em] text-sand">Gestión</h1>
       </div>

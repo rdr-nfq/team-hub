@@ -198,7 +198,7 @@ Los tokens viven en `app/globals.css` como tripletas RGB por tema (`--c-*`), con
 - **Title** (Lato 700, 17px en baldosa grande / 15px en pequeña): el nombre de cada acceso.
 - **Body** (Lato 400, 14px / 13px): la descripción de una línea bajo el nombre de la baldosa y el texto de apoyo de página (15px).
 - **Nav** (Lato 700, 14px): las pestañas de sección.
-- **Label** (Lato 700, 13px, tracking 0.05em, MAYÚSCULAS): etiquetas de sección en píldora y títulos de grupo en /gestion; también los botones de la barra (13px 700, sin mayúsculas).
+- **Label** (Lato 700, 13px, tracking 0.05em, MAYÚSCULAS): etiquetas de sección (rectángulo de 6px) y títulos de grupo en /gestion; también los botones de la barra (13px 700, sin mayúsculas).
 
 ### Named Rules
 **The Serif Scarcity Rule.** Source Serif 4 solo en el nombre del hub, el saludo, los títulos de página y el splash. Nada de serif en baldosas, botones, etiquetas ni navegación.
@@ -207,7 +207,7 @@ Los tokens viven en `app/globals.css` como tripletas RGB por tema (`--c-*`), con
 
 Contenedor centrado de 1376px como máximo, con márgenes de 16px en móvil y 32px desde `sm`. La cabecera es fija; su altura se publica en `--cabecera` (56px, o 101px cuando la página lleva pestañas de sección) y las páginas reservan el hueco con `pt-cabecera`/`top-cabecera`.
 
-La portada es una fila (saludo serif a la izquierda, buscador de 440px a la derecha) y debajo una retícula de tres columnas en `lg`, dos en `md` y una en móvil, con 24px entre columnas y 20px entre filas. Cada columna es una sección: etiqueta en píldora arriba y baldosas apiladas con 8px de separación. Equipo pone sus tres accesos más usados en grande y los dos menores en pareja (de 420px hacia arriba); Proyectos lleva un selector de equipo junto a la etiqueta; la tercera columna es Gestión para coordinadores (Formación baja bajo Proyectos) o Formación para el resto. /gestion reparte sus seis accesos en dos grupos titulados de tres columnas (`md`) con 12px de separación.
+La portada es una fila (saludo serif a la izquierda, buscador de 440px a la derecha) y debajo una retícula de tres columnas en `lg`, dos en `md` y una en móvil, con 24px entre columnas y 20px entre filas. Cada columna es una sección: etiqueta arriba y baldosas apiladas con 8px de separación (la columna Gestión, en dos grupos de tres con 4px más entre ellos, como /gestion). Equipo pone sus tres accesos más usados en grande y los dos menores en pareja (de 420px hacia arriba); Proyectos lleva un selector de equipo junto a la etiqueta; la tercera columna es Gestión para coordinadores (Formación baja bajo Proyectos) o Formación para el resto. /gestion reparte sus seis accesos en dos grupos titulados de tres columnas (`md`) con 12px de separación.
 
 El ritmo sigue la retícula de 8px del manual; los valores intermedios (12px, 20px) solo dentro de componentes.
 
@@ -228,20 +228,20 @@ Plano por defecto. La profundidad la dan el color (tinte, borde de acento, la ba
 
 ## Shapes
 
-Esquinas suaves y consistentes: baldosas de 12px, placas de icono de 10px (grande) y 8px (pequeña), filas de resultado de 8px. Todo lo que es control o etiqueta es píldora completa: botones de la barra, botón Gestión, buscador, selector de equipo, etiquetas de sección y la marca «Pronto». El tema se indica con un círculo de 36px. Los bordes son de 1px en baldosas y de 1.5px en píldoras y controles; el discontinuo se reserva para el acceso bloqueado.
+Esquinas suaves y consistentes: baldosas de 12px, placas de icono de 10px (grande) y 8px (pequeña), filas de resultado de 8px. Todo lo que es control es píldora completa: botones de la barra, botón Gestión, buscador, selector de equipo y las marcas «Pronto» y «Otra pestaña». Las etiquetas de sección son rectángulos de 6px, para no confundirse con un botón. El tema se indica con un círculo de 36px. Los bordes son de 1px en baldosas y de 1.5px en píldoras y controles; el discontinuo se reserva para el acceso bloqueado.
 
 ## Components
 
 ### Barra superior
 Electric, 56px, fija. A la izquierda el nombre del hub en serif (vuelve a la portada). A la derecha: botón Gestión (solo coordinadores), correo en Serene (desde `lg`), botón de tema circular, «Salir» y el logo BBVA blanco de 20px de alto.
 - **Píldoras de la barra:** 36px de alto, borde 1.5px Sand al 55 %, texto Sand 13px 700; el borde pasa a Sand pleno al pasar el ratón. Foco: anillo de 2px Serene.
-- **Botón Gestión:** relleno y borde Purple, icono oficial «directory» y texto Electric. Al pasar el ratón o estando en Gestión (`aria-current="page"`) pasa a Sand. En móvil queda solo el icono, con `aria-label`.
+- **Botón Gestión:** relleno y borde Purple, icono oficial «digitalsignature» y texto Electric. Al pasar el ratón o estando en Gestión (`aria-current="page"`) pasa a Sand. En móvil queda solo el icono, con `aria-label`.
 
 ### Pestañas de sección
-Bajo la barra, en las páginas de una sección, sobre Midnight/Sand con línea inferior blanca al 15 % (Gray 5 en claro). A la izquierda, un punto de 10px en el acento de la sección y su nombre en mayúsculas 12px al 70 %. Cada pestaña: Lato 14px 700 al 65 %, pleno al pasar el ratón; la activa, texto pleno y barra inferior de 3px. Desplazamiento horizontal sin barra en móvil. Las páginas `soloActiva` solo aparecen como pestaña estando en ellas.
+Bajo la barra, en las páginas de una sección, sobre Midnight/Sand con línea inferior blanca al 15 % (Gray 5 en claro). A la izquierda, un punto de 10px en el acento de la sección y su nombre en mayúsculas 12px al 70 %. Cada pestaña: Lato 14px 700 al 65 %, pleno al pasar el ratón; la activa, texto pleno y barra inferior de 3px: en oscuro, del acento de la sección; en claro, Electric sobre el tinte de la sección (un acento como línea fina no se lee sobre Sand). En Gestión, el nombre de la sección vuelve a /gestion. La pestaña activa se desplaza a la vista en móvil. Desplazamiento horizontal sin barra en móvil. Las páginas `soloActiva` solo aparecen como pestaña estando en ellas.
 
 ### Etiqueta de sección
-Píldora en el acento sólido con texto Electric, Lato 13px 700, mayúsculas, tracking 0.05em, 7px × 12px. Es el `h2` de la columna.
+Rectángulo de 6px en el acento sólido con texto Electric, Lato 13px 700, mayúsculas, tracking 0.05em, 7px × 10px. Es el `h2` de la columna.
 
 ### Baldosa (signature)
 El acceso de la portada y de /gestion. Borde de 1px en el acento y fondo teñido con él (15 % en oscuro, 30 % en claro; la variante suave, 7 % y 16 %). Texto en el color principal del tema.
@@ -251,10 +251,10 @@ El acceso de la portada y de /gestion. Borde de 1px en el acento y fondo teñido
 - **Hover:** el tinte sube 12 puntos, subida de 1px y sombra de hover (160ms, `cubic-bezier(0.16, 1, 0.3, 1)`); al pulsar vuelve a su sitio.
 - **Foco:** anillo de 2px Serene (Electric en claro) con separación de 2px sobre el fondo.
 - **Bloqueada** (`aria-disabled`, «Pronto» o enlace sin configurar): tinte suave, borde discontinuo, sin hover; la marca «Pronto» es una píldora con borde del color del texto, 11px, mayúsculas.
-- Una baldosa puede navegar, abrir en pestaña nueva o copiar un enlace; las tres comparten forma.
+- Una baldosa puede navegar, abrir en pestaña nueva o copiar un enlace; las tres comparten forma, pero lo que no navega lo dice: icono oficial «copy» a la derecha (y «Enlace copiado» en la descripción durante 2 s al pulsar) o la marca «Otra pestaña». Los gemelos personal/equipo llevan iconos distintos (p. ej. Guardias «alarm», Guardias del equipo «clientok»).
 
 ### Buscador
-Campo de 42px en píldora, borde 1.5px blanco al 30 % (Gray 5 en claro), fondo del tema, texto 15px y placeholder Serene (Electric en claro). La tecla «/» lo enfoca y se muestra como `kbd` a la derecha. Al foco, el borde pasa a Serene. Los resultados salen en un panel de 12px con borde al 25 % y la sombra de desplegable; cada fila lleva un punto del acento de su sección y el nombre de la sección a la derecha; la elegida se tiñe con su acento.
+Campo de 42px en píldora, borde 1.5px Sand al 50 % (Electric al 50 % en claro, ≥3:1), fondo del tema, texto 15px y placeholder Serene (Electric en claro). La tecla «/» lo enfoca y se muestra como `kbd` a la derecha mientras está vacío y sin foco. Busca en todo lo que hay en la portada (nombre, descripción y palabras clave), ordena por relevancia y Enter navega, copia o abre; se cierra con Esc o con un clic fuera. Al foco, el borde pasa a Serene. Los resultados salen en un panel de 12px con borde al 25 % y la sombra de desplegable; cada fila lleva un punto del acento de su sección y el nombre de la sección a la derecha; la elegida se tiñe con su acento.
 
 ### Selector de equipo
 `select` nativo en píldora con borde 1.5px y tinte del acento de Proyectos, texto 13px 700 y el icono oficial «fold» girado como flecha. Si la persona solo tiene un equipo, se muestra su nombre en texto.

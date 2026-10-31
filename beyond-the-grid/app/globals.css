@@ -116,6 +116,17 @@ html:has(.rdr-pestanas) {
   border-color: #f7f8f8;
 }
 
+/* Pestaña activa de la cabecera: en oscuro, raya del acento de la sección;
+   en claro un acento como línea fina no se lee sobre Sand, así que raya
+   Electric sobre el tinte de la sección (patrón «caja de color»). */
+.rdr-pestana-activa {
+  border-color: rgb(var(--acc));
+}
+html.rdr-light .rdr-pestana-activa {
+  border-color: #001391;
+  background: rgb(var(--acc) / 0.3);
+}
+
 /* Piezas que solo van en un tema (logo NFQ: «nfq» Midnight en claro, blanco en oscuro). */
 html.rdr-light .rdr-solo-oscuro,
 html:not(.rdr-light) .rdr-solo-claro {

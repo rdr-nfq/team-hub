@@ -66,16 +66,21 @@ export function LinksProvider({ children }) {
 
   const getUrl = useCallback((key) => urlDe(links, key), [links]);
 
+  // Devuelve true si el enlace quedó copiado (la portada lo confirma en la baldosa).
   const copyLink = useCallback(
     async (key) => {
-      if (error) return showToast("No se pudieron cargar los enlaces");
-      const url = getUrl(key);
-      if (!url) return showToast("Enlace no disponible — revisa links.json");
+      const url = error ? null : getUrl(key);
+      if (!url) {
+        showToast(error ? "No se pudieron cargar los enlaces" : "Este enlace aún no está configurado");
+        return false;
+      }
       try {
         await navigator.clipboard.writeText(url);
         showToast("Enlace copiado al portapapeles");
+        return true;
       } catch {
         showToast("No se pudo copiar el enlace");
+        return false;
       }
     },
     [error, getUrl, showToast]

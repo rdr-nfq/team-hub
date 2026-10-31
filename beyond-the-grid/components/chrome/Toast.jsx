@@ -2,9 +2,11 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 
-/** Aviso flotante (reemplaza el #toast del index.html original). */
+/** Aviso flotante (reemplaza el #toast del index.html original). La región
+    viva está siempre montada para que el lector de pantalla lo anuncie. */
 export default function Toast({ message }) {
   return (
+    <div role="status" aria-live="polite">
     <AnimatePresence>
       {message ? (
         <motion.div
@@ -17,5 +19,6 @@ export default function Toast({ message }) {
         </motion.div>
       ) : null}
     </AnimatePresence>
+    </div>
   );
 }
