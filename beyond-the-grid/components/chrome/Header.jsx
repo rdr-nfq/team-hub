@@ -35,9 +35,47 @@ export default function Header() {
     document.querySelector(".rdr-pestanas [aria-current='page']")?.scrollIntoView({ block: "nearest", inline: "center" });
   }, [pathname]);
   const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(" ");
+  // Pases es una hoja de trabajo: sus pestañas suben con la página y solo la
+  // barra azul queda fija, para dejar más filas a la vista.
+  const sueltas = /\/pases$/.test((pathname || "").replace(/\/+$/, ""));
+
+  const nav = pestanas && (
+        <nav aria-label={actual.seccion.nombre} className={`rdr-pestanas border-b border-white/15 bg-midnight ${sueltas ? "rdr-pestanas-sueltas absolute inset-x-0 top-14 z-30" : ""}`}>
+          <div className="mx-auto flex h-11 w-full max-w-[1376px] items-stretch gap-1 overflow-x-auto px-4 [scrollbar-width:none] sm:px-8">
+            {(() => {
+              // El nombre de la sección; en Gestión, además, vuelve a /gestion.
+              const nombre = (
+                <>
+                  <span aria-hidden className="h-2.5 w-2.5 rounded-full" style={{ background: actual.seccion.color }} />
+                  {actual.seccion.nombre}
+                </>
+              );
+              const cls = "mr-2 flex shrink-0 items-center gap-2 text-xs font-bold uppercase tracking-[0.05em] text-sand/70";
+              return actual.seccion.id === "gestion"
+                ? <Link href={GESTION.ruta} className={`${cls} hover:text-sand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-serene`}>{nombre}</Link>
+                : <span className={cls}>{nombre}</span>;
+            })()}
+            {pestanas.map((pg) => {
+              const activa = pg === actual.pagina;
+              return (
+                <Link
+                  key={pg.label}
+                  href={pg.rutas[0]}
+                  aria-current={activa ? "page" : undefined}
+                  className={`flex shrink-0 items-center whitespace-nowrap border-b-[3px] px-3 pt-[3px] text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-serene ${activa ? "rdr-pestana-activa text-sand" : "border-transparent text-sand/65 hover:text-sand"}`}
+                  style={activa ? { "--acc": rgb(actual.seccion.color) } : undefined}
+                >
+                  {pg.label}
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+  );
 
   return (
-    <header className="fixed inset-x-0 top-0 z-40">
+    <>
+      <header className="fixed inset-x-0 top-0 z-40">
       <div className="bg-electric text-[#F7F8F8]">
         <div className="mx-auto flex h-14 w-full max-w-[1376px] items-center gap-4 px-4 sm:px-8">
           <Link href="/" className="whitespace-nowrap rounded-md font-display text-[19px] font-bold leading-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#85C8FF]">
@@ -80,39 +118,9 @@ export default function Header() {
         </div>
       </div>
 
-      {pestanas && (
-        <nav aria-label={actual.seccion.nombre} className="rdr-pestanas border-b border-white/15 bg-midnight">
-          <div className="mx-auto flex h-11 w-full max-w-[1376px] items-stretch gap-1 overflow-x-auto px-4 [scrollbar-width:none] sm:px-8">
-            {(() => {
-              // El nombre de la sección; en Gestión, además, vuelve a /gestion.
-              const nombre = (
-                <>
-                  <span aria-hidden className="h-2.5 w-2.5 rounded-full" style={{ background: actual.seccion.color }} />
-                  {actual.seccion.nombre}
-                </>
-              );
-              const cls = "mr-2 flex shrink-0 items-center gap-2 text-xs font-bold uppercase tracking-[0.05em] text-sand/70";
-              return actual.seccion.id === "gestion"
-                ? <Link href={GESTION.ruta} className={`${cls} hover:text-sand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-serene`}>{nombre}</Link>
-                : <span className={cls}>{nombre}</span>;
-            })()}
-            {pestanas.map((pg) => {
-              const activa = pg === actual.pagina;
-              return (
-                <Link
-                  key={pg.label}
-                  href={pg.rutas[0]}
-                  aria-current={activa ? "page" : undefined}
-                  className={`flex shrink-0 items-center whitespace-nowrap border-b-[3px] px-3 pt-[3px] text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-serene ${activa ? "rdr-pestana-activa text-sand" : "border-transparent text-sand/65 hover:text-sand"}`}
-                  style={activa ? { "--acc": rgb(actual.seccion.color) } : undefined}
-                >
-                  {pg.label}
-                </Link>
-              );
-            })}
-          </div>
-        </nav>
-      )}
-    </header>
+        {!sueltas && nav}
+      </header>
+      {sueltas && nav}
+    </>
   );
 }

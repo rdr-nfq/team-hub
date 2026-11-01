@@ -18,6 +18,9 @@
  *   eliminarProyecto             { fechaStr, nombre }
  *   agregarComponentesVacios     { proy, cantidadStr, fechaStr }
  *   editarComponente             { fila, nom, tipo, subida, resp, cod, us, release, com, releaseCheck }
+ *   editarComponentesBatch       { changes: [{ fila, nom, tipo, subida, resp, cod, us, releaseCheck, com, probado?, proy? }], fechaStr }
+ *   agregarComponentes           { fechaStr, items: [{ proy, nom, tipo, subida, resp, cod, us, releaseCheck, probado, com }] } → dashboard + filasNuevas
+ *   eliminarComponentes          { fechaStr, filas: [n, …] }
  *   eliminarComponente           { fila, fechaStr }
  *   actualizarOKProyecto         { fechaStr, nombre, val }
  *   actualizarIdTraspaso         { fechaStr, nombre, idTraspaso }

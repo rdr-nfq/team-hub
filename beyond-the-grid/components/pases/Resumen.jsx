@@ -73,7 +73,7 @@ export default function Resumen() {
       </PanelTitle>
 
       {orden.length === 0 ? (
-        <Empty>Aún no hay orden del pase: diséñalo en la pestaña «Orden del pase».</Empty>
+        <Empty>Aún no hay orden del pase: ordénalo en la hoja de Preparación.</Empty>
       ) : (
         <ol className="space-y-2.5">
           {filas.map((f) => (

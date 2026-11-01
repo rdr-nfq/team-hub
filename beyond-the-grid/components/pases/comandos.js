@@ -280,7 +280,7 @@ export function buscarComponentesPorCod(E, cod) {
   return out;
 }
 
-function etiquetaPorSubida(subidaLower, cod) {
+export function etiquetaPorSubida(subidaLower, cod) {
   const s = subidaLower || "";
   if (s === "java") return "Instalar Javas: " + cod;
   if (s === "workstation") return "Instalar Workstation: " + cod;

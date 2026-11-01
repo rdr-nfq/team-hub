@@ -25,12 +25,12 @@ import {
   isT,
 } from "./backend";
 import { computeValidador } from "./validador";
+import { avisos as calcAvisos, modelo as modeloHoja } from "./hoja";
 import { computeMergeUnits } from "./mergeos";
 import { useAuth } from "@/components/chrome/AuthGate";
 import { ACCENT, BTN, CARD_CLS, Field, SELECT_CLS, INPUT_CLS } from "./ui";
 import { IconRocket, IconSave, IconMoon, IconCheck, IconLock, IconRefresh, IconArrowLeft, IconExternal } from "./icons";
-import Proyectos from "./Proyectos";
-import Secuencia from "./Secuencia";
+import HojaPase from "./HojaPase";
 import PreChecks from "./PreChecks";
 import Ejecucion from "./Ejecucion";
 import Mergeos from "./Mergeos";
@@ -50,14 +50,14 @@ export const usePases = () => useContext(PasesCtx);
 // Fase → panel por defecto + pestañas habilitadas (portado de refrescarUI).
 // RESUMEN no es una fase: es la vista de paquetes/componentes en orden,
 // disponible en cuanto hay preparación en marcha.
-const ALL_TABS = ["PROYECTOS", "SECUENCIA", "PRE", "ORDEN", "POST", "RESUMEN"];
+const ALL_TABS = ["PROYECTOS", "PRE", "ORDEN", "POST", "RESUMEN"];
 const FASE_CFG = {
   PENDIENTE: { panel: "PENDIENTE", tabs: [] },
   FASE_1_ENCUESTA: { panel: "ENCUESTA", tabs: ["PROYECTOS"] },
   FASE_0_DESCANSO: { panel: "DESCANSO", tabs: ["PROYECTOS"] },
-  FASE_2_3_PREPARACION: { panel: "PROYECTOS", tabs: ["PROYECTOS", "SECUENCIA", "RESUMEN"] },
-  FASE_4_CERRADO: { panel: "PRE", tabs: ["PROYECTOS", "SECUENCIA", "PRE", "RESUMEN"] },
-  FASE_6_IMPLANTACION: { panel: "ORDEN", tabs: ["PROYECTOS", "SECUENCIA", "PRE", "ORDEN", "RESUMEN"] },
+  FASE_2_3_PREPARACION: { panel: "PROYECTOS", tabs: ["PROYECTOS", "RESUMEN"] },
+  FASE_4_CERRADO: { panel: "PRE", tabs: ["PROYECTOS", "PRE", "RESUMEN"] },
+  FASE_6_IMPLANTACION: { panel: "ORDEN", tabs: ["PROYECTOS", "PRE", "ORDEN", "RESUMEN"] },
   FASE_7_POST: { panel: "POST", tabs: ALL_TABS },
   COMPLETADO: { panel: "COMPLETADO", tabs: ALL_TABS },
 };
@@ -74,11 +74,10 @@ const FASE_NOMBRE = {
 const esCancelable = (fase) => !!FASE_NOMBRE[fase];
 
 const TABS = [
-  { id: "PROYECTOS", n: 1, t: "Preparación", s: "Proyectos y componentes" },
-  { id: "SECUENCIA", n: 2, t: "Orden del pase", s: "Secuencia" },
-  { id: "PRE", n: 3, t: "Pre-implant.", s: "Checks previos" },
-  { id: "ORDEN", n: 4, t: "Implantación", s: "Ejecución" },
-  { id: "POST", n: 5, t: "Post-implant.", s: "Mergeos" },
+  { id: "PROYECTOS", n: 1, t: "Preparación", s: "Hoja del pase" },
+  { id: "PRE", n: 2, t: "Checks previos", s: "Pre-implantación" },
+  { id: "ORDEN", n: 3, t: "Implantación", s: "Ejecución" },
+  { id: "POST", n: 4, t: "Mergeos", s: "Post-implantación" },
   { id: "RESUMEN", n: "≡", t: "Resumen", s: "Paquetes del pase" },
 ];
 
@@ -476,6 +475,93 @@ export default function PasesRoute() {
     estructural("eliminarComponente", { fila, fechaStr: ERef.current.fechaSeleccionada }, { loadingMsg: "Eliminando…", okMsg: "Componente eliminado" });
   };
 
+  /* ───────────── Hoja de preparación: cambios en bloque ───────────── */
+  // Instantánea de un componente (con su proyecto) para deshacer.
+  const fotoComp = (fila) => {
+    for (const p of ERef.current.proyectos || [])
+      for (const c of p.componentes || []) if (c.fila === fila) return { ...c, proyecto: p.nombre };
+    return null;
+  };
+  const filaPayload = (c) => ({
+    fila: c.fila, nom: c.nombre || "", tipo: c.tipo || "", subida: c.subida || "", resp: c.resp || "",
+    cod: c.codigo || "", us: limpiarMulti(c.us), releaseCheck: isT(c.release), com: c.comentarios || "",
+    probado: isT(c.probado), proy: c.proyecto,
+  });
+  // cambios: [{ fila, ...campos del componente (nombre, tipo, subida, resp, codigo, us, release, probado, comentarios, proyecto) }]
+  // Devuelve las instantáneas previas (para deshacer) o null si falla.
+  const editarLote = useCallback(
+    async (cambios) => {
+      if (!cambios.length) return [];
+      const previos = cambios.map((x) => fotoComp(x.fila)).filter(Boolean);
+      const nuevos = previos.map((p) => ({ ...p, ...cambios.find((x) => x.fila === p.fila) }));
+      const aplicar = (lista) =>
+        applyE((d) => {
+          lista.forEach((n) => {
+            let comp = null;
+            d.proyectos.forEach((p) => {
+              const i = p.componentes.findIndex((c) => c.fila === n.fila);
+              if (i >= 0) { comp = p.componentes[i]; if (n.proyecto && n.proyecto !== p.nombre) p.componentes.splice(i, 1); else comp._aqui = true; }
+            });
+            if (!comp) return;
+            const { proyecto, ...campos } = n;
+            Object.assign(comp, campos);
+            if (!comp._aqui) d.proyectos.find((p) => p.nombre === proyecto)?.componentes.push(comp);
+            delete comp._aqui;
+          });
+        });
+      aplicar(nuevos);
+      try {
+        await call("editarComponentesBatch", { changes: nuevos.map(filaPayload), fechaStr: ERef.current.fechaSeleccionada });
+        cacheSet(ERef.current.fechaSeleccionada, ERef.current);
+        return previos;
+      } catch (e) {
+        aplicar(previos);
+        showToast("No se pudo guardar · " + e.message, "error", 4000);
+        return null;
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [applyE, call, showToast]
+  );
+  // items: [{ proyecto, nombre, tipo, subida, resp, codigo, us, release, probado, comentarios }] → filas nuevas o null.
+  const agregarComps = useCallback(
+    async (items, msg) => {
+      const t = showToast(msg || "Añadiendo…", "loading", 0);
+      try {
+        const data = await call("agregarComponentes", {
+          fechaStr: ERef.current.fechaSeleccionada,
+          items: items.map((c) => ({ ...filaPayload({ ...c, fila: 0 }), fila: undefined })),
+        });
+        const filas = data?.filasNuevas || [];
+        procesarNuevoEstado(data, null, t);
+        return filas;
+      } catch (e) {
+        removeToast(t);
+        showToast(e.message, "error", 5000);
+        return null;
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [call, procesarNuevoEstado, removeToast, showToast]
+  );
+  const eliminarComps = useCallback(
+    async (filas, msg) => {
+      const t = showToast(msg || "Quitando…", "loading", 0);
+      try {
+        const data = await call("eliminarComponentes", { fechaStr: ERef.current.fechaSeleccionada, filas });
+        procesarNuevoEstado(data, null, t);
+        return true;
+      } catch (e) {
+        removeToast(t);
+        showToast(e.message, "error", 5000);
+        return false;
+      }
+    },
+    [call, procesarNuevoEstado, removeToast, showToast]
+  );
+  const delProyectoDirecto = (nombre) =>
+    estructural("eliminarProyecto", { fechaStr: ERef.current.fechaSeleccionada, nombre }, { loadingMsg: "Quitando proyecto…", okMsg: "Proyecto quitado" });
+
   /* ───────────── Acciones optimistas ───────────── */
   const saveComp = useCallback(
     async (fila, draft) => {
@@ -782,6 +868,8 @@ export default function PasesRoute() {
       },
       // Drag & drop (Reorder.Group): recibe la lista ya reordenada.
       reorder: (next) => guardarOrdenLocal(next),
+      // Hoja de preparación: lista completa nueva (los uid nuevos se generan aquí).
+      set: (next) => guardarOrdenLocal(next.map((o) => (o.uid ? o : { ...o, uid: ++ordenUidSeq.current }))),
       updSom: (idx, val) => {
         const next = tempOrden.map((o, i) => (i === idx ? { ...o, som: val } : o));
         guardarOrdenLocal(next);
@@ -810,6 +898,9 @@ export default function PasesRoute() {
     },
     [call, removeToast, showToast]
   );
+
+  // Avisos (no bloquean) que se nombran en la revisión final del cierre.
+  const avisosCierre = useMemo(() => (E ? calcAvisos(modeloHoja(E, tempOrden)) : []), [E, tempOrden]);
 
   // ── Validador + avances de fase ──
   const validador = useMemo(() => (E ? computeValidador(E, cab, tempOrden) : null), [E, cab, tempOrden]);
@@ -884,7 +975,7 @@ export default function PasesRoute() {
   const proyectosLocked = fase !== "FASE_2_3_PREPARACION" && !edicionActiva;
 
   const ctx = {
-    E, fase, isCompletado, proyectosLocked, isAdmin,
+    E, fase, isCompletado, proyectosLocked, isAdmin, inflight,
     edicion: edicionActiva, setEdicion,
     cab, setCab, scheduleCabSave,
     tempOrden, ordenOps,
@@ -896,7 +987,8 @@ export default function PasesRoute() {
     registerDraft, unregisterDraft,
     actions: {
       comenzarPase, responderEncuesta, cancelarSubida, activarEmergencia,
-      addProyecto, delProyecto, addCompVacio, delComp, saveComp,
+      addProyecto, delProyecto, delProyectoDirecto, addCompVacio, delComp, saveComp,
+      editarLote, agregarComps, eliminarComps,
       updOkProy, programarSaveIdTraspaso, updCorreoAns, setCheckPre,
       chkOrden, updSomEjecucion, chkMerge, chkMergeUnidad, chkProbado,
       notificarModificacion,
@@ -915,15 +1007,28 @@ export default function PasesRoute() {
         <AmbientBackground />
         <div className="mx-auto w-full max-w-[1600px] px-5 pb-24 pt-cabecera sm:px-6">
           {/* Cabecera de página */}
-          <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <h2 className="flex items-center gap-3 font-display text-3xl font-bold tracking-tight text-sand sm:text-4xl">
-                <span className="grid h-11 w-11 place-items-center rounded-xl border" style={{ borderColor: rgba(accent, 0.35), background: rgba(accent, 0.12), color: accent }}>
-                  <IconoBBVA nombre="automate" size={26} />
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="flex items-center gap-3 font-display text-[26px] font-bold tracking-tight text-sand">
+                <span className="grid h-9 w-9 place-items-center rounded-lg border" style={{ borderColor: rgba(accent, 0.35), background: rgba(accent, 0.12), color: accent }}>
+                  <IconoBBVA nombre="automate" size={22} />
                 </span>
                 Pases Calendados
               </h2>
-              <p className="mt-1.5 text-sm text-sand/65">Releases por entorno · ciclo completo del pase a producción</p>
+              {boot === "ready" && E && (
+                <label className="relative">
+                  <span className="sr-only">Pase</span>
+                  <select
+                    className="appearance-none rounded-full border-[1.5px] border-white/40 bg-white/[0.05] py-1.5 pl-3.5 pr-8 text-[13px] font-bold text-sand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene [&>option]:bg-midnight"
+                    value={E.fechaSeleccionada || ""}
+                    onChange={(e) => cargarCompleto(e.target.value)}
+                    aria-label="Pase"
+                  >
+                    {(E.fechasDisponibles || []).map((f) => <option key={f} value={f}>Pase del {f}</option>)}
+                  </select>
+                  <span aria-hidden className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rotate-180 text-sand/70"><IconoBBVA nombre="fold" size={12} /></span>
+                </label>
+              )}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {links?.getUrl && links.getUrl("pasesSheet") && (
@@ -966,7 +1071,7 @@ export default function PasesRoute() {
 
           {boot === "ready" && E && (
             <>
-              <CabeceraControles ctx={ctx} onCambiarFecha={(f) => cargarCompleto(f)} />
+              {activePanel !== "PROYECTOS" && <CabeceraControles ctx={ctx} />}
 
               {/* Timeline de fases */}
               <Stepper tabs={TABS} enabled={enabledTabs} active={activePanel} onSelect={setActivePanel} fase={fase} />
@@ -1013,8 +1118,7 @@ export default function PasesRoute() {
                       </div>
                     </section>
                   )}
-                  {activePanel === "PROYECTOS" && <Proyectos />}
-                  {activePanel === "SECUENCIA" && <Secuencia />}
+                  {activePanel === "PROYECTOS" && <HojaPase />}
                   {activePanel === "PRE" && <PreChecks />}
                   {activePanel === "ORDEN" && <Ejecucion />}
                   {activePanel === "POST" && <Mergeos />}
@@ -1079,10 +1183,8 @@ export default function PasesRoute() {
               >
                 <header className="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-4">
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-lime/80">Revisión final</p>
-                    <h3 className="mt-1 font-display text-lg font-bold text-sand">
-                      Comprueba el resumen antes de cerrar la preparación
-                    </h3>
+                    <h3 className="font-display text-lg font-bold text-sand">Cerrar la preparación del pase del {E?.fechaSeleccionada}</h3>
+                    <p className="mt-1 text-[13px] font-bold text-sand/80">Los checks se cumplen. Revisa el orden y los paquetes antes de avisar al equipo.</p>
                   </div>
                   <button
                     type="button"
@@ -1094,6 +1196,19 @@ export default function PasesRoute() {
                   </button>
                 </header>
                 <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                  {avisosCierre.length > 0 && (
+                    <div className="mb-4 rounded-xl border-[1.5px] border-dashed border-white/40 px-4 py-3 text-[13px] text-sand">
+                      <p className="font-bold">{avisosCierre.length === 1 ? "1 aviso que no impide cerrar" : `${avisosCierre.length} avisos que no impiden cerrar`}</p>
+                      <ul className="mt-1.5 list-disc space-y-1 pl-5">
+                        {avisosCierre.map((a) => (
+                          <li key={a.id}>
+                            {a.id === "sinpaq" ? `${a.txt.replace(/sin paquete$/, "sin paquete no se implantarán")}: ` : `${a.txt}: `}
+                            <b>{a.lista.join(", ")}</b>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   <Resumen />
                 </div>
                 <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-white/10 px-5 py-4">
@@ -1101,7 +1216,7 @@ export default function PasesRoute() {
                     Volver a revisar
                   </button>
                   <button type="button" className={BTN.success} onClick={confirmarCierrePrep}>
-                    Todo correcto · Cerrar preparación y notificar
+                    {avisosCierre.length ? `Cerrar con ${avisosCierre.length === 1 ? "1 aviso" : avisosCierre.length + " avisos"} y avisar` : "Cerrar y avisar al equipo"}
                   </button>
                 </footer>
               </motion.div>
@@ -1167,7 +1282,7 @@ export default function PasesRoute() {
 }
 
 /* ── Cabecera del pase: fecha + CRQ + liderar/aprender + instalación técnica ── */
-function CabeceraControles({ ctx, onCambiarFecha }) {
+function CabeceraControles({ ctx }) {
   const { E, cab, setCab, scheduleCabSave, isCompletado } = ctx;
   const lockCls = isCompletado ? "pointer-events-none opacity-55 grayscale-[40%] select-none" : "";
 
@@ -1179,14 +1294,7 @@ function CabeceraControles({ ctx, onCambiarFecha }) {
 
   return (
     <section className={`${CARD_CLS} mb-5 p-4 sm:p-5`} aria-label="Cabecera del pase">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <Field label="Fecha del pase">
-          <select className={SELECT_CLS} value={E.fechaSeleccionada || ""} onChange={(e) => onCambiarFecha(e.target.value)}>
-            {(E.fechasDisponibles || []).map((f) => (
-              <option key={f} value={f}>{f}</option>
-            ))}
-          </select>
-        </Field>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className={lockCls} style={{ display: "contents" }}>
           <Field label="CRQ general" className={lockCls}>
             <div className="flex gap-1.5">
@@ -1251,7 +1359,7 @@ function Stepper({ tabs, enabled, active, onSelect, fase }) {
       : -1;
 
   return (
-    <nav aria-label="Fases del pase" className="mb-6 overflow-x-auto pb-1">
+    <nav aria-label="Fases del pase" className="mb-3 overflow-x-auto pb-1">
       <ol className="flex min-w-max items-stretch gap-2">
         {tabs.map((tab, i) => {
           const on = enabled.has(tab.id);
@@ -1264,7 +1372,7 @@ function Stepper({ tabs, enabled, active, onSelect, fase }) {
                 disabled={!on}
                 aria-current={isActive ? "step" : undefined}
                 onClick={() => onSelect(tab.id)}
-                className={`group flex items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene ${
+                className={`group flex items-center gap-2 rounded-full border px-3 py-1 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene ${
                   isActive
                     ? "border-lime/60 bg-lime/10"
                     : on
@@ -1273,7 +1381,7 @@ function Stepper({ tabs, enabled, active, onSelect, fase }) {
                 }`}
               >
                 <span
-                  className={`grid h-7 w-7 shrink-0 place-items-center rounded-full border text-xs font-bold tabular-nums ${
+                  className={`grid h-6 w-6 shrink-0 place-items-center rounded-full border text-[11px] font-bold tabular-nums ${
                     done
                       ? "border-lime/50 bg-lime/20 text-lime"
                       : isActive
@@ -1284,10 +1392,7 @@ function Stepper({ tabs, enabled, active, onSelect, fase }) {
                 >
                   {done ? <IconCheck size={13} /> : tab.n}
                 </span>
-                <span className="min-w-0">
-                  <span className={`block text-[13px] font-bold leading-tight ${isActive ? "text-lime" : "text-sand/85"}`}>{tab.t}</span>
-                  <span className="block text-[10px] leading-tight text-sand/50">{tab.s}</span>
-                </span>
+                <span className={`whitespace-nowrap text-[13px] font-bold ${isActive ? "text-sand" : "text-sand/80"}`} title={tab.s}>{tab.t}</span>
               </button>
               {i < tabs.length - 1 && <span aria-hidden className={`h-px w-4 shrink-0 sm:w-6 ${done ? "bg-lime/50" : "bg-white/15"}`} />}
             </li>

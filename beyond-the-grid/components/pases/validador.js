@@ -111,25 +111,26 @@ export function computeValidador(E, cab, tempOrden) {
   }
 
   const items = [];
-  const it = (cond, txt) => items.push({ ok: cond, txt });
-  it(crqOk, "CRQ general asignado en cabecera");
-  it(instOk, "Instalación técnica marcada en cabecera");
-  it(proyOk, "Al menos 1 proyecto añadido");
-  if (proyOk) it(compOk, "Todos los proyectos tienen componentes");
-  if (proyOk) it(pOk, "Todos los proyectos tienen el check 'OK Proyecto'");
+  const it = (cond, txt, id) => items.push({ ok: cond, txt, id });
+  it(crqOk, "CRQ general asignado en cabecera", "crq");
+  it(instOk, "Instalación técnica marcada en cabecera", "inst");
+  it(proyOk, "Al menos 1 proyecto añadido", "proy");
+  if (proyOk) it(compOk, "Todos los proyectos tienen componentes", "proycomp");
+  if (proyOk) it(pOk, "Todos los proyectos tienen el check 'OK Proyecto'", "okp");
   if (proyOk)
     it(
       idTraspasoOk,
       idTraspasoOk
         ? "Todos los proyectos tienen ID de Traspaso (YYYY-…)"
-        : "Falta ID de Traspaso en: " + proysSinIdT.join(", ")
+        : "Falta ID de Traspaso en: " + proysSinIdT.join(", "),
+      "tras"
     );
-  if (compOk) it(relOk, "Todas las historias de usuario tienen el 'tech-kytl' informado");
-  if (compOk) it(probOk, probMsg);
-  it(ruleRdrOk, rdrRuleMsg);
-  it(seqOk, msgSeq);
+  if (compOk) it(relOk, "Todas las historias de usuario tienen el 'tech-kytl' informado", "rel");
+  if (compOk) it(probOk, probMsg, "prob");
+  it(ruleRdrOk, rdrRuleMsg, "street");
+  it(seqOk, msgSeq, "orden");
 
   const todoCorrecto =
     crqOk && instOk && proyOk && compOk && pOk && relOk && probOk && idTraspasoOk && ruleRdrOk && seqOk;
-  return { items, todoCorrecto };
+  return { items, todoCorrecto, rdrRulesNoExentas, hasStreetref, proysSinIdT };
 }

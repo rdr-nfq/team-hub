@@ -163,6 +163,18 @@ function doPostPases(e) {
         invalidarDashboard(payload.fechaStr);
         resultado = obtenerDatosDashboard(ctx, payload.fechaStr);
         break;
+      case "agregarComponentes": {
+        // Alta de varios componentes con sus datos (pegado desde Excel, alta rápida, deshacer un borrado).
+        const filasNuevas = agregarComponentes(ctx, payload.fechaStr, payload.items || []);
+        invalidarDashboard(payload.fechaStr);
+        resultado = Object.assign({}, obtenerDatosDashboard(ctx, payload.fechaStr), { filasNuevas: filasNuevas });
+        break;
+      }
+      case "eliminarComponentes":
+        eliminarComponentes(ctx, payload.filas || []);
+        invalidarDashboard(payload.fechaStr);
+        resultado = obtenerDatosDashboard(ctx, payload.fechaStr);
+        break;
       case "eliminarComponente":
         eliminarComponente(ctx, payload.fila);
         invalidarDashboard(payload.fechaStr);
@@ -230,6 +242,7 @@ function doPostPases(e) {
       case "editarComponentesBatch":
         // Nuevo: payload = { changes: [ {fila, nom, tipo, subida, resp, cod, us, releaseCheck, com}, ... ] }
         resultado = editarComponentesBatch(ctx, payload.changes || []);
+        if (payload.fechaStr) invalidarDashboard(payload.fechaStr);
         break;
       case "actualizarMergeComponente":
         resultado = actualizarMergeComponente(ctx, payload.fila, payload.val);
@@ -695,8 +708,48 @@ function editarComponentesBatch(ctx, changes) {
       c.nom || "", c.tipo || "", c.subida || "", c.resp || "", c.cod || "", c.us || "", !!c.releaseCheck
     ]]);
     h.getRange(c.fila, 11).setValue(c.com || "");
+    // Opcionales (hoja de preparación): mover de proyecto y marcar probado en el mismo lote.
+    if (c.proy !== undefined && c.proy !== null && c.proy !== "") h.getRange(c.fila, 1).setValue(c.proy);
+    if (c.probado !== undefined && c.probado !== null) h.getRange(c.fila, 10).setValue(!!c.probado);
   });
   return { status: "OK", n: changes.length };
+}
+
+/* Alta de varios componentes con sus datos de una sola escritura.
+   items: [{ proy, nom, tipo, subida, resp, cod, us, releaseCheck, probado, com }]
+   Valida el schema de todos antes de escribir. Devuelve las filas nuevas. */
+function agregarComponentes(ctx, fechaStr, items) {
+  if (!items || !items.length) return [];
+  const schemas = obtenerSchemaPorSubida(ctx);
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (!it.proy) throw new Error("Falta el proyecto de «" + (it.nom || "componente") + "».");
+    const err = validarSchemaCod(schemas, it.subida, it.cod);
+    if (err) throw new Error((it.nom || "Componente") + ": " + err);
+  }
+  const sheet = ctx.sheet(CONSTANTES.HOJA_COMPONENTES);
+  asegurarColumnaFechaComponentes(sheet);
+  asegurarColumnaProbado(sheet);
+  const d = fechaStr ? parsearFechaEs(fechaStr) : "";
+  // Cols: nombreProy, nombre, tipo, subida, resp, codigo, us, release, mergeado, probado, comentarios, fechaPase
+  const rows = items.map(it => [
+    it.proy, it.nom || "", it.tipo || "", it.subida || "", it.resp || "", it.cod || "", it.us || "",
+    !!it.releaseCheck, false, !!it.probado, it.com || "", d,
+  ]);
+  const primera = sheet.getLastRow() + 1;
+  sheet.getRange(primera, 1, rows.length, 12).setValues(rows);
+  ctx.invalidar(CONSTANTES.HOJA_COMPONENTES);
+  return rows.map((_, i) => primera + i);
+}
+
+/* Borra varios componentes (de abajo arriba para no mover las filas pendientes). */
+function eliminarComponentes(ctx, filas) {
+  const h = ctx.sheet(CONSTANTES.HOJA_COMPONENTES);
+  filas.map(Number).filter(f => f >= 2).sort((a, b) => b - a)
+    .filter((f, i, arr) => i === 0 || arr[i - 1] !== f)
+    .forEach(f => h.deleteRow(f));
+  ctx.invalidar(CONSTANTES.HOJA_COMPONENTES);
+  return "OK";
 }
 
 function eliminarComponente(ctx, fila) {
