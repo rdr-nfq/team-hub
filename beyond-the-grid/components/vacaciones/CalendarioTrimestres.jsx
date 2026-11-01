@@ -14,6 +14,7 @@ import {
    con hasta 3 nombres por día. El 4º trimestre añade enero del año siguiente.
    Teclado: una parada de tabulador por trimestre y flechas entre días. */
 
+const VACIO = new Set();
 const ESP = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 
 function Histo({ q, anio, aus }) {
@@ -28,7 +29,7 @@ function Histo({ q, anio, aus }) {
   ));
 }
 
-function Tira({ anio, qs, onToggleQ, aus }) {
+function Tira({ anio, qs, onToggleQ, aus, infoQ }) {
   return (
     <div className="v-tira" role="group" aria-label="Trimestres a la vista">
       {[1, 2, 3, 4].map((q) => {
@@ -45,6 +46,7 @@ function Tira({ anio, qs, onToggleQ, aus }) {
               <span className="text-[11px]">{on ? "Ocultar" : "Ver"}</span>
             </span>
             <span className="v-histo" aria-hidden><Histo q={q} anio={anio} aus={aus} /></span>
+            {infoQ && <small className="truncate text-[12px] font-bold">{infoQ(q)}</small>}
             <small className="v-soft truncate text-[12px]">Pico: {picoTxt}</small>
           </button>
         );
@@ -88,7 +90,7 @@ function Filtro({ personas, filtro, setFiltro, cortos }) {
 }
 
 function Mes({ y, m, ctx, foco }) {
-  const { anio, hoy, aus, filtro, yo, cortos, festVista, festOtros, pend, pide, elegir, onDia } = ctx;
+  const { anio, hoy, aus, filtro, yo, cortos, festVista, festOtros, pend, pide, elegir, onDia, capa } = ctx;
   const off = (new Date(y, m, 1).getDay() + 6) % 7;
   const hoyF = deIso(hoy);
   const actual = y === hoyF.getFullYear() && m === hoyF.getMonth();
@@ -113,23 +115,30 @@ function Mes({ y, m, ctx, foco }) {
           const fest = festVista[s];
           const festOtro = !fest ? festOtros[s] : null;
           const todos = aus[s] || [];
-          const lista = filtro ? todos.filter((a) => a.nombre === filtro) : todos;
+          // Capa de Gestión: solicitudes encima de lo aprobado (la que se revisa, las simuladas y las pendientes).
+          const extra = capa ? capa(s) : null;
+          const lista = (filtro ? todos.filter((a) => a.nombre === filtro) : todos).filter((a) => !extra?.ocultar?.has(a.nombre));
+          const previos = extra ? (filtro ? extra.previos.filter((x) => x.nombre === filtro) : extra.previos) : [];
           const mio = todos.some((a) => a.nombre === yo);
           const eleg = elegir && s >= hoy;
           const ord = [...lista].sort((a, b) => (a.nombre === yo ? -1 : b.nombre === yo ? 1 : 0));
           const corto = (a) => (a.nombre === yo ? "Tú" : cortos[a.nombre] || a.nombre);
           const quien = ord.slice(0, 3).map((a) => (a.nombre === yo ? "tú" : corto(a))).join(", ") + (lista.length > 3 ? ` y ${lista.length - 3} más` : "");
-          const etiqueta = `${s === hoy ? "Hoy, " : ""}${fLarga(s, anio)}: ${lista.length ? `${lista.length} fuera (${quien})` : "nadie fuera"}${fest ? ` · festivo ${fest}` : ""}${pide.has(s) ? " · lo estás pidiendo" : ""}${pend.has(s) ? " · pendiente de aprobar" : ""}${eleg ? (elegir === "desde" ? " · pulsa para empezar aquí" : " · pulsa para terminar aquí") : ""}`;
-          const cls = ["v-dia", fest && "v-festivo", mio && "v-mio", pend.has(s) && "v-pend", pide.has(s) && "v-pide", s < hoy && "v-pasado", s === hoy && "v-hoy", eleg && "v-elegible"].filter(Boolean).join(" ");
+          const etiqueta = `${s === hoy ? "Hoy, " : ""}${fLarga(s, anio)}: ${lista.length ? `${lista.length} fuera (${quien})` : "nadie fuera"}${fest ? ` · festivo ${fest}` : ""}${pide.has(s) ? " · lo estás pidiendo" : ""}${pend.has(s) ? " · pendiente de aprobar" : ""}${extra?.aria || ""}${eleg ? (elegir === "desde" ? " · pulsa para empezar aquí" : " · pulsa para terminar aquí") : ""}`;
+          const cls = ["v-dia", fest && "v-festivo", mio && !capa && "v-mio", pend.has(s) && "v-pend", pide.has(s) && "v-pide", s < hoy && "v-pasado", s === hoy && "v-hoy", eleg && "v-elegible", ...(extra?.cls || [])].filter(Boolean).join(" ");
+          const chips = [
+            ...previos.map((x) => ({ key: `p-${x.nombre}`, texto: x.texto, cls: x.cls, style: undefined })),
+            ...ord.map((a) => ({ key: a.nombre, texto: corto(a), cls: "", style: { background: a.nombre === yo && !capa ? COLOR_YO : colorMotivo(a.motivo) } })),
+          ];
           return (
             <button key={s} type="button" className={cls} data-dia={s} tabIndex={s === foco ? 0 : -1} aria-label={etiqueta} onClick={() => onDia(s)}>
               <span className="v-num">{d}{s === hoy && <span className="v-hoy-txt"> Hoy</span>}</span>
               {(fest || festOtro) && <span className="v-fest">{fest || festOtro}</span>}
-              {ord.slice(0, 3).map((a, i) => (
-                <span key={a.nombre} className={`v-nom ${i === 2 ? "v-tercero" : ""}`} style={{ background: a.nombre === yo ? COLOR_YO : colorMotivo(a.motivo) }}>{corto(a)}</span>
+              {chips.slice(0, 3).map((x, i) => (
+                <span key={x.key} className={`v-nom ${x.cls} ${i === 2 ? "v-tercero" : ""}`} style={x.style}>{x.texto}</span>
               ))}
-              {lista.length > 3 && <span className="v-mas v-mas3">+{lista.length - 3} más</span>}
-              {lista.length > 2 && <span className="v-mas v-mas2">+{lista.length - 2}</span>}
+              {chips.length > 3 && <span className="v-mas v-mas3">+{chips.length - 3} más</span>}
+              {chips.length > 2 && <span className="v-mas v-mas2">+{chips.length - 2}</span>}
             </button>
           );
         })}
@@ -140,9 +149,10 @@ function Mes({ y, m, ctx, foco }) {
 
 export default function CalendarioTrimestres({
   anio, hoy, qs, onToggleQ, aus, personas, filtro, setFiltro, yo, cortos,
-  festVista, festOtros, grupoVista, pend, pide, elegir, onDia, focoDia, sinEnero,
+  festVista, festOtros, grupoVista, pend = VACIO, pide = VACIO, elegir = false, onDia, focoDia, sinEnero,
+  capa, infoQ, leyenda,
 }) {
-  const ctx = { anio, hoy, aus, filtro, yo, cortos, festVista, festOtros, pend, pide, elegir, onDia };
+  const ctx = { anio, hoy, aus, filtro, yo, cortos, festVista, festOtros, pend, pide, elegir, onDia, capa };
   const qHoy = deIso(hoy).getFullYear() === anio ? Math.floor(deIso(hoy).getMonth() / 3) + 1 : 1;
 
   // Flechas: ±1 día laborable a izquierda/derecha, ±1 semana arriba/abajo.
@@ -170,15 +180,15 @@ export default function CalendarioTrimestres({
 
   return (
     <section className="v-cal" id="calendario" tabIndex={-1} aria-label="Calendario del equipo" onKeyDown={teclas}>
-      <Tira anio={anio} qs={qs} onToggleQ={onToggleQ} aus={aus} />
+      <Tira anio={anio} qs={qs} onToggleQ={onToggleQ} aus={aus} infoQ={infoQ} />
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="v-leyenda">
+        {leyenda || <div className="v-leyenda">
           {LEYENDA.map((k) => <span key={k}><i className="v-sw" style={{ background: colorMotivo(k) }} />{textoMotivo(k)}</span>)}
           <span><i className="v-sw" style={{ background: COLOR_YO }} />Tú</span>
           <span><i className="v-sw" style={{ border: "2px dashed var(--v-ink)" }} />Pendiente</span>
           <span><i className="v-sw" style={{ boxShadow: "inset 0 0 0 2px var(--v-ink)" }} />Lo que estás pidiendo</span>
           {grupoVista && <span><i className="v-sw" style={{ background: "var(--v-rayas)" }} />Festivo de {grupoVista}</span>}
-        </div>
+        </div>}
         <Filtro personas={personas} filtro={filtro} setFiltro={setFiltro} cortos={cortos} />
       </div>
       {trimestres.map(({ q, ms, foco }) => (

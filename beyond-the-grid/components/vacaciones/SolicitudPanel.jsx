@@ -2,17 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { PALETTE } from "@/lib/palette";
-import { FIELD, TEXT } from "../coordinacion/ui";
-import { ESTADO_SOL, fechaCortaEs, festivosDeGrupo, laborables, isoDe, bloquesDe } from "./datos";
+import { FIELD } from "../coordinacion/ui";
+import { fechaCortaEs, festivosDeGrupo, laborables, isoDe, bloquesDe } from "./datos";
 
-/* Piezas de solicitudes compartidas: la etiqueta de estado (Gestión), el
-   formulario para cambiar o cancelar días aprobados y los bloques aprobados
-   por delante (vista de usuario, PanelMisVacaciones). */
-
-export function EstadoSolBadge({ estado }) {
-  const e = ESTADO_SOL[estado] || { label: estado, accent: "sand" };
-  return <span className={`inline-block whitespace-nowrap rounded-full border border-white/15 bg-white/[0.06] px-2 py-0.5 text-[10.5px] font-bold ${TEXT[e.accent] || "text-sand"}`}>{e.label}</span>;
-}
+/* Piezas de la vista de usuario (PanelMisVacaciones): el formulario para
+   cambiar o cancelar días aprobados y los bloques aprobados por delante. */
 
 /* ── Cambiar o cancelar días aprobados (con aprobación de coordinación) ── */
 export function CambioForm({ b, modo, datos, post, onHecho, onCerrar }) {

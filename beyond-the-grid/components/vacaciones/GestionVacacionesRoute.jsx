@@ -1,635 +1,511 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { PALETTE } from "@/lib/palette";
-import { useTheme } from "@/lib/theme";
-import { GLASS, FIELD, TEXT, Kpi, Chip, EmptyCard } from "../coordinacion/ui";
-import { IconAlert, IconPlus, IconX, IconReload } from "../coordinacion/icons";
-import { normalizarColores, dateKey, motivoDe, formatRango } from "./constants";
-import EquipoPanel from "./EquipoPanel";
-import Calendario, { MARCA_COLOR } from "./Calendario";
-import DaySheet from "./DaySheet";
-import AhoraPanel from "./AhoraPanel";
-import CampanasAdmin from "./CampanasAdmin";
-import ResultadoSincronizacion from "./ResultadoSincronizacion";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import IconoBBVA from "../iconosBBVA";
 import { VacacionesSkeleton, ErrorCard } from "./VacacionesRoute";
-import { EstadoSolBadge } from "./SolicitudPanel";
-import { useVacaciones, useV2Configurado, fechaCortaEs, festivosDeGrupo, laborables, conEneroSiguiente, CLAVE_V2, CLASE_SOL } from "./datos";
+import { useVacaciones, useV2Configurado, laborables, conEneroSiguiente, isoDe, deIso, CLAVE_V2 } from "./datos";
+import CalendarioTrimestres from "./CalendarioTrimestres";
+import CampanasAdmin from "./CampanasAdmin";
+import { Personas, SedesFestivos, Anios } from "./GestionAjustes";
+import { MCOR, LEYENDA, colorMotivo, textoMotivo, fCorta, fLarga, masDias, esFinde, qDe, nombresCortos, vuelve, mesesDeQ } from "./vistaUsuario";
 
-const rangoTxt = (a, b) => `${fechaCortaEs(a)}${b !== a ? ` → ${fechaCortaEs(b)}` : ""}`;
+/* /vacaciones-gestion (COORDINACIÓN, backend v2), con el lenguaje de /vacaciones:
+   · Solicitudes: la cola de pendientes arriba; a la izquierda, fija, la
+     solicitud que revisas (saldo, quién más falta, cuántos quedan disponibles
+     si apruebas solo esta o también las que coinciden) con Aprobar/Rechazar
+     (A/R, J/K para moverse, Z para deshacer); a la derecha, el calendario por
+     trimestres con nombres, la solicitud resaltada, las pendientes con borde
+     discontinuo y las que marques para ver cómo quedaría todo junto.
+     Cada decisión espera 8 s antes de mandarse (y su correo): se puede
+     deshacer una a una. Si cierras la página, sale igualmente.
+   · Personas: saldos, sede y días del año, con «Deshacer».
+   · Configuración: formularios especiales (con quién falta por responder),
+     sedes y festivos, y años (crear el siguiente; rehacer, aparte). */
 
-/** Días que una solicitud marca en el calendario: los nuevos (solicitud/cambio)
- *  o los que se liberarían (cancelación). */
-function diasSolicitud(s, d) {
-  if (s.clase === "CANCELACION") {
-    return Object.keys(d.ausenciasPorDia).filter((iso) => iso >= s.desde && iso <= s.hasta &&
-      (d.ausenciasPorDia[iso] || []).some((a) => a.nombre === s.persona && a.motivo === s.tipo)).sort();
-  }
-  const grupo = (d.saldos || []).find((x) => x.nombre === s.persona)?.grupo || d.empleadosMap[s.persona]?.grupo;
-  return laborables(s.desde, s.hasta, festivosDeGrupo(d.festivosTodos, grupo));
-}
+const ESPERA = 8000;
+const UMBRAL = 10;
+const TABS = [["solicitudes", "Solicitudes"], ["personas", "Personas"], ["configuracion", "Configuración"]];
+const plural = (n, a, b) => `${n} ${n === 1 ? a : b}`;
+const rango = (a, b, anio) => {
+  if (a === b) return fCorta(a, anio);
+  const x = deIso(a), y = deIso(b);
+  return x.getMonth() === y.getMonth() && x.getFullYear() === y.getFullYear() ? `${x.getDate()}–${y.getDate()} ${MCOR[x.getMonth()]}${x.getFullYear() !== anio ? ` ${x.getFullYear()}` : ""}` : `${fCorta(a, anio)} – ${fCorta(b, anio)}`;
+};
+const fCreada = (c) => { const s = String(c || "").slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(s) ? fCorta(s) : ""; };
 
-/* /vacaciones-gestion (COORDINACIÓN, backend v2):
-   1 Resumen   · quién está fuera hoy y los próximos días + solicitudes pendientes
-   2 Calendario· calendario con filtros; al elegir una solicitud se marcan sus
-                 días y se aprueba o rechaza ahí mismo
-   3 Personas  · días que le quedan a cada uno (de más a menos)
-   4 Festivos  · grupos de festivos (Madrid, Jaén, México DC…) y sus días */
-
-const TABS = [
-  { id: "resumen", label: "Resumen" },
-  { id: "calendario", label: "Calendario" },
-  { id: "personas", label: "Personas" },
-  { id: "festivos", label: "Festivos" },
-  { id: "formularios", label: "Formularios" },
-];
-
-const BTN = "inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene";
-
-function TipoChip({ tipo }) {
-  const m = motivoDe(tipo);
-  return <span className="rounded-full px-1.5 py-px text-[10px] font-bold" style={{ background: m.bg, color: m.text }} title={m.texto}>{tipo}</span>;
-}
-
-function SolicitudItem({ s, activa, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`w-full rounded-xl border p-2.5 text-left text-[12.5px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene ${activa ? "border-purple/70 bg-purple/15" : "border-white/10 bg-midnight/30 hover:border-white/25"}`}
-    >
-      <div className="flex flex-wrap items-center gap-1.5">
-        <TipoChip tipo={s.tipo} />
-        <span className="font-bold text-sand">{s.persona}</span>
-        <span className="ml-auto text-sand/50">{s.dias} d</span>
-      </div>
-      {CLASE_SOL[s.clase]?.corto && <p className="mt-0.5 text-[11px] font-bold text-canary">{CLASE_SOL[s.clase].corto}</p>}
-      <p className="mt-0.5 text-sand/65">
-        {s.clase === "MODIFICACION" && <span className="text-sand/45 line-through">{formatRango(s.origDesde, s.origHasta)}</span>}
-        {s.clase === "MODIFICACION" && " → "}
-        {s.clase === "CANCELACION" ? "liberar " : ""}{formatRango(s.desde, s.hasta)}
-      </p>
-      {s.comentario && <p className="mt-0.5 truncate text-sand/45">💬 {s.comentario}</p>}
-    </button>
-  );
-}
-
-/* Detalle de la solicitud seleccionada: saldo, coincidencias y decisión. */
-function DetalleSolicitud({ s, d, post, onResuelta }) {
-  const [motivo, setMotivo] = useState("");
-  const [forzar, setForzar] = useState(false);
-  const [estado, setEstado] = useState({ fase: "idle" });
-  useEffect(() => { setMotivo(""); setForzar(false); setEstado({ fase: "idle" }); }, [s.id]);
-
-  // Saldo del AÑO de la solicitud (una de enero siguiente usa el de ese año).
+/* ── Panel de la solicitud que se revisa ── */
+function Decision({ s, idx, total, ctx }) {
+  const { d, corto, diasDe, otrasDe, activos, fuera, msg, setMsg, rechazoSinMotivo, forzar, setForzar, decidir, mover, errorSel } = ctx;
+  if (!s) return null;
+  const anio = d.year;
+  const cancela = s.clase === "CANCELACION";
+  const cambio = s.clase === "MODIFICACION";
+  const dias = diasDe(s);
   const anioSol = Number(s.desde.slice(0, 4));
   const saldos = anioSol === d.year ? d.saldos : anioSol === d.anioSiguiente ? d.saldosSiguiente : null;
   const saldo = (saldos || []).find((x) => x.nombre === s.persona);
-  const grupo = saldo?.grupo || d.empleadosMap[s.persona]?.grupo;
-  const cancela = s.clase === "CANCELACION";
-  const dias = diasSolicitud(s, d);
-  // En un cambio, sus días originales no cuentan como "ya registrados".
-  const originales = s.clase === "MODIFICACION"
-    ? Object.keys(d.ausenciasPorDia).filter((iso) => iso >= s.origDesde && iso <= s.origHasta && (d.ausenciasPorDia[iso] || []).some((a) => a.nombre === s.persona && a.motivo === s.tipoOrig))
-    : [];
-  // Quién más falta esos días (aprobado).
-  const coinciden = {};
-  dias.forEach((iso) => (d.ausenciasPorDia[iso] || []).forEach((a) => {
-    if (a.nombre !== s.persona) (coinciden[a.nombre] = coinciden[a.nombre] || []).push(iso);
-  }));
+  const grupo = saldo?.grupo || d.empleadosMap?.[s.persona]?.grupo;
+  const originales = cambio ? Object.keys(d.ausenciasPorDia).filter((iso) => iso >= s.origDesde && iso <= s.origHasta && (d.ausenciasPorDia[iso] || []).some((a) => a.nombre === s.persona && a.motivo === s.tipoOrig)) : [];
   const propios = cancela ? [] : dias.filter((iso) => !originales.includes(iso) && (d.ausenciasPorDia[iso] || []).some((a) => a.nombre === s.persona));
-  const otrosPend = (d.pendientes || []).filter((x) => x.id !== s.id && x.persona !== s.persona && !(x.hasta < s.desde || x.desde > s.hasta));
-
-  const decidir = async (decision) => {
-    if (decision === "rechazar" && !motivo.trim() && !confirm("¿Rechazar sin indicar motivo?")) return;
-    setEstado({ fase: "enviando", decision });
-    try {
-      const r = await post("resolver", { id: s.id, decision, motivo: motivo.trim(), forzar });
-      setEstado({ fase: "ok", r });
-      onResuelta(r);
-    } catch (e) {
-      setEstado({ fase: "error", error: String(e.message || e) });
-    }
-  };
-
+  const coinc = {};
+  dias.forEach((iso) => (d.ausenciasPorDia[iso] || []).forEach((a) => { if (a.nombre !== s.persona) coinc[a.nombre] = (coinc[a.nombre] || 0) + 1; }));
+  const otras = otrasDe(s);
+  // Disponibles esos días: si apruebas solo esta, y si apruebas también las que coinciden.
+  const delta = (iso) => (cancela ? -1 : originales.includes(iso) ? 0 : 1);
+  const solo = dias.map((iso) => [iso, activos - fuera(iso) - delta(iso)]);
+  const todas = dias.map((iso) => [iso, activos - fuera(iso) - delta(iso) - otras.filter((x) => diasDe(x).includes(iso)).length]);
+  const peor = (l) => (l.length ? l.reduce((m, x) => (x[1] < m[1] ? x : m)) : null);
+  const p1 = peor(solo), p2 = peor(todas);
+  const num = (x) => (x[1] < UMBRAL ? <span className="v-neg">{x[1]}</span> : <b>{x[1]}</b>);
+  const conflicto = propios.length > 0 || /SOLAPAMIENTO/.test(errorSel || "");
   return (
-    <section className={`${GLASS} space-y-3 p-4`} style={{ borderColor: "rgba(150,148,255,0.55)" }} aria-label="Solicitud seleccionada">
-      <div className="flex flex-wrap items-center gap-2">
-        <TipoChip tipo={s.tipo} />
-        <h3 className="font-display text-lg font-bold text-sand">{s.persona}</h3>
-        <EstadoSolBadge estado={s.estado} />
+    <section className="v-mis" aria-labelledby="vg-dec-t">
+      <div className="flex items-center justify-between gap-2">
+        <span className="v-nota">Solicitud <b>{idx + 1} de {total}</b></span>
+        <span className="flex gap-0.5">
+          <button type="button" className="v-btn v-btn-t" aria-label="Solicitud anterior (K)" disabled={idx <= 0} onClick={() => mover(-1)}><IconoBBVA nombre="back" size={18} /></button>
+          <button type="button" className="v-btn v-btn-t" aria-label="Solicitud siguiente (J)" disabled={idx >= total - 1} onClick={() => mover(1)}><IconoBBVA nombre="back" size={18} className="rotate-180" /></button>
+        </span>
       </div>
-      {s.clase !== "NUEVA" && <p className="text-[12px] font-bold uppercase tracking-wide text-canary">{CLASE_SOL[s.clase].corto}</p>}
-      {cancela ? (
-        <p className="text-[13px] text-sand/75">
-          Quiere <b className="text-sand">cancelar</b> {rangoTxt(s.desde, s.hasta)}: se liberan <b className="text-sand">{dias.length}</b> días de {motivoDe(s.tipo).texto.toLowerCase()}.
+      <div>
+        <h2 id="vg-dec-t" tabIndex={-1} className="text-[21px] font-bold">{corto(s.persona)}</h2>
+        <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[13px]">
+          <span className="v-tipo" style={{ background: colorMotivo(s.tipo) }}>{textoMotivo(s.tipo)}</span>
+          {cancela && <span className="v-etq">Cancelación</span>}{cambio && <span className="v-etq">Cambio</span>}
+          {s.campana && <span className="v-etq">{(d.campanas || []).find((c) => c.id === s.campana)?.nombre || "Formulario especial"}</span>}
+          {fCreada(s.creada) && <span className="v-soft">pedida el {fCreada(s.creada)}</span>}
         </p>
-      ) : s.clase === "MODIFICACION" ? (
-        <div className="text-[13px] text-sand/75">
-          <p>Antes: <TipoChip tipo={s.tipoOrig} /> {rangoTxt(s.origDesde, s.origHasta)} · {originales.length || s.diasOrig} días</p>
-          <p className="mt-0.5">Ahora: <TipoChip tipo={s.tipo} /> {rangoTxt(s.desde, s.hasta)} · <b className="text-sand">{dias.length}</b> días laborables{grupo ? ` (festivos de ${grupo})` : ""}</p>
-        </div>
-      ) : (
-        <p className="text-[13px] text-sand/75">
-          {rangoTxt(s.desde, s.hasta)} · <b className="text-sand">{dias.length}</b> días laborables{grupo ? ` (festivos de ${grupo})` : ""}
-        </p>
-      )}
-      {s.comentario && <p className="text-[13px] text-sand/70">💬 {s.comentario}</p>}
-      {saldo && s.deltaVA !== 0 && (() => {
-        const otras = (saldo.pendientesVA || 0) - (s.deltaVA || 0); // efecto del resto de pendientes
-        const tras = saldo.quedan - (s.deltaVA || 0);
-        return (
-          <p className="text-[13px] text-sand/75">
-            Le quedan <b className="text-sand">{saldo.quedan}</b> días → tras esta: <b className={tras < 0 ? "text-mandarin" : TEXT.lime}>{tras}</b>
-            {otras !== 0 && <> · con sus otras pendientes: <b className={tras - otras < 0 ? "text-mandarin" : "text-sand"}>{tras - otras}</b></>}
-          </p>
-        );
-      })()}
-      {propios.length > 0 && (
-        <p className="rounded-lg border border-mandarin/50 bg-mandarin/10 px-3 py-2 text-xs font-bold text-mandarin">
-          Ya tiene días registrados: {propios.map(fechaCortaEs).join(", ")}
-        </p>
-      )}
-      <div className="text-[12.5px] text-sand/70">
-        <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-sand/50">{cancela ? "Esos días faltan además" : "Esos días también faltan"}</p>
-        {Object.keys(coinciden).length ? (
-          <ul className="space-y-0.5">
-            {Object.entries(coinciden).map(([n, ds]) => <li key={n}><b className="text-sand">{n}</b> · {ds.length} {ds.length === 1 ? "día" : "días"}</li>)}
-          </ul>
-        ) : <p className="text-sand/50">Nadie más.</p>}
-        {otrosPend.length > 0 && <p className="mt-1 text-canary">Otras solicitudes pendientes que coinciden: {otrosPend.map((x) => x.persona).join(", ")}</p>}
       </div>
-      <label className="block">
-        <span className="text-[10px] font-bold uppercase tracking-wide text-sand/50">Motivo / comentario (va en el correo)</span>
-        <textarea value={motivo} onChange={(e) => setMotivo(e.target.value)} rows={2} className={`${FIELD} block w-full resize-y`} />
+      <p className="m-0 text-[14px]">
+        {cancela ? <>Quiere <b>cancelar</b> {rango(s.desde, s.hasta, anio)}: se le devuelven <b>{plural(dias.length, "día", "días")}</b>.</>
+          : cambio ? <>Quiere <b>cambiar</b> {rango(s.origDesde, s.origHasta, anio)} por <b>{rango(s.desde, s.hasta, anio)}</b> · {plural(dias.length, "día laborable", "días laborables")}.</>
+          : <>{rango(s.desde, s.hasta, anio)} · <b>{plural(dias.length, "día laborable", "días laborables")}</b>{grupo ? ` (festivos de ${grupo})` : ""}.</>}
+      </p>
+      {saldo && s.deltaVA !== 0 ? (
+        <p className="vg-dato">Le quedan <b>{saldo.quedan}</b> días → tras esta, {saldo.quedan - (s.deltaVA || 0) < 0 ? <span className="v-neg">{saldo.quedan - (s.deltaVA || 0)}</span> : <b>{saldo.quedan - (s.deltaVA || 0)}</b>}
+          {(saldo.pendientesVA || 0) !== (s.deltaVA || 0) && <> · con sus otras pendientes, {saldo.quedanTrasPendientes}</>}</p>
+      ) : s.tipo !== "VA" ? <p className="vg-dato">{textoMotivo(s.tipo)}: no descuenta de sus vacaciones.</p> : null}
+      {propios.length > 0 && <p className="v-aviso"><b>Ya tiene días apuntados</b> en ese rango: {propios.map((x) => fCorta(x, anio)).join(", ")}.</p>}
+      {errorSel && <p className="v-aviso" role="alert">{errorSel.replace(/^SOLAPAMIENTO:\s*/, "")}</p>}
+      {conflicto && (
+        <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={forzar} onChange={(e) => setForzar(e.target.checked)} className="h-4 w-4" />Aprobar igualmente (se sobrescriben)</label>
+      )}
+      <div className="flex flex-col gap-1 text-[13px]">
+        <p className="vg-lbl">{cancela ? "Esos días faltan además" : "Esos días también faltan"}</p>
+        <p className="m-0">{Object.keys(coinc).length
+          ? Object.entries(coinc).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([n, k]) => `${corto(n)} (${plural(k, "día", "días")})`).join(", ") + (Object.keys(coinc).length > 6 ? ` y ${Object.keys(coinc).length - 6} más` : "")
+          : "Nadie más."}</p>
+        <p className="m-0">Pendientes que coinciden: {otras.length ? otras.map((x, i) => (
+          <span key={x.id}>{i > 0 && ", "}<button type="button" className="font-bold underline" onClick={() => ctx.elegir(x.id)}>{corto(x.persona)}</button></span>
+        )) : "ninguna."}</p>
+        {!cancela && p1 && (
+          <p className="m-0">Disponibles (de {activos}): si apruebas solo esta, mínimo {num(p1)} el {fCorta(p1[0], anio)}
+            {otras.length > 0 && p2 && <>; si apruebas también {otras.length === 1 ? "la que coincide" : `las ${otras.length} que coinciden`}, mínimo {num(p2)} el {fCorta(p2[0], anio)}</>}.</p>
+        )}
+      </div>
+      {s.comentario && <p className="m-0 text-[13px]">«{s.comentario}»</p>}
+      <label className="v-campo"><span>Mensaje para {corto(s.persona)} (va en el correo, opcional)</span>
+        <textarea className="v-inp resize-y" rows={2} value={msg} placeholder="Por ejemplo: disfruta" onChange={(e) => setMsg(e.target.value)} />
       </label>
-      {(propios.length > 0 || /SOLAPAMIENTO/.test(estado.error || "")) && (
-        <label className="flex items-center gap-2 text-[12px] text-sand/75">
-          <input type="checkbox" checked={forzar} onChange={(e) => setForzar(e.target.checked)} className="h-4 w-4 accent-[#FFB56B]" />
-          Aprobar igualmente (sobrescribe los días ya registrados)
-        </label>
-      )}
+      {rechazoSinMotivo && <p className="v-aviso" role="alert">¿Rechazar sin explicar el motivo? Escríbelo arriba o pulsa <b>Rechazar</b> otra vez.</p>}
       <div className="flex flex-wrap gap-2">
-        <button type="button" disabled={estado.fase === "enviando"} onClick={() => decidir("aprobar")} className={`${BTN} text-[#001391]`} style={{ background: PALETTE.lime }}>
-          {estado.fase === "enviando" && estado.decision === "aprobar" ? "Aprobando…" : "✓ Aprobar"}
+        <button type="button" className="v-btn v-btn-ok" data-accion="aprobar" disabled={propios.length > 0 && !forzar} onClick={() => decidir(true)}>
+          <IconoBBVA nombre="checkmark" size={18} />Aprobar <span className="vg-kbd" aria-hidden>A</span>
         </button>
-        <button type="button" disabled={estado.fase === "enviando"} onClick={() => decidir("rechazar")} className={`${BTN} border border-white/20 bg-white/10 text-sand hover:bg-white/15`}>
-          {estado.fase === "enviando" && estado.decision === "rechazar" ? "Rechazando…" : "Rechazar"}
-        </button>
+        <button type="button" className="v-btn v-btn-l" onClick={() => decidir(false)}>Rechazar <span className="vg-kbd" aria-hidden>R</span></button>
       </div>
-      {estado.fase === "error" && <p className="rounded-lg border border-mandarin/50 bg-mandarin/10 px-3 py-2 text-xs font-bold text-mandarin">{estado.error}</p>}
+      <p className="v-nota">Al decidir pasa sola a la siguiente. Cada decisión (y su correo) sale a los 8 s: hasta entonces puedes deshacerla. <span className="vg-kbd">J</span> <span className="vg-kbd">K</span> siguiente y anterior · <span className="vg-kbd">Z</span> deshacer.</p>
     </section>
   );
 }
 
-/* «Días del año» editable: se guarda al salir del campo o con Intro. */
-function DiasInput({ valor, deshabilitado, onGuardar }) {
-  const [v, setV] = useState(String(valor ?? ""));
-  useEffect(() => { setV(String(valor ?? "")); }, [valor]);
-  const guardar = () => {
-    const n = Number(String(v).replace(",", "."));
-    if (String(v).trim() === "" || !Number.isFinite(n) || n === Number(valor)) { setV(String(valor ?? "")); return; }
-    onGuardar(n);
+/* ── Detalle de un día ── */
+function HojaDia({ s, ctx, onCerrar }) {
+  const { d, corto, activos, pendDia, festPorGrupo, elegir } = ctx;
+  const ref = useRef(null);
+  useEffect(() => { const prev = document.activeElement; ref.current?.querySelector("button")?.focus(); return () => prev?.focus?.(); }, []);
+  const lista = d.ausenciasPorDia[s] || [];
+  const pend = pendDia(s);
+  const disp = activos - lista.length - pend.length;
+  const teclas = (e) => {
+    if (e.key === "Escape") { e.stopPropagation(); onCerrar(); }
+    if (e.key === "Tab") { const f = [...ref.current.querySelectorAll("button")]; const i = f.indexOf(document.activeElement); e.preventDefault(); f[(i + (e.shiftKey ? -1 : 1) + f.length) % f.length]?.focus(); }
   };
+  const t = fLarga(s, d.year);
   return (
-    <input
-      type="number" min={0} max={99} step={0.5} value={v} disabled={deshabilitado}
-      onChange={(e) => setV(e.target.value)} onBlur={guardar}
-      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") { setV(String(valor ?? "")); e.currentTarget.blur(); } }}
-      title="Días de vacaciones de este año (por defecto 27). Se guarda al salir del campo."
-      className={`${FIELD} !py-1 w-16 text-right text-xs tabular-nums`}
-    />
-  );
-}
-
-/* Las altas se hacen en Gestión de equipo (al guardar, sincroniza). Aquí
-   solo se puede repetir esa sincronización. */
-function SincronizarEquipo({ post, onCambio }) {
-  const [estado, setEstado] = useState({ fase: "listo" });
-  const sincronizar = async () => {
-    setEstado({ fase: "enviando" });
-    try {
-      const r = await post("sincronizarEquipo", {});
-      setEstado({ fase: "ok", r });
-      if (r.altas.length || r.vinculados.length) onCambio();
-    } catch (e) {
-      setEstado({ fase: "error", error: String(e.message || e) });
-    }
-  };
-  return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-3">
-        <p className="text-[12.5px] text-sand/60">
-          Las altas se hacen en <a href="/team-hub/equipo-gestion/" className="font-bold text-sand/85 underline decoration-dotted underline-offset-2 hover:text-serene">Gestión de equipo</a>:
-          al guardar allí, quien falte aquí se añade solo (grupo Madrid y los días que quedan del año; ajústalos en esta tabla).
-        </p>
-        <button type="button" disabled={estado.fase === "enviando"} onClick={sincronizar} className={`${BTN} border border-white/15 text-sand/85 hover:border-white/30`}>
-          <IconReload size={13} /> {estado.fase === "enviando" ? "Sincronizando…" : "Sincronizar con Gestión de equipo"}
-        </button>
-      </div>
-      {estado.fase === "ok" && <ResultadoSincronizacion r={estado.r} />}
-      {estado.fase === "error" && <p className="rounded-lg border border-mandarin/50 bg-mandarin/10 px-3 py-2 text-xs font-bold text-mandarin">{estado.error}</p>}
-    </div>
-  );
-}
-
-/* ── Pestaña Personas ── */
-function Personas({ d, post, onCambio }) {
-  const [guardando, setGuardando] = useState("");
-  const [error, setError] = useState("");
-  const filas = [...(d.saldos || [])].sort((a, b) => (a.activo !== b.activo ? (a.activo ? -1 : 1) : b.quedan - a.quedan || a.nombre.localeCompare(b.nombre)));
-  const cambiarGrupo = async (persona, grupo) => {
-    setGuardando(persona); setError("");
-    try { await post("asignarGrupo", { anio: d.year, persona, grupo }); onCambio(); } catch (e) { setError(String(e.message || e)); }
-    setGuardando("");
-  };
-  const cambiarDias = async (persona, dias) => {
-    setGuardando(persona); setError("");
-    try { await post("ajustarDias", { anio: d.year, persona, dias }); onCambio(); } catch (e) { setError(String(e.message || e)); }
-    setGuardando("");
-  };
-  const enDirecto = (d.anios || []).includes(d.year - 1);
-  return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[12.5px] text-sand/60">
-          Solo descuenta VA. «Quedarían» descuenta además lo pendiente de aprobar. «Del año» se puede cambiar aquí (por defecto 27).
-          {enDirecto && <> «Año ant.» va <b className="text-sand/85">en directo</b>: es lo que le queda a cada uno en {d.year - 1} y baja a medida que coge días allí.</>}
-          {" "}Los días sueltos se editan en el Excel (pestaña Vacas_{d.year}).
-        </p>
-      </div>
-      <SincronizarEquipo post={post} onCambio={onCambio} />
-      {error && <p className="rounded-lg border border-mandarin/50 bg-mandarin/10 px-3 py-2 text-xs font-bold text-mandarin">{error}</p>}
-      <div className={`${GLASS} overflow-x-auto`}>
-        <table className="w-full min-w-[720px] text-[13px]">
-          <thead>
-            <tr className="border-b border-white/10 text-left text-[10px] font-bold uppercase tracking-wide text-sand/50">
-              <th className="px-3 py-2.5">Persona</th><th className="px-2 py-2.5">Grupo festivos</th>
-              <th className="px-2 py-2.5 text-right">Año ant.</th><th className="px-2 py-2.5 text-right">Del año</th><th className="px-2 py-2.5 text-right">Total</th>
-              <th className="px-2 py-2.5 text-right">VA</th><th className="px-2 py-2.5 text-right">Quedan</th><th className="px-2 py-2.5 text-right">Pend.</th><th className="px-3 py-2.5 text-right">Quedarían</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filas.map((p) => (
-              <tr key={p.nombre} className={`border-b border-white/[0.06] ${p.activo ? "" : "opacity-45"}`}>
-                <td className="px-3 py-2 font-bold text-sand">{p.nombre}{!p.email && <span className="ml-1.5 text-[10px] font-bold text-canary" title="Sin email en el Excel: no podrá pedir días desde la web">sin email</span>}</td>
-                <td className="px-2 py-1.5">
-                  <select value={p.grupo} disabled={guardando === p.nombre} onChange={(e) => cambiarGrupo(p.nombre, e.target.value)} className={`${FIELD} !py-1 text-xs`}>
-                    <option value="">—</option>
-                    {d.grupos.map((g) => <option key={g.grupo} value={g.grupo}>{g.grupo}</option>)}
-                  </select>
-                </td>
-                <td className={`px-2 py-2 text-right tabular-nums ${p.anteriores < 0 ? "text-mandarin" : "text-sand/75"}`} title={enDirecto ? `En directo: lo que le queda en ${d.year - 1}` : undefined}>
-                  {p.anteriores}{enDirecto && <span aria-hidden className="ml-1 text-[10px] text-serene">↻</span>}
-                </td>
-                <td className="px-2 py-1.5 text-right">
-                  <DiasInput valor={p.dias} deshabilitado={guardando === p.nombre} onGuardar={(n) => cambiarDias(p.nombre, n)} />
-                </td>
-                <td className="px-2 py-2 text-right tabular-nums text-sand/75">{p.total}</td>
-                <td className="px-2 py-2 text-right tabular-nums text-sand/75">{p.va}</td>
-                <td className={`px-2 py-2 text-right font-bold tabular-nums ${p.quedan < 0 ? "text-mandarin" : "text-sand"}`}>{p.quedan}</td>
-                <td className="px-2 py-2 text-right tabular-nums text-canary">{p.pendientesVA || ""}</td>
-                <td className={`px-3 py-2 text-right tabular-nums ${p.quedanTrasPendientes < 0 ? "text-mandarin" : "text-sand/75"}`}>{p.pendientesVA ? p.quedanTrasPendientes : ""}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <div className="v-velo" onMouseDown={(e) => e.target === e.currentTarget && onCerrar()}>
+      <div ref={ref} className="v-hoja" role="dialog" aria-modal="true" aria-labelledby="vg-hoja-t" onKeyDown={teclas}>
+        <div className="flex items-start justify-between gap-2.5">
+          <div>
+            <h2 id="vg-hoja-t" className="text-lg font-bold">{t[0].toUpperCase() + t.slice(1)}</h2>
+            <p className="v-nota">{plural(lista.length, "persona fuera", "personas fuera")} · {plural(pend.length, "pendiente", "pendientes")} · {disp < UMBRAL ? <span className="v-neg">{plural(disp, "disponible", "disponibles")}</span> : plural(disp, "disponible", "disponibles")} si se aprueba todo</p>
+          </div>
+          <button type="button" className="v-btn v-btn-t" aria-label="Cerrar" onClick={onCerrar}><IconoBBVA nombre="close" size={18} /></button>
+        </div>
+        {pend.length > 0 && (<>
+          <p className="vg-lbl mt-3">Pendientes</p>
+          <ul className="flex flex-col gap-2">{pend.map((x) => (
+            <li key={x.id} className="flex items-center justify-between gap-2 text-sm"><span>{corto(x.persona)}<br /><small className="v-soft">{rango(x.desde, x.hasta, d.year)}</small></span>
+              <button type="button" className="v-btn v-btn-l !px-3 !py-1.5" onClick={() => { onCerrar(); elegir(x.id); }}>Revisar</button></li>
+          ))}</ul>
+        </>)}
+        {lista.length > 0 && (<>
+          <p className="vg-lbl mt-3">Fuera</p>
+          <ul className="flex flex-col gap-2">{lista.map((a) => {
+            const v = vuelve(a.nombre, s, d.ausenciasPorDia, festPorGrupo[d.empleadosMap?.[a.nombre]?.grupo]);
+            return (<li key={a.nombre} className="flex items-center justify-between gap-2 text-sm"><span>{corto(a.nombre)}{v && <><br /><small className="v-soft">Vuelve el {fLarga(v, d.year)}</small></>}</span>
+              <span className="v-tipo" style={{ background: colorMotivo(a.motivo) }}>{textoMotivo(a.motivo)}</span></li>);
+          })}</ul>
+        </>)}
       </div>
     </div>
   );
 }
 
-/* ── Pestaña Festivos ── */
-function Festivos({ d, post, onCambio }) {
-  const [error, setError] = useState("");
-  const [ocupado, setOcupado] = useState(false);
-  const [nuevoGrupo, setNuevoGrupo] = useState({ grupo: "", pais: "ES" });
-  const [renombrar, setRenombrar] = useState({});
-  const [nf, setNf] = useState({ fecha: "", nombre: "", grupos: [] });
-  const [filtroGrupo, setFiltroGrupo] = useState("");
-
-  const hacer = async (action, body, ok) => {
-    setOcupado(true); setError("");
-    try { const r = await post(action, body); ok?.(r); onCambio(); } catch (e) { setError(String(e.message || e)); }
-    setOcupado(false);
-  };
-
-  const anio = String(d.year);
-  const porFecha = {};
-  (d.festivosTodos || []).filter((f) => f.fecha.slice(0, 4) === anio && (!filtroGrupo || f.grupo === filtroGrupo)).forEach((f) => {
-    (porFecha[f.fecha] = porFecha[f.fecha] || { fecha: f.fecha, nombre: f.nombre, grupos: [] }).grupos.push(f.grupo);
-  });
-  const lista = Object.values(porFecha).sort((a, b) => a.fecha.localeCompare(b.fecha));
-  const usos = {};
-  (d.saldos || []).forEach((p) => { if (p.grupo) usos[p.grupo] = (usos[p.grupo] || 0) + 1; });
-  const nFest = {};
-  (d.festivosTodos || []).forEach((f) => { if (f.fecha.slice(0, 4) === anio) nFest[f.grupo] = (nFest[f.grupo] || 0) + 1; });
-
-  return (
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">
-      <section className={`${GLASS} space-y-3 p-4`} aria-label="Grupos de festivos">
-        <h3 className="font-display text-base font-bold text-sand">Grupos de festivos</h3>
-        <p className="text-[12px] text-sand/55">Cada persona tiene un grupo (pestaña Personas). Un festivo nacional se añade a todos los grupos de España a la vez.</p>
-        <ul className="space-y-2">
-          {d.grupos.map((g) => (
-            <li key={g.grupo} className="rounded-xl border border-white/10 bg-midnight/30 p-2.5">
-              <div className="flex items-center gap-2">
-                <input
-                  value={renombrar[g.grupo] ?? g.grupo}
-                  onChange={(e) => setRenombrar({ ...renombrar, [g.grupo]: e.target.value })}
-                  className={`${FIELD} min-w-0 flex-1 !py-1 text-[13px] font-bold`}
-                />
-                <select value={g.pais} disabled={ocupado} onChange={(e) => hacer("guardarGrupo", { anio: d.year, grupo: g.grupo, pais: e.target.value })} className={`${FIELD} !py-1 text-xs`}>
-                  <option value="ES">ES</option><option value="MX">MX</option>
-                </select>
-                <button type="button" title="Borrar grupo" disabled={ocupado} onClick={() => confirm(`¿Borrar el grupo ${g.grupo} y sus festivos?`) && hacer("borrarGrupo", { anio: d.year, grupo: g.grupo })} className="rounded-lg border border-white/10 p-1.5 text-sand/45 hover:border-mandarin/60 hover:text-mandarin"><IconX size={13} /></button>
-              </div>
-              <div className="mt-1 flex items-center gap-2 text-[11px] text-sand/50">
-                {usos[g.grupo] || 0} personas · {nFest[g.grupo] || 0} festivos en {anio}
-                {(renombrar[g.grupo] ?? g.grupo).trim() !== g.grupo && (
-                  <button type="button" disabled={ocupado} onClick={() => hacer("guardarGrupo", { anio: d.year, grupo: renombrar[g.grupo].trim(), pais: g.pais, anterior: g.grupo }, () => setRenombrar({}))} className="ml-auto font-bold text-serene hover:underline">Renombrar</button>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
-        <div className="flex items-end gap-2 border-t border-white/10 pt-3">
-          <label className="min-w-0 flex-1">
-            <span className="text-[10px] font-bold uppercase tracking-wide text-sand/50">Nuevo grupo</span>
-            <input value={nuevoGrupo.grupo} onChange={(e) => setNuevoGrupo({ ...nuevoGrupo, grupo: e.target.value })} placeholder="Sevilla" className={`${FIELD} w-full`} />
-          </label>
-          <select value={nuevoGrupo.pais} onChange={(e) => setNuevoGrupo({ ...nuevoGrupo, pais: e.target.value })} className={FIELD}><option value="ES">ES</option><option value="MX">MX</option></select>
-          <button type="button" disabled={ocupado || !nuevoGrupo.grupo.trim()} onClick={() => hacer("guardarGrupo", { anio: d.year, grupo: nuevoGrupo.grupo.trim(), pais: nuevoGrupo.pais }, () => setNuevoGrupo({ grupo: "", pais: "ES" }))} className={`${BTN} text-[#001391]`} style={{ background: PALETTE.serene }}><IconPlus size={13} /></button>
-        </div>
-      </section>
-
-      <section className="space-y-3" aria-label="Festivos">
-        <div className={`${GLASS} space-y-3 p-4`}>
-          <h3 className="font-display text-base font-bold text-sand">Añadir festivo</h3>
-          <div className="flex flex-wrap items-end gap-2">
-            <label><span className="block text-[10px] font-bold uppercase tracking-wide text-sand/50">Fecha</span>
-              <input type="date" value={nf.fecha} onChange={(e) => setNf({ ...nf, fecha: e.target.value })} className={FIELD} /></label>
-            <label className="min-w-[180px] flex-1"><span className="block text-[10px] font-bold uppercase tracking-wide text-sand/50">Nombre</span>
-              <input value={nf.nombre} onChange={(e) => setNf({ ...nf, nombre: e.target.value })} placeholder="San Isidro" className={`${FIELD} w-full`} /></label>
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {d.grupos.map((g) => {
-              const on = nf.grupos.includes(g.grupo);
-              return (
-                <Chip key={g.grupo} on={on} accent="lime" className="!px-3 !py-1.5 normal-case" onClick={() => setNf({ ...nf, grupos: on ? nf.grupos.filter((x) => x !== g.grupo) : [...nf.grupos, g.grupo] })}>
-                  {g.grupo}
-                </Chip>
-              );
-            })}
-            <button type="button" onClick={() => setNf({ ...nf, grupos: d.grupos.filter((g) => g.pais === "ES").map((g) => g.grupo) })} className="px-2 text-[11px] font-bold text-sand/55 hover:text-serene">Todos los de España</button>
-          </div>
-          <button type="button" disabled={ocupado || !nf.fecha || !nf.grupos.length} onClick={() => hacer("guardarFestivo", { fecha: nf.fecha, nombre: nf.nombre.trim() || "Festivo", grupos: nf.grupos }, (r) => { setNf({ fecha: "", nombre: "", grupos: nf.grupos }); if (r.ocupados?.length) setError(`Festivo guardado. Ojo: ese día ya tenían otro código y no se ha pisado: ${r.ocupados.join(", ")}`); })} className={`${BTN} text-[#001391]`} style={{ background: PALETTE.lime }}>
-            <IconPlus size={13} /> Añadir festivo
-          </button>
-          <p className="text-[11.5px] text-sand/50">Se marca como FE en el Excel a quien sea de esos grupos (si el día está libre).</p>
-        </div>
-
-        {error && <p className="rounded-lg border border-mandarin/50 bg-mandarin/10 px-3 py-2 text-xs font-bold text-mandarin">{error}</p>}
-
-        <div className={`${GLASS} p-4`}>
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <h3 className="font-display text-base font-bold text-sand">Festivos {anio}</h3>
-            <select value={filtroGrupo} onChange={(e) => setFiltroGrupo(e.target.value)} className={`${FIELD} ml-auto !py-1 text-xs`}>
-              <option value="">Todos los grupos</option>
-              {d.grupos.map((g) => <option key={g.grupo} value={g.grupo}>{g.grupo}</option>)}
-            </select>
-          </div>
-          {!lista.length ? <EmptyCard>No hay festivos en {anio}.</EmptyCard> : (
-            <ul className="divide-y divide-white/[0.06]">
-              {lista.map((f) => (
-                <li key={f.fecha} className="flex flex-wrap items-center gap-2 py-2 text-[13px]">
-                  <span className="w-24 shrink-0 font-bold tabular-nums text-sand">{fechaCortaEs(f.fecha)}</span>
-                  <span className="min-w-0 flex-1 text-sand/75">{f.nombre}</span>
-                  {f.grupos.map((g) => (
-                    <span key={g} className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/[0.06] px-2 py-0.5 text-[11px] font-bold text-sand/80">
-                      {g}
-                      <button type="button" title={`Quitar de ${g}`} disabled={ocupado} onClick={() => hacer("borrarFestivo", { fecha: f.fecha, grupo: g })} className="text-sand/45 hover:text-mandarin"><IconX size={11} /></button>
-                    </span>
-                  ))}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-/* ── Año siguiente: crear (o rehacer desde cero) Vacas_<año+1> ── */
-/* Parte del año en curso: personas activas con su grupo y sus días del año,
-   y lo que les quede pasa a «Días año anterior». Si ya existe, se puede
-   rehacer de cero (se pierden los días apuntados en ese año; los festivos y
-   grupos se conservan y las solicitudes se guardan como copia). */
-function AnioSiguiente({ d, post, onHecho }) {
-  const [estado, setEstado] = useState("");
-  const sig = new Date().getFullYear() + 1;
-  const existe = (d.anios || []).includes(sig);
-  const hayBase = (d.anios || []).includes(sig - 1);
-  const crear = async () => {
-    if (existe) {
-      const r = prompt(
-        `Rehacer ${sig} DESDE CERO: se borra Vacas_${sig} y se vuelve a crear a partir de ${sig - 1} (personas activas, grupos, días del año y lo que les quede como «Días año anterior»).\n\n` +
-        `Se pierden los días apuntados en Vacas_${sig}. Los festivos de Festivos_${sig} se conservan y las solicitudes de ${sig} se guardan como copia.\n\nEscribe ${sig} para confirmar:`,
-      );
-      if (String(r || "").trim() !== String(sig)) return;
-    } else if (!confirm(`¿Crear el año ${sig}? Se crean Vacas_${sig} (personas activas de ${sig - 1} con su grupo y sus días del año; lo que les quede pasa a «Días año anterior»), Festivos_${sig} con los mismos grupos (sin festivos: añádelos en la pestaña Festivos) y Solicitudes_${sig}.`)) return;
-    setEstado("…");
-    try {
-      const r = await post("crearAnio", { anio: sig, rehacer: existe });
-      setEstado("");
-      onHecho(sig, `Año ${sig} ${r.rehecho ? "rehecho desde cero" : "creado"}: ${r.personas} personas${r.grupos ? ` · ${r.grupos} grupos copiados` : ""}. Añade sus festivos en la pestaña Festivos.`);
-    } catch (e) {
-      setEstado("error:" + String(e.message || e));
-    }
-  };
-  return (
-    <span className="inline-flex items-center gap-2">
-      <button
-        type="button" onClick={crear} disabled={!hayBase || estado === "…"}
-        title={hayBase ? "" : `Hace falta Vacas_${sig - 1} para crear ${sig}`}
-        className={`${BTN} border ${existe ? "border-mandarin/40 text-mandarin hover:border-mandarin/70" : "border-white/15 bg-white/[0.055] text-sand/85 hover:border-white/30"}`}
-      >
-        {estado === "…" ? `Creando ${sig}…` : existe ? <>↺ Rehacer {sig} desde cero</> : <><IconPlus size={13} /> Crear año {sig}</>}
-      </button>
-      {estado.startsWith("error:") && <span className="text-xs font-bold text-mandarin">{estado.slice(6)}</span>}
-    </span>
-  );
-}
-
-/* ── Ruta ── */
 export default function GestionVacacionesRoute() {
   const v2 = useV2Configurado();
-  const { theme } = useTheme();
   const [anio, setAnio] = useState(null);
-  const { snap, reload, post } = useVacaciones(v2 ? anio : null);
-  // Enero del año siguiente (como en /vacaciones): solo en Resumen y
-  // Calendario; Personas, Festivos y Formularios editan el año elegido.
+  const { snap, reload, post, beacon } = useVacaciones(v2 ? anio : null);
   const base = snap?.data;
   const anioSig = base?.anios?.includes(base.year + 1) ? base.year + 1 : null;
   const { snap: snapSig, reload: reloadSig } = useVacaciones(anioSig, { activo: !!v2 && !!anioSig });
   const dMas = useMemo(() => conEneroSiguiente(base, snapSig?.data), [base, snapSig]);
-  const [tab, setTab] = useState("resumen");
-  const [selId, setSelId] = useState(null);
-  const [filtros, setFiltros] = useState(() => new Set());
-  const [sheet, setSheet] = useState(null);
-  const [aviso, setAviso] = useState("");
-  const [hoy] = useState(() => new Date());
-  const d = base;
+  const [hoy] = useState(() => isoDe(new Date()));
 
-  // ?id=… (enlace del correo de nueva solicitud) -> abre esa solicitud.
-  useEffect(() => {
-    const id = new URLSearchParams(window.location.search).get("id");
-    if (id) { setSelId(id); setTab("calendario"); }
+  const [tab, setTab] = useState("solicitudes");
+  const [selId, setSelId] = useState(null);
+  const [vista, setVista] = useState("todas");
+  const [marcadas, setMarcadas] = useState(() => new Set());
+  const [msg, setMsg] = useState("");
+  const [rechazoSinMotivo, setRechazoSinMotivo] = useState(false);
+  const [forzar, setForzar] = useState(false);
+  const [errores, setErrores] = useState({}); // id -> mensaje del backend
+  const [enviando, setEnviando] = useState([]); // [{ id, s, aprobar, motivo, forzar, fin }]
+  const [, setTic] = useState(0);
+  const timers = useRef({});
+  const enviandoRef = useRef([]);
+  enviandoRef.current = enviando;
+  const [qs, setQs] = useState(() => new Set([Math.floor(new Date().getMonth() / 3) + 1]));
+  const [filtro, setFiltro] = useState("");
+  const [dia, setDia] = useState(null);
+  const [irA, setIrA] = useState(null);
+  const [aviso, setAviso] = useState(null); // { msg, fn }
+  const tAviso = useRef(null);
+
+  const recargar = useCallback(() => { reload(true); if (anioSig) reloadSig(true); }, [reload, reloadSig, anioSig]);
+  const avisar = useCallback((m, fn) => {
+    clearTimeout(tAviso.current);
+    setAviso({ msg: m, fn });
+    tAviso.current = setTimeout(() => setAviso(null), fn ? ESPERA : 4000);
   }, []);
 
-  const sel = useMemo(() => (d?.pendientes || []).find((s) => s.id === selId) || null, [d, selId]);
-  const marca = useMemo(() => (sel && dMas ? new Set(diasSolicitud(sel, dMas)) : null), [sel, dMas]);
+  // ?id=… (enlace del correo de nueva solicitud) → abre esa solicitud.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("id");
+    if (id) { setSelId(id); setTab("solicitudes"); }
+  }, []);
 
-  const datosVis = useMemo(() => (dMas ? normalizarColores(dMas, theme) : null), [dMas, theme]);
-  const toggleFiltro = useCallback((nombre) => setFiltros((prev) => { const n = new Set(prev); if (n.has(nombre)) n.delete(nombre); else n.add(nombre); return n; }), []);
-  const recargar = () => { reload(true); if (anioSig) reloadSig(true); };
-  const abrir = (id) => { setSelId(id); setTab("calendario"); };
+  const d = useMemo(() => (dMas ? { ...dMas, cortos: nombresCortos((dMas.empleados || []).map((e) => e.nombre)) } : null), [dMas]);
+  const corto = useCallback((n) => d?.cortos?.[n] || n, [d]);
+  const festPorGrupo = useMemo(() => {
+    const out = {};
+    (d?.festivosTodos || d?.festivosDetalle || []).forEach((f) => { (out[f.grupo] = out[f.grupo] || {})[f.fecha] = f.nombre || "Festivo"; });
+    return out;
+  }, [d]);
+  const fxg = useCallback((g) => Object.fromEntries(Object.keys(festPorGrupo[g] || {}).map((k) => [k, true])), [festPorGrupo]);
+  const grupoDe = useCallback((p) => (d?.saldos || []).find((x) => x.nombre === p)?.grupo || d?.empleadosMap?.[p]?.grupo, [d]);
+  const diasDe = useCallback((s) => {
+    if (!d) return [];
+    if (s.clase === "CANCELACION") return Object.keys(d.ausenciasPorDia).filter((iso) => iso >= s.desde && iso <= s.hasta && (d.ausenciasPorDia[iso] || []).some((a) => a.nombre === s.persona && a.motivo === s.tipo)).sort();
+    return laborables(s.desde, s.hasta, fxg(grupoDe(s.persona)));
+  }, [d, fxg, grupoDe]);
+
+  const idsEnviando = useMemo(() => new Set(enviando.map((x) => x.id)), [enviando]);
+  const pend = useMemo(() => (d?.pendientes || []).filter((s) => !idsEnviando.has(s.id)), [d, idsEnviando]);
+  const diasPorId = useMemo(() => Object.fromEntries(pend.map((s) => [s.id, diasDe(s)])), [pend, diasDe]);
+  const vistas = useMemo(() => {
+    const out = [["todas", "Todas", () => true]];
+    (d?.campanas || []).forEach((c) => { if (pend.some((s) => s.campana === c.id)) out.push([`c:${c.id}`, `${c.emoji ? `${c.emoji} ` : ""}${c.nombre}`, (s) => s.campana === c.id]); });
+    if (pend.some((s) => s.clase !== "NUEVA")) out.push(["cambios", "Cambios y cancelaciones", (s) => s.clase !== "NUEVA"]);
+    return out;
+  }, [d, pend]);
+  const filtroVista = (vistas.find((v) => v[0] === vista) || vistas[0])[2];
+  const cola = useMemo(() => pend.filter(filtroVista).sort((a, b) => a.desde.localeCompare(b.desde)), [pend, filtroVista]);
+  const sel = cola.find((s) => s.id === selId) || pend.find((s) => s.id === selId) || cola[0] || null;
+  const idx = sel ? cola.findIndex((s) => s.id === sel.id) : -1;
+  const activos = d ? d.empleados.filter((e) => e.activo).length : 0;
+  const fuera = useCallback((iso) => (d?.ausenciasPorDia?.[iso] || []).length, [d]);
+  const pendDia = useCallback((iso) => pend.filter((s) => s.clase !== "CANCELACION" && (diasPorId[s.id] || []).includes(iso)), [pend, diasPorId]);
+  const otrasDe = useCallback((s) => { const ds = diasPorId[s.id] || diasDe(s); return pend.filter((x) => x.id !== s.id && x.clase !== "CANCELACION" && (diasPorId[x.id] || []).some((iso) => ds.includes(iso))); }, [pend, diasPorId, diasDe]);
+
+  const elegir = useCallback((id) => {
+    setSelId(id); setMsg(""); setRechazoSinMotivo(false); setForzar(false);
+    const s = (d?.pendientes || []).find((x) => x.id === id);
+    if (s && d) {
+      setQs((prev) => new Set([...prev, qDe(s.desde, d.year)]));
+      if (window.matchMedia("(min-width: 1101px)").matches) setIrA((diasPorId[id] || [])[0] || s.desde);
+    }
+  }, [d, diasPorId]);
+  const mover = (paso) => { const j = idx + paso; if (cola[j]) elegir(cola[j].id); };
+  useEffect(() => {
+    if (!irA) return;
+    const el = document.querySelector(`[data-dia="${irA}"]`);
+    if (el) el.scrollIntoView({ block: "center", behavior: "smooth" });
+    setIrA(null);
+  }, [irA, qs]);
+
+  // ── Decisiones: esperan 8 s antes de mandarse ──
+  const enviar = useCallback(async (item) => {
+    delete timers.current[item.id];
+    try {
+      const r = await post("resolver", { id: item.id, decision: item.aprobar ? "aprobar" : "rechazar", motivo: item.motivo, forzar: item.forzar });
+      setEnviando((l) => l.filter((x) => x.id !== item.id));
+      if (r?.aviso) avisar(`${corto(item.s.persona)}: decisión guardada, pero el correo falló (${r.aviso}). Avísale tú.`);
+      recargar();
+    } catch (e) {
+      const m = String(e.message || e);
+      setEnviando((l) => l.filter((x) => x.id !== item.id));
+      if (/ya está/i.test(m)) { avisar(`Otro coordinador ya había resuelto la de ${corto(item.s.persona)}: ${m.replace(/^La solicitud /, "")}`); recargar(); return; }
+      setErrores((x) => ({ ...x, [item.id]: m }));
+      setSelId(item.id);
+      avisar(`No se pudo mandar la de ${corto(item.s.persona)}: revísala`);
+    }
+  }, [post, recargar, avisar, corto]);
+  const deshacer = useCallback((id) => {
+    clearTimeout(timers.current[id]); delete timers.current[id];
+    setEnviando((l) => l.filter((x) => x.id !== id));
+    setSelId(id); setMsg(""); setRechazoSinMotivo(false);
+  }, []);
+  const decidir = (aprobar) => {
+    if (!sel) return;
+    if (!aprobar && !msg.trim() && !rechazoSinMotivo) { setRechazoSinMotivo(true); return; }
+    const item = { id: sel.id, s: sel, aprobar, motivo: msg.trim(), forzar, fin: Date.now() + ESPERA };
+    timers.current[sel.id] = setTimeout(() => enviar(item), ESPERA);
+    setEnviando((l) => [...l, item]);
+    setErrores((x) => { const n = { ...x }; delete n[sel.id]; return n; });
+    setMarcadas((m) => { const n = new Set(m); n.delete(sel.id); return n; });
+    const sig = cola[idx + 1] || cola[idx - 1];
+    if (sig) elegir(sig.id); else { setSelId(null); setMsg(""); setRechazoSinMotivo(false); setForzar(false); }
+    requestAnimationFrame(() => document.querySelector('[data-accion="aprobar"]')?.focus({ preventScroll: true }));
+  };
+  useEffect(() => {
+    if (!enviando.length) return;
+    const t = setInterval(() => setTic((x) => x + 1), 1000);
+    return () => clearInterval(t);
+  }, [enviando.length]);
+  // Si la persona se va con decisiones esperando, salen igualmente.
+  useEffect(() => {
+    const salir = () => enviandoRef.current.forEach((x) => { clearTimeout(timers.current[x.id]); beacon("resolver", { id: x.id, decision: x.aprobar ? "aprobar" : "rechazar", motivo: x.motivo, forzar: x.forzar }); });
+    window.addEventListener("pagehide", salir);
+    return () => { window.removeEventListener("pagehide", salir); salir(); };
+  }, [beacon]);
+
+  // Atajos: A aprobar, R rechazar, J/K siguiente/anterior, Z deshacer la última.
+  useEffect(() => {
+    const f = (e) => {
+      if (tab !== "solicitudes" || dia || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
+      const k = e.key.toLowerCase();
+      if (k === "z" && enviandoRef.current.length) { e.preventDefault(); deshacer(enviandoRef.current[enviandoRef.current.length - 1].id); return; }
+      if (!sel) return;
+      if (k === "a") { e.preventDefault(); const b = document.querySelector('[data-accion="aprobar"]'); if (b && !b.disabled) decidir(true); }
+      else if (k === "r") { e.preventDefault(); decidir(false); }
+      else if (k === "j") { e.preventDefault(); mover(1); }
+      else if (k === "k") { e.preventDefault(); mover(-1); }
+    };
+    window.addEventListener("keydown", f);
+    return () => window.removeEventListener("keydown", f);
+  });
+
+  // ── Calendario: la solicitud que revisas, las marcadas y las pendientes ──
+  const selDias = useMemo(() => new Set(sel ? diasPorId[sel.id] || [] : []), [sel, diasPorId]);
+  const marcadasL = useMemo(() => pend.filter((s) => marcadas.has(s.id) && (!sel || s.id !== sel.id)), [pend, marcadas, sel]);
+  // Lo aprobado que aún se está enviando cuenta ya como fuera (con su nombre).
+  const enviandoDias = useMemo(() => enviando.filter((x) => x.aprobar).map((x) => ({ s: x.s, dias: new Set(diasDe(x.s)) })), [enviando, diasDe]);
+  const capa = useCallback((iso) => {
+    const previos = []; const cls = []; let ocultar = null; let cuenta = 0;
+    enviandoDias.forEach(({ s, dias }) => { if (dias.has(iso)) { const c = s.clase === "CANCELACION"; if (c) ocultar = new Set([...(ocultar || []), s.persona]); else previos.push({ nombre: s.persona, texto: corto(s.persona), cls: "v-sim" }); cuenta += c ? -1 : 1; } });
+    if (selDias.has(iso)) {
+      const c = sel.clase === "CANCELACION";
+      previos.push({ nombre: sel.persona, texto: `${corto(sel.persona)}${c ? " · cancela" : ""}`, cls: "v-sel" });
+      cls.push("v-revisa"); if (c) ocultar = new Set([...(ocultar || []), sel.persona]); cuenta += c ? -1 : 1;
+    }
+    marcadasL.forEach((s) => { if ((diasPorId[s.id] || []).includes(iso)) { previos.push({ nombre: s.persona, texto: corto(s.persona), cls: "v-sim" }); cuenta += s.clase === "CANCELACION" ? -1 : 1; } });
+    const otros = pendDia(iso).filter((s) => (!sel || s.id !== sel.id) && !marcadas.has(s.id));
+    otros.forEach((s) => previos.push({ nombre: s.persona, texto: corto(s.persona), cls: "v-pnd" }));
+    const disp = activos - fuera(iso) - cuenta;
+    if (disp < UMBRAL) cls.push("v-alerta");
+    return { previos, cls, ocultar, aria: `${selDias.has(iso) ? " · la solicitud que revisas" : ""}${otros.length ? ` · ${plural(otros.length, "pendiente", "pendientes")}` : ""} · ${plural(disp, "disponible", "disponibles")}` };
+  }, [selDias, sel, marcadasL, marcadas, diasPorId, pendDia, corto, activos, fuera, enviandoDias]);
+  const resumenMarcadas = useMemo(() => {
+    if (!marcadasL.length) return null;
+    const todas = [...(sel ? [sel] : []), ...marcadasL];
+    const ds = [...new Set(todas.flatMap((s) => diasPorId[s.id] || []))];
+    const disp = ds.map((iso) => [iso, activos - fuera(iso) - todas.filter((s) => (diasPorId[s.id] || []).includes(iso)).reduce((n, s) => n + (s.clase === "CANCELACION" ? -1 : 1), 0)]);
+    const p = disp.reduce((m, x) => (x[1] < m[1] ? x : m), disp[0]);
+    return { todas, p };
+  }, [marcadasL, sel, diasPorId, activos, fuera]);
+
+  const grupoVista = filtro ? grupoDe(filtro) : d?.yo?.grupo || (d?.grupos || [])[0]?.grupo;
+  const festVista = festPorGrupo[grupoVista] || {};
+  const festOtros = useMemo(() => {
+    const out = {}; const pais = Object.fromEntries((d?.grupos || []).map((g) => [g.grupo, g.pais]));
+    Object.entries(festPorGrupo).forEach(([g, m]) => { if (g !== grupoVista) Object.entries(m).forEach(([iso, n]) => { if (!out[iso]) out[iso] = `${n} (${pais[g] || g})`; }); });
+    return out;
+  }, [festPorGrupo, grupoVista, d]);
+  const personas = useMemo(() => (d?.empleados || []).filter((e) => e.activo).map((e) => e.nombre).sort((a, b) => corto(a).localeCompare(corto(b), "es")), [d, corto]);
+  const proximo = useMemo(() => {
+    if (!d) return null;
+    const f = fxg(grupoVista); let s = hoy;
+    for (let i = 0; i < 15; i++) { s = masDias(s, 1); if (!esFinde(s) && !f[s]) return s; }
+    return null;
+  }, [d, hoy, fxg, grupoVista]);
 
   if (v2 === false) {
     return (
-      <main className="mx-auto w-full max-w-3xl px-5 pb-24 pt-cabecera">
-        <EmptyCard>
-          El sistema nuevo de vacaciones aún no está desplegado: falta la clave <code className="text-sand">{CLAVE_V2}</code> en links.json
-          (desplegar apps-script/vacaciones/). Hasta entonces las solicitudes se gestionan en el panel antiguo.
-        </EmptyCard>
+      <main className="vacu vg mx-auto w-full max-w-3xl px-4 pb-10 pt-cabecera">
+        <p className="vg-secc">El sistema nuevo de vacaciones aún no está desplegado: falta la clave <code>{CLAVE_V2}</code> en links.json.</p>
       </main>
     );
   }
 
-  const pendientes = d?.pendientes || [];
-  return (
-    <main className="relative min-h-dvh w-full">
-      <div aria-hidden className="pointer-events-none fixed inset-[-3%] -z-10 overflow-hidden">
-        <span className="rdr-blob left-[-6%] top-[8%] h-80 w-80" style={{ background: PALETTE.purple }} />
-        <span className="rdr-blob bottom-[-10%] right-[-2%] h-96 w-96" style={{ background: PALETTE.mandarin }} />
-      </div>
-      <div className="mx-auto w-full max-w-7xl px-5 pb-24 pt-cabecera sm:px-6">
-        <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1 className="mt-2 font-display text-4xl font-bold leading-none tracking-tight text-sand sm:text-5xl">Vacaciones del equipo</h1>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {d?.anios?.length > 1 && d.anios.map((a) => (
-              <Chip key={a} on={a === d.year} onClick={() => setAnio(a)}>{a}</Chip>
-            ))}
-            {d?.esCoordinador && (
-              <AnioSiguiente d={d} post={post} onHecho={(a, msg) => { setAviso(msg); setAnio(a); reload(true); }} />
-            )}
-            {snap?.actualizando && <span className="text-xs text-sand/50" role="status">Actualizando…</span>}
-            <button type="button" onClick={recargar} disabled={!!snap?.actualizando} title="Recargar" className="rounded-full border border-white/15 p-2 text-sand/60 hover:text-sand disabled:opacity-50"><IconReload size={15} className={snap?.actualizando ? "animate-spin" : ""} /></button>
-          </div>
-        </header>
+  const ctx = { d, corto, diasDe, otrasDe, activos, fuera, msg, setMsg, rechazoSinMotivo, forzar, setForzar, decidir, mover, elegir, pendDia, festPorGrupo, errorSel: sel ? errores[sel.id] : "" };
+  const restante = (x) => Math.max(0, Math.ceil((x.fin - Date.now()) / 1000));
 
-        {snap?.error ? (
-          <ErrorCard mensaje={snap.error} onRetry={() => reload()} />
-        ) : !d ? (
-          <VacacionesSkeleton />
-        ) : !d.esCoordinador ? (
-          <EmptyCard>Tu email no figura como coordinación en equipo.json.</EmptyCard>
-        ) : (
-          <>
-            <div className="mb-5 flex flex-wrap gap-2" role="tablist">
-              {TABS.map((t) => (
-                <Chip key={t.id} on={tab === t.id} onClick={() => setTab(t.id)}>
-                  {t.label}{t.id === "calendario" && pendientes.length ? ` · ${pendientes.length} pend.` : ""}
-                </Chip>
+  return (
+    <main className="vacu vg mx-auto flex w-full max-w-[1376px] flex-col gap-4 px-4 pb-10 pt-cabecera sm:px-8">
+      <a className="v-salto" href="#calendario">Saltar al calendario</a>
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+        <div className="flex items-center gap-3.5">
+          <span className="hub-placa hub-ge grid h-11 w-11 shrink-0 place-items-center rounded-[10px]"><IconoBBVA nombre="aeroplane" size={28} /></span>
+          <h1 className="font-display text-[clamp(26px,2.4vw,32px)] font-bold tracking-[-0.015em] text-sand">Vacaciones del equipo</h1>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {d?.anios?.length > 1 && (<>
+            <span className="mr-1 text-[13px] font-bold">Año</span>
+            {d.anios.map((a) => <button key={a} type="button" className="v-chip" aria-pressed={a === d.year} onClick={() => setAnio(a)}>{a}</button>)}
+          </>)}
+          <button type="button" className="v-btn v-btn-t" onClick={recargar} disabled={!!snap?.actualizando} aria-label="Actualizar los datos"><IconoBBVA nombre="arrows" size={18} className={snap?.actualizando ? "animate-spin" : ""} /></button>
+        </div>
+      </div>
+
+      {snap?.error ? <ErrorCard mensaje={snap.error} onRetry={() => reload()} />
+        : !d ? <VacacionesSkeleton />
+        : !d.esCoordinador ? <p className="vg-secc">Tu email no figura como coordinación en equipo.json.</p>
+        : (<>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Secciones"
+              onKeyDown={(e) => { if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return; e.preventDefault(); const i = TABS.findIndex(([id]) => id === tab); const sig = TABS[(i + (e.key === "ArrowRight" ? 1 : -1) + TABS.length) % TABS.length][0]; setTab(sig); requestAnimationFrame(() => document.getElementById(`vg-tab-${sig}`)?.focus()); }}>
+              {TABS.map(([id, t]) => (
+                <button key={id} id={`vg-tab-${id}`} type="button" role="tab" className="v-chip" aria-selected={tab === id} aria-controls="vg-panel" tabIndex={tab === id ? 0 : -1} onClick={() => setTab(id)}>
+                  {t}{id === "solicitudes" && pend.length > 0 && <span className="v-n">{pend.length}<span className="sr-only"> pendientes</span></span>}
+                </button>
               ))}
             </div>
-            {aviso && (
-              <p className="mb-4 flex items-center gap-2 rounded-lg border border-lime/40 bg-lime/10 px-3 py-2 text-xs font-bold text-lime">
-                {aviso}<button type="button" onClick={() => setAviso("")} className="ml-auto text-sand/50"><IconX size={12} /></button>
-              </p>
-            )}
-            {snap.avisoRecarga && <p className="mb-4 text-xs text-canary"><IconAlert size={12} className="mr-1 inline" />No se pudo refrescar: {snap.avisoRecarga}</p>}
+            {proximo && <span className="v-soft ml-auto text-[13px]">Próximo día laborable ({fLarga(proximo, d.year)}): <b className="text-sand">{fuera(proximo)} fuera</b> de {activos}</span>}
+          </div>
+          {snap?.actualizando && <p className="v-nota" role="status">Actualizando…</p>}
+          {snap?.avisoRecarga && <p className="v-aviso">No se pudo refrescar: {snap.avisoRecarga}</p>}
 
-            {tab === "resumen" && (
-              <div className="space-y-5">
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  <Kpi label="Fuera hoy" value={(d.ausenciasPorDia[dateKey(hoy)] || []).length} accent="mandarin" />
-                  <Kpi label="Pendientes" value={pendientes.length} accent="canary" />
-                  <Kpi label="Personas" value={d.empleados.filter((e) => e.activo).length} />
-                  <Kpi label="Grupos de festivos" value={d.grupos.length} accent="purple" />
-                </div>
-                <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-                  <AhoraPanel datos={datosVis} hoy={hoy} />
-                  <section className={`${GLASS} space-y-2 p-4`} aria-label="Solicitudes pendientes">
-                    <h2 className="font-display text-base font-bold text-sand">Solicitudes pendientes</h2>
-                    {!pendientes.length ? <p className="text-[13px] text-sand/55">No hay nada pendiente. 🎉</p> : pendientes.map((s) => (
-                      <SolicitudItem key={s.id} s={s} activa={false} onClick={() => abrir(s.id)} />
-                    ))}
-                    {d.recientes?.length > 0 && (
-                      <details className="pt-2">
-                        <summary className="cursor-pointer text-[11px] font-bold uppercase tracking-wide text-sand/50">Últimas resueltas</summary>
-                        <ul className="mt-2 space-y-1 text-[12px] text-sand/65">
-                          {d.recientes.slice(0, 12).map((s) => (
-                            <li key={s.id} className="flex items-center gap-1.5"><TipoChip tipo={s.tipo} /> {CLASE_SOL[s.clase]?.corto ? `${CLASE_SOL[s.clase].corto} · ` : ""}{s.persona} · {formatRango(s.desde, s.hasta)} <span className="ml-auto"><EstadoSolBadge estado={s.estado} /></span></li>
-                          ))}
-                        </ul>
-                      </details>
+          <div id="vg-panel" role="tabpanel" aria-labelledby={`vg-tab-${tab}`}>
+            {tab === "solicitudes" && (
+              <div className="vg-sol">
+                {pend.length > 0 && (
+                  <section className="vg-cola" aria-labelledby="vg-cola-t">
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <h2 id="vg-cola-t" className="text-[16px] font-bold">Pendientes · {pend.length}</h2>
+                      {vistas.length > 1 && (
+                        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Ver">
+                          {vistas.map(([id, t, fn]) => <button key={id} type="button" className="v-chip" aria-pressed={vista === id} onClick={() => { setVista(id); const c = pend.filter(fn).sort((a, b) => a.desde.localeCompare(b.desde)); if (c[0] && !c.some((x) => x.id === sel?.id)) elegir(c[0].id); }}>{t}<span className="v-n">{pend.filter(fn).length}</span></button>)}
+                        </div>
+                      )}
+                      {vista.startsWith("c:") && <button type="button" className="v-btn v-btn-t underline" onClick={() => setTab("configuracion")}>Ver quién falta por responder</button>}
+                    </div>
+                    <ul className="vg-tarjetas">
+                      {cola.map((s) => (
+                        <li key={s.id}>
+                          <button type="button" className="vg-tarjeta" aria-current={s.id === sel?.id} onClick={() => elegir(s.id)}>
+                            <span className="flex items-center justify-between gap-2"><b className="truncate text-[14px]">{corto(s.persona)}</b><span className="v-tipo" style={{ background: colorMotivo(s.tipo) }}>{textoMotivo(s.tipo)}</span></span>
+                            <span className="truncate">{s.clase === "CANCELACION" ? <b>Cancela · </b> : s.clase === "MODIFICACION" ? <b>Cambio · </b> : null}{rango(s.desde, s.hasta, d.year)}{s.campana ? " · formulario" : ""}</span>
+                          </button>
+                          <label className="vg-marca" title="Ver en el calendario junto a la que revisas">
+                            <input type="checkbox" checked={marcadas.has(s.id) || s.id === sel?.id} disabled={s.id === sel?.id}
+                              aria-label={`Ver la de ${corto(s.persona)} en el calendario junto a la que revisas`}
+                              onChange={() => setMarcadas((m) => { const n = new Set(m); if (n.has(s.id)) n.delete(s.id); else n.add(s.id); return n; })} />
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                    {resumenMarcadas ? (
+                      <p className="v-cobertura flex flex-wrap items-center gap-2">
+                        <span>En el calendario, como si aprobaras <b>{resumenMarcadas.todas.map((s) => corto(s.persona)).join(", ")}</b>: {resumenMarcadas.p && <>mínimo {resumenMarcadas.p[1] < UMBRAL ? <span className="v-neg">{resumenMarcadas.p[1]}</span> : <b>{resumenMarcadas.p[1]}</b>} disponibles de {activos} (el {fCorta(resumenMarcadas.p[0], d.year)})</>}.</span>
+                        <button type="button" className="v-btn v-btn-t" onClick={() => setMarcadas(new Set())}>Quitar marcas</button>
+                      </p>
+                    ) : <p className="v-nota">Marca la casilla de varias para verlas juntas en el calendario y cuánta gente quedaría.</p>}
+                  </section>
+                )}
+                <div className="vg-lado">
+                  {sel ? <Decision s={sel} idx={idx < 0 ? 0 : idx} total={Math.max(cola.length, 1)} ctx={ctx} />
+                    : (
+                      <section className="v-mis" aria-labelledby="vg-dec-t">
+                        <h2 id="vg-dec-t" className="text-[19px] font-bold">No queda nada pendiente</h2>
+                        <p className="m-0 text-[13px]">Cuando alguien pida días te llega un correo y aparece aquí.</p>
+                        {(d.recientes || []).length > 0 && (<>
+                          <p className="vg-lbl">Últimas resueltas</p>
+                          <ul className="v-lista">{d.recientes.slice(0, 6).map((r) => (
+                            <li key={r.id}><span className="v-fila"><b>{corto(r.persona)} · {rango(r.desde, r.hasta, d.year)}</b><span className={`v-estado v-estado-${r.estado}`}>{r.estado === "APROBADA" ? "Aprobada" : r.estado === "RECHAZADA" ? "Rechazada" : r.estado.toLowerCase()}</span></span></li>
+                          ))}</ul>
+                        </>)}
+                      </section>
                     )}
-                  </section>
-                </div>
-              </div>
-            )}
-
-            {tab === "calendario" && (
-              <div className="grid grid-cols-1 gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
-                <div className="space-y-4">
-                  <section className={`${GLASS} space-y-2 p-4`} aria-label="Solicitudes pendientes">
-                    <h2 className="font-display text-base font-bold text-sand">Pendientes ({pendientes.length})</h2>
-                    {!pendientes.length ? <p className="text-[13px] text-sand/55">No hay nada pendiente.</p> : pendientes.map((s) => (
-                      <SolicitudItem key={s.id} s={s} activa={s.id === selId} onClick={() => setSelId(s.id === selId ? null : s.id)} />
-                    ))}
-                    {selId && !sel && <p className="text-[12px] text-canary">Esa solicitud ya no está pendiente.</p>}
-                  </section>
-                  {sel && (
-                    <DetalleSolicitud s={sel} d={dMas} post={post} onResuelta={(r) => {
-                      const hecho = [r.dias ? `${r.dias} días escritos` : "", r.liberados ? `${r.liberados} días liberados` : "", r.evento ? "evento creado" : ""].filter(Boolean).join(", ");
-                      const c = CLASE_SOL[r.clase] || CLASE_SOL.NUEVA;
-                      setAviso(r.estado === "APROBADA"
-                        ? `✓ ${c.label} aprobad${c.a}${hecho ? ` (${hecho})` : ""}${r.aviso ? ` · el correo falló: ${r.aviso}` : ""}`
-                        : `${c.label} rechazad${c.a}${r.aviso ? ` · el correo falló: ${r.aviso}` : ""}`);
-                      setSelId(null); recargar();
-                    }} />
+                  {enviando.length > 0 && (
+                    <section className="flex flex-col gap-1.5" aria-label="Decisiones que se están enviando">
+                      <p className="vg-lbl">Se envían en unos segundos</p>
+                      <ul className="vg-enviando">{enviando.map((x) => (
+                        <li key={x.id}><span><b>{x.aprobar ? "Aprobada" : "Rechazada"}</b> · {corto(x.s.persona)} · {rango(x.s.desde, x.s.hasta, d.year)} <span className="v-soft">· {restante(x)} s</span></span>
+                          <button type="button" className="v-btn v-btn-l !px-3 !py-1.5" onClick={() => deshacer(x.id)}>Deshacer</button></li>
+                      ))}</ul>
+                    </section>
                   )}
-                  <EquipoPanel
-                    empleados={datosVis.empleados}
-                    paletaEquipos={{}}
-                    filtros={filtros}
-                    onToggle={toggleFiltro}
-                    onClear={() => setFiltros(new Set())}
-                    ausentesHoy={(d.ausenciasPorDia[dateKey(hoy)] || []).length}
-                    leyendaExtra={
-                      <div className="mt-1.5 flex items-center gap-2.5">
-                        <span className="h-3.5 w-3.5 shrink-0 rounded border-2 border-dashed" style={{ borderColor: MARCA_COLOR(theme) }} aria-hidden />
-                        Solicitud seleccionada
-                      </div>
-                    }
-                  />
                 </div>
-                <Calendario datos={datosVis} filtros={filtros} totalActivos={d.empleados.filter((e) => e.activo).length} onOpenDay={(dateStr, ausencias) => setSheet({ dateStr, ausencias })} marca={marca} />
+                <CalendarioTrimestres
+                  anio={d.year} hoy={hoy} qs={qs}
+                  onToggleQ={(q) => setQs((prev) => { const n = new Set(prev); if (n.has(q)) n.delete(q); else n.add(q); return n; })}
+                  aus={d.ausenciasPorDia || {}} personas={personas} filtro={filtro} setFiltro={setFiltro}
+                  yo={null} cortos={d.cortos} festVista={festVista} festOtros={festOtros} grupoVista={grupoVista}
+                  onDia={setDia} sinEnero={!d.anioSiguiente} capa={capa}
+                  infoQ={(q) => { const n = pend.filter((s) => qDe(s.desde, d.year) === q || mesesDeQ(q, d.year).some(([y, m]) => deIso(s.desde).getFullYear() === y && deIso(s.desde).getMonth() === m)).length; return n ? plural(n, "pendiente", "pendientes") : "Sin pendientes"; }}
+                  leyenda={(
+                    <div className="v-leyenda">
+                      {LEYENDA.map((k) => <span key={k}><i className="v-sw" style={{ background: colorMotivo(k) }} />{textoMotivo(k)}</span>)}
+                      <span><i className="v-sw" style={{ border: "1.5px dashed var(--v-ink)" }} />Pendiente</span>
+                      <span><i className="v-sw" style={{ background: "#9694FF", boxShadow: "inset 0 0 0 2px #001391" }} />La que revisas</span>
+                      <span><i className="v-sw" style={{ background: "#9694FF" }} />Marcadas o recién aprobadas</span>
+                      <span><i className="v-sw" style={{ background: "#FFE761" }} />Menos de {UMBRAL} disponibles</span>
+                      {grupoVista && <span><i className="v-sw" style={{ background: "var(--v-rayas)" }} />Festivo de {grupoVista}</span>}
+                    </div>
+                  )}
+                />
               </div>
             )}
+            {tab === "personas" && <Personas d={d} post={post} onCambio={recargar} avisar={avisar} />}
+            {tab === "configuracion" && (
+              <div className="vg-config">
+                <CampanasAdmin d={d} post={post} onCambio={recargar} onAviso={avisar} onRevisar={(id) => { setTab("solicitudes"); setVista(`c:${id}`); const c = pend.filter((s) => s.campana === id).sort((a, b) => a.desde.localeCompare(b.desde)); if (c[0]) elegir(c[0].id); }} />
+                <SedesFestivos d={d} post={post} onCambio={recargar} avisar={avisar} />
+                <Anios d={d} post={post} avisar={avisar} onHecho={(a, m) => { avisar(m); setAnio(d.year); reload(true); }} />
+              </div>
+            )}
+          </div>
+          {dia && <HojaDia s={dia} ctx={ctx} onCerrar={() => setDia(null)} />}
+        </>)}
 
-            {tab === "personas" && <Personas d={d} post={post} onCambio={recargar} />}
-            {tab === "festivos" && <Festivos d={d} post={post} onCambio={recargar} />}
-            {tab === "formularios" && <CampanasAdmin d={d} post={post} onCambio={recargar} onAviso={setAviso} />}
-
-            <DaySheet sheet={sheet} empleadosMap={datosVis.empleadosMap || {}} onClose={() => setSheet(null)} />
-          </>
-        )}
-      </div>
+      {aviso && (
+        <div role="status" className="fixed bottom-8 left-1/2 z-[110] flex max-w-[calc(100vw-32px)] -translate-x-1/2 items-center gap-3 rounded-full bg-sand px-5 py-2.5 text-sm font-bold text-midnight shadow-xl">
+          {aviso.msg}
+          {aviso.fn && <button type="button" onClick={() => { const f = aviso.fn; setAviso(null); clearTimeout(tAviso.current); f(); }} className="shrink-0 rounded-full border-[1.5px] border-midnight px-3 py-0.5 hover:bg-midnight/10">Deshacer</button>}
+        </div>
+      )}
     </main>
   );
 }

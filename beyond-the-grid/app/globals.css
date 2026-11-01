@@ -631,3 +631,65 @@ button.v-semana { cursor: pointer; }
 /* Detalle del día */
 .v-velo { position: fixed; inset: 0; background: rgb(7 14 70 / 0.35); z-index: 120; display: grid; place-items: center; padding: 16px; }
 .v-hoja { background: var(--v-solido); color: var(--v-ink); border-radius: 14px; width: min(420px, 100%); max-height: 80vh; overflow: auto; padding: 18px; box-shadow: 0 20px 40px -12px var(--v-sombra); border: 1px solid var(--v-line-soft); }
+
+/* ── Vacaciones del equipo (Gestión, components/vacaciones/GestionVacacionesRoute.jsx).
+   Mismo lenguaje que la vista de usuario (.vacu) con el acento Purple de
+   Gestión. Rejilla de un solo scroll: la cola arriba, la decisión fija a la
+   izquierda y el calendario a la derecha; en móvil, la decisión primero. ── */
+.vacu.vg { --v-tinte: rgb(150 148 255 / 0.12); --v-medio: rgb(150 148 255 / 0.28); }
+html.rdr-light .vacu.vg { --v-tinte: rgb(150 148 255 / 0.16); --v-medio: rgb(150 148 255 / 0.32); }
+.vg .v-mis { border-color: #9694ff; }
+.vg .v-btn { background: #9694ff; border-color: #9694ff; }
+.vg .v-btn.v-btn-l { background: var(--v-surface); border-color: var(--v-line); }
+.vg .v-btn.v-btn-t { background: none; border-color: transparent; }
+.vg .v-btn.v-btn-ok { background: #88e783; border-color: #88e783; }
+.vg .v-btn.v-btn-peligro { background: var(--v-surface); border-color: var(--v-ink); color: var(--v-ink); }
+.vg-kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; border: 1px solid currentColor; border-bottom-width: 2px; border-radius: 4px; font-size: 11px; font-weight: 700; padding: 0 4px; opacity: 0.85; }
+.v-neg { background: #ffe761; color: #001391; border-radius: 999px; padding: 0 7px; font-weight: 700; }
+.vg-dato { margin: 0; background: var(--v-solido); border: 1px solid var(--v-line-soft); border-radius: 8px; padding: 8px 10px; font-size: 14px; }
+.vg-lbl { margin: 0 0 2px; font-weight: 700; font-size: 12px; color: var(--v-soft); }
+.v-tipo { font-size: 11px; font-weight: 700; color: #001391; border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+.v-dia .v-nom.v-sel { background: #9694ff; outline: 2px solid #001391; outline-offset: -2px; }
+.v-dia .v-nom.v-sim { background: #9694ff; }
+.v-dia .v-nom.v-pnd { background: var(--v-solido); color: var(--v-ink); border: 1.5px dashed var(--v-ink); line-height: 12px; }
+.v-dia.v-revisa { box-shadow: inset 0 0 0 2px var(--v-ink); background-color: var(--v-medio); }
+.v-dia.v-alerta .v-num { background: #ffe761; color: #001391; border-radius: 999px; padding: 0 5px; align-self: flex-start; }
+
+.vg-sol { display: grid; grid-template-columns: 380px minmax(0, 1fr); grid-template-areas: "cola cola" "lado cal"; gap: 16px 24px; align-items: start; }
+.vg-cola { grid-area: cola; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.vg-lado { grid-area: lado; position: sticky; top: calc(var(--cabecera) + 16px); display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.vg-sol > .v-cal { grid-area: cal; }
+@media (max-height: 760px) { .vg-lado { position: static; } }
+@media (max-width: 1100px) {
+  .vg-sol { grid-template-columns: minmax(0, 1fr); grid-template-areas: "lado" "cola" "cal"; }
+  .vg-lado { position: static; }
+}
+.vg-tarjetas { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.vg-tarjetas li { flex: 0 1 196px; min-width: 150px; position: relative; display: flex; }
+@media (max-width: 700px) { .vg-tarjetas li { flex: 1 1 150px; } }
+.vg-tarjeta { flex: 1; text-align: left; cursor: pointer; background: var(--v-solido); border: 1px solid var(--v-line-soft); border-radius: 10px; padding: 8px 40px 8px 10px; color: var(--v-ink); display: flex; flex-direction: column; gap: 2px; font-size: 13px; min-width: 0; font: inherit; font-size: 13px; }
+.vg-tarjeta:hover { border-color: var(--v-ink); }
+.vg-tarjeta[aria-current="true"] { border: 2px solid var(--v-ink); background: var(--v-medio); padding: 7px 39px 7px 9px; }
+.vg-marca { position: absolute; top: 4px; right: 4px; width: 32px; height: 32px; display: grid; place-items: center; cursor: pointer; border-radius: 8px; }
+.vg-marca:hover { background: var(--v-tinte); }
+.vg-marca input { width: 18px; height: 18px; accent-color: #001391; cursor: pointer; }
+.vg-enviando { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.vg-enviando li { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: var(--v-solido); border: 1px dashed var(--v-line); border-radius: 10px; padding: 6px 6px 6px 10px; font-size: 13px; }
+.vg-tabla { width: 100%; border-collapse: collapse; font-size: 14px; }
+.vg-tabla th { text-align: right; font-size: 12px; color: var(--v-soft); font-weight: 700; padding: 0; border-bottom: 1px solid var(--v-line-soft); white-space: nowrap; }
+.vg-tabla th:first-child, .vg-tabla td:first-child, .vg-tabla .vg-izq { text-align: left; }
+.vg-tabla th button { all: unset; cursor: pointer; padding: 10px 8px; display: inline-flex; gap: 4px; align-items: center; }
+.vg-tabla th button:focus-visible { outline: 2px solid var(--v-ink); }
+.vg-tabla th > span { display: inline-block; padding: 10px 8px; }
+.vg-tabla td { padding: 6px 8px; border-bottom: 1px solid var(--v-line-soft); text-align: right; font-variant-numeric: tabular-nums; }
+.vg-tabla tbody tr:hover td { background: var(--v-tinte); }
+.vg-secc { background: var(--v-surface); border: 1px solid var(--v-line-soft); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.vg-bloque { border-top: 1px solid var(--v-line-soft); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.vg-config { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.vg-config > .vg-ancho { grid-column: 1 / -1; }
+@media (max-width: 900px) { .vg-config { grid-template-columns: minmax(0, 1fr); } }
+.vg-pill { font-size: 12px; font-weight: 700; border: 1px solid var(--v-line); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+.vg-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.vg-lista li { display: flex; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--v-line-soft); font-size: 14px; flex-wrap: wrap; }
+.vg-peligro { border: 1.5px dashed var(--v-ink); border-radius: 10px; padding: 12px; }
+@media (max-width: 700px) { .vg .v-btn { min-height: 44px; } }
