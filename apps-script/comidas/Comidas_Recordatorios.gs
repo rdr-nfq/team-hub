@@ -10,6 +10,7 @@
      · Lun 12 y 17 · Mar 12 y 17
      · Mié 12 → aviso final: la reserva se hace en 30 min; quien no vote se
                 asume "No estoy" o "Taper / Glovo".
+   Nunca en festivo de Madrid (festivos del grupo Madrid de vacaciones).
 
    Funciones de uso:
      crearTriggers()             una vez, para programar los avisos
@@ -53,6 +54,8 @@ function enviarRecordatorio() {
   const tz = ss.getSpreadsheetTimeZone();
   const isoDow = +Utilities.formatDate(new Date(), tz, 'u'); // 1=Lun … 7=Dom
   if (isoDow > 3) return;                 // solo Lun-Mié
+  const hoyIso = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  if (_festivosMadrid()[hoyIso]) { Logger.log(hoyIso + ': festivo en Madrid, no se avisa.'); return; }
   const esFinal = isoDow === 3;           // miércoles = aviso final
 
   const fecha = proximoJueves_(tz, isoDow);

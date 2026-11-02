@@ -28,9 +28,17 @@ function desinstalarTriggerAvisos() {
   return n;
 }
 
+/* Festivos de Madrid (vacaciones) de la ejecución en curso: los avisos que
+   caen en festivo pasan al siguiente laborable. */
+let _festivosAvisosPases = null;
+const _isoMadrid_ = (d) => Utilities.formatDate(d, "Europe/Madrid", "yyyy-MM-dd");
+
 /* ───────── Entry point del trigger horario ───────── */
 function revisarAvisosProgramados() {
   const ahora = new Date();
+  _festivosAvisosPases = _festivosMadrid();
+  // Ni un correo en festivo de Madrid (por si un aviso ya calculado cayera hoy).
+  if (_festivosAvisosPases[_isoMadrid_(ahora)]) { Logger.log("Festivo en Madrid: hoy no se envían avisos de pases."); return 0; }
   const pases = _hubHoja('PASES').getSheetByName(CONSTANTES.HOJA_PASES).getDataRange().getValues();
   const enviados = cargarAvisosEnviados();
 
@@ -72,7 +80,10 @@ function revisarAvisosProgramados() {
 }
 
 /* ───────── Calendario de avisos (sistema NUEVO) ─────────
-   Pase = sábado (implantación). Días antes contados desde el sábado:
+   Pase = sábado (implantación). Días antes contados desde el sábado.
+   Fines de semana y festivos de Madrid pasan al siguiente laborable; los
+   viernes se termina a las 15:00, así que el último aviso es a las 14:00.
+   Días antes contados desde el sábado:
      12 (Lun, 2 semanas antes) ........ correo de inicio
      10 (Mié, semana anterior) ........ último día OKs + pruebas Workstation
       8 (Vie, semana anterior) ........ creación de paquetes · tech-kytl · historias · CRQ
@@ -98,14 +109,14 @@ function construirCalendarioAvisos(fechaPase, subida, faseActual) {
     const base = new Date(fechaPase.getTime());
     base.setDate(base.getDate() - diasAntes);
     const aj = ajustarASiguienteLaboral(base);
-    aj.setHours(hora, 0, 0, 0);
+    aj.setHours(horaDelDia_(aj, hora), 0, 0, 0);
     lista.push({ codigo, tono, cuando: aj, generador });
   }
   function avisoPost(diasDespues, hora, codigo, tono, generador) {
     const base = new Date(fechaPase.getTime());
     base.setDate(base.getDate() + diasDespues);
     const aj = ajustarASiguienteLaboral(base);
-    aj.setHours(hora, 0, 0, 0);
+    aj.setHours(horaDelDia_(aj, hora), 0, 0, 0);
     lista.push({ codigo, tono, cuando: aj, generador });
   }
 
@@ -117,10 +128,12 @@ function construirCalendarioAvisos(fechaPase, subida, faseActual) {
       avisoEn(10, 9, "OKS_09",  "warning", contenidoOksWorkstation);
       avisoEn(10, 16, "OKS_16", "alerta",  contenidoOksWorkstation);
       // Viernes (semana anterior) · creación de paquetes / tech-kytl / historias / CRQ
+      // (los viernes se termina a las 15:00: último aviso a las 14:00; los
+      //  códigos se mantienen para no repetir avisos ya registrados)
       avisoEn(8, 9,  "PAQ_09",  "warning", contenidoPaquetes);
-      avisoEn(8, 12, "PAQ_12",  "warning", contenidoTechKytl);
-      avisoEn(8, 16, "PAQ_16",  "warning", contenidoHistoriasYCRQ);
-      avisoEn(8, 18, "PAQ_18",  "alerta",  contenidoResumenViernes);
+      avisoEn(8, 11, "PAQ_12",  "warning", contenidoTechKytl);
+      avisoEn(8, 13, "PAQ_16",  "warning", contenidoHistoriasYCRQ);
+      avisoEn(8, 14, "PAQ_18",  "alerta",  contenidoResumenViernes);
       // Lunes (semana del pase) · cierre del pase
       avisoEn(5, 9,  "CIERRE_09", "alerta",     contenidoCierre);
       avisoEn(5, 12, "CIERRE_12", "alerta",     contenidoCierre);
@@ -130,8 +143,8 @@ function construirCalendarioAvisos(fechaPase, subida, faseActual) {
     if (enPreImplantacion) {
       avisoEn(2, 9,  "PRE_JUE",    "recordatorio", contenidoPreJueves);
       avisoEn(1, 9,  "PRE_VIE_09", "warning",      contenidoPreViernes);
-      avisoEn(1, 14, "PRE_VIE_14", "alerta",       contenidoPreViernesAlerta);
-      avisoEn(1, 15, "PRE_VIE_15", "alerta_max",   contenidoPreViernesFinal);
+      avisoEn(1, 12, "PRE_VIE_14", "alerta",       contenidoPreViernesAlerta);
+      avisoEn(1, 14, "PRE_VIE_15", "alerta_max",   contenidoPreViernesFinal);
     }
     if (implantacionSinCerrar) {
       // Lunes tras el pase: aún no se ha finalizado la implantación en la web
@@ -156,12 +169,18 @@ function estaEnVentana(ahora, cuando) {
 }
 function ajustarASiguienteLaboral(d) {
   const x = new Date(d.getTime());
-  for (let i = 0; i < 10; i++) {
+  const fest = _festivosAvisosPases || {};
+  for (let i = 0; i < 15; i++) {
     const dia = x.getDay();
-    if (dia !== 0 && dia !== 6) return x;
+    if (dia !== 0 && dia !== 6 && !fest[_isoMadrid_(x)]) return x;
     x.setDate(x.getDate() + 1);
   }
   return x;
+}
+/* Los viernes se termina a las 15:00: ningún aviso después de las 14:00
+   (también si un festivo empuja a viernes un aviso de otro día). */
+function horaDelDia_(d, hora) {
+  return d.getDay() === 5 ? Math.min(hora, 14) : hora;
 }
 
 /* ───────── Registro idempotente ───────── */

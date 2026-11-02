@@ -11,7 +11,7 @@
  *   obtenerDatosDashboard        { fecha }
  *   iniciarPase                  { fila, fechaStr }
  *   responderEncuesta            { respuesta, fila, fechaStr }
- *   cancelarSubida               { fila, fechaStr, faseAnterior?, motivo? }  (cualquier fase salvo COMPLETADO)
+ *   cancelarSubida               { fila, fechaStr, faseAnterior?, motivo?, sinAviso? }  (cualquier fase salvo COMPLETADO; sinAviso solo coordinación: sin correo)
  *   activarEmergencia            { fila, fechaStr }
  *   avanzarFase                  { fila, fechaStr, faseActual }
  *   guardarNuevoProyecto         { fechaStr, nombre, feature, respBBVA }

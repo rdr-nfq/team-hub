@@ -189,6 +189,7 @@ export default function PasesRoute() {
   const [resumenModal, setResumenModal] = useState(false); // revisión final al cerrar preparación
   const [cancelModal, setCancelModal] = useState(false); // cancelar el pase (cualquier fase)
   const [motivoCancel, setMotivoCancel] = useState("");
+  const [cancelSinAviso, setCancelSinAviso] = useState(false); // solo coordinación: cancelar sin correo
 
   const hashRef = useRef("");
   const abortRef = useRef(null);
@@ -420,6 +421,7 @@ export default function PasesRoute() {
   // Abre el diálogo (motivo opcional); confirmarCancelacion hace la llamada.
   const cancelarSubida = () => {
     setMotivoCancel("");
+    setCancelSinAviso(false);
     setCancelModal(true);
   };
   const confirmarCancelacion = () => {
@@ -432,8 +434,9 @@ export default function PasesRoute() {
         fechaStr: ERef.current.fechaSeleccionada,
         faseAnterior: ERef.current.faseActual,
         motivo: motivoCancel.trim(),
+        sinAviso: isAdmin && cancelSinAviso,
       },
-      { loadingMsg: "Cancelando…", okMsg: "Pase cancelado" }
+      { loadingMsg: "Cancelando…", okMsg: isAdmin && cancelSinAviso ? "Pase cancelado · sin avisar a nadie" : "Pase cancelado" }
     );
   };
   const activarEmergencia = () =>
@@ -1245,7 +1248,7 @@ export default function PasesRoute() {
                     ¿Cancelar el pase en fase de {(FASE_NOMBRE[fase] || "").toLowerCase()}?
                   </h3>
                   <p className="text-[13px] text-sand/70">
-                    El pase pasa a «sin subida» y se avisa al equipo por correo. Proyectos y componentes se conservan:
+                    El pase pasa a «sin subida»{isAdmin && cancelSinAviso ? " sin enviar ningún correo" : " y se avisa al equipo por correo"}. Proyectos y componentes se conservan:
                     si hace falta, se puede reactivar en modo emergencia y vuelve a preparación.
                   </p>
                   {(fase === "FASE_6_IMPLANTACION" || fase === "FASE_7_POST") && (
@@ -1253,7 +1256,13 @@ export default function PasesRoute() {
                       La implantación ya ha empezado: revisad qué pasos se han ejecutado en producción.
                     </p>
                   )}
-                  <label className="block">
+                  {isAdmin && (
+                    <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-white/15 px-3 py-2.5 text-[13px] text-sand">
+                      <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[#85C8FF]" checked={cancelSinAviso} onChange={(e) => setCancelSinAviso(e.target.checked)} />
+                      <span><b>Sin avisar a nadie</b> · no se envía ningún correo (solo coordinación)</span>
+                    </label>
+                  )}
+                  <label className={`block ${isAdmin && cancelSinAviso ? "hidden" : ""}`}>
                     <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.08em] text-sand/60">Motivo (opcional, va en el correo)</span>
                     <textarea
                       className={`${INPUT_CLS} block min-h-[72px] w-full resize-y`}
@@ -1269,7 +1278,7 @@ export default function PasesRoute() {
                     Volver
                   </button>
                   <button type="button" className={BTN.warn} onClick={confirmarCancelacion}>
-                    Cancelar pase y avisar
+                    {isAdmin && cancelSinAviso ? "Cancelar pase sin avisar" : "Cancelar pase y avisar"}
                   </button>
                 </footer>
               </motion.div>

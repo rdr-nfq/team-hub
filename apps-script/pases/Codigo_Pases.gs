@@ -206,7 +206,7 @@ function doPostPases(e) {
         resultado = obtenerDatosDashboard(ctx, payload.fechaStr);
         break;
       case "cancelarSubida":
-        cancelarSubida(ctx, payload.fila, payload.fechaStr, payload.motivo, payload.faseAnterior);
+        cancelarSubida(ctx, payload.fila, payload.fechaStr, payload.motivo, payload.faseAnterior, !!payload.sinAviso);
         invalidarDashboard(payload.fechaStr);
         resultado = obtenerDatosDashboard(ctx, payload.fechaStr);
         break;
@@ -1067,11 +1067,14 @@ const NOMBRE_FASE = {
   FASE_7_POST: "mergeos (post-implantación)",
 };
 
-function cancelarSubida(ctx, fila, fechaStr, motivo, faseAnterior) {
+/* sinAviso: solo coordinación (la web lo ofrece solo a coordinadores):
+   cancela sin enviar ningún correo. */
+function cancelarSubida(ctx, fila, fechaStr, motivo, faseAnterior, sinAviso) {
   const hoja = ctx.sheet(CONSTANTES.HOJA_PASES);
   const fase = faseAnterior || String(hoja.getRange(fila, 3).getValue() || "");
   if (fase === "COMPLETADO") throw new Error("El pase ya está completado: no se puede cancelar.");
   hoja.getRange(fila, 2, 1, 2).setValues([["NO", "FASE_0_DESCANSO"]]);
+  if (sinAviso) return "OK";
 
   const parrafos = [
     NOMBRE_FASE[fase]
