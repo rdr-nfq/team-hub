@@ -5,11 +5,11 @@ import Cargando from "@/components/chrome/Cargando";
 import { useLinks } from "@/lib/links";
 import { useAuth } from "../chrome/AuthGate";
 import IconoBBVA from "../iconosBBVA";
-import { useTimeReport, useEquipo, EVIDENCIAS_KEY } from "./datos";
+import { useTimeReport, useEquipo, useFestivos, EVIDENCIAS_KEY } from "./datos";
 import { EQUIPO, equiposDe, equipoTRDe } from "@/lib/equipos";
 import { mismoEmail } from "@/lib/email";
 import {
-  num, curQ, hoyISO, quincenasDeQ, quincenaDe, horasDe,
+  num, curQ, hoyISO, hoyTR, fechaDe, quincenasDeQ, quincenaDe, horasDe,
   filasTR, tsvTR, esFinde, SOPORTE_ID, NIVEL2_ANALISIS, etiquetaEvidencias,
 } from "./model";
 
@@ -43,7 +43,10 @@ export default function MiTimeReportRoute() {
   const { email } = useAuth();
   const { getUrl, copyLink, showToast } = useLinks();
   const equipo = useEquipo();
-  const [q, setQ] = useState(curQ());
+  // Q y quincena de partida: las del «hoy» del Time Report (la quincena cerrada
+  // sigue siendo la actual hasta el día del recordatorio, incluido).
+  const [q, setQ] = useState(() => curQ(fechaDe(hoyTR())));
+  const festivos = useFestivos();
   const yo = useMemo(() => {
     return (equipo || []).find((m) => mismoEmail(m.email, email)) || null;
   }, [equipo, email]);
@@ -52,7 +55,16 @@ export default function MiTimeReportRoute() {
   const { snap, post, reload } = useTimeReport(q, eqTR);
   const [abriendo, setAbriendo] = useState(false);
   const qs = quincenasDeQ(q);
-  const [quincena, setQuincena] = useState(() => Math.min(6, Math.max(1, quincenaDe(curQ(), hoyISO()) || 1)));
+  const [quincena, setQuincena] = useState(() => { const h = hoyTR(); return Math.min(6, Math.max(1, quincenaDe(curQ(fechaDe(h)), h) || 1)); });
+  const colocado = useRef(false);
+  useEffect(() => {
+    if (!festivos || colocado.current) return;
+    colocado.current = true;
+    const h = hoyTR(festivos);
+    const qh = curQ(fechaDe(h));
+    setQ(qh);
+    setQuincena(Math.min(6, Math.max(1, quincenaDe(qh, h) || 1)));
+  }, [festivos]);
 
   // Confirmación en el propio botón tras copiar ("imp" | "link"), 2 s.
   const [copiado, setCopiado] = useState("");

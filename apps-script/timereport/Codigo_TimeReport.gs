@@ -72,9 +72,9 @@ var TR_CONFIG = {
   LINKS_JSON_URL: 'https://raw.githubusercontent.com/rdr-nfq/team-hub/main/beyond-the-grid/public/links/links.json',
   // Destinatario de la prueba del recordatorio (vacío = quien ejecuta).
   PRUEBA_TO: '',
-  // Equipos que reciben los avisos de evidencias (por su equipo principal).
-  // De momento solo RDR; para sumar otro: 'market-abuse', 'comms-surveillance'.
-  EQUIPOS_AVISO: ['rdr']
+  // Equipos que reciben los avisos de evidencias (por su equipo principal):
+  // los tres; cada uno con el enlace a su Time Report y a su carpeta.
+  EQUIPOS_AVISO: ['rdr', 'market-abuse', 'comms-surveillance']
 };
 
 /* Equipos con Time Report propio y la clave de links.json con la carpeta raíz
@@ -684,7 +684,7 @@ function _equipoConEmailTR() {
   return { team: team, coord: coord.join(',') };
 }
 
-/* Un aviso por EQUIPO de TR_CONFIG.EQUIPOS_AVISO (de momento, solo RDR), a
+/* Un aviso por EQUIPO de TR_CONFIG.EQUIPOS_AVISO (RDR, Market Abuse y Comms), a
    cada persona activa cuyo equipo PRINCIPAL es ese, por separado y desde el
    grupo (Correo.gs). Necesita la carpeta de evidencias del equipo en
    links.json. Las respuestas van a coordinación. */

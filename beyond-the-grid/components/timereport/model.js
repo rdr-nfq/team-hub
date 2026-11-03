@@ -43,6 +43,7 @@ export const hoyISO = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 export const curQ = (d = new Date()) => d.getFullYear() + "Q" + (Math.floor(d.getMonth() / 3) + 1);
+export const fechaDe = (iso) => new Date(iso + "T12:00:00");
 
 const MES_CORTO = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
@@ -78,6 +79,23 @@ export const esLaborable = (iso, festivos) => {
   const f = (festivos || {})[iso];
   return !(f === "ES" || f === "AMBOS");
 };
+
+/* «Hoy» del Time Report para mostrar la quincena (Mi Time Report, Gestión,
+   evidencias y resumen). La quincena que acaba de cerrar sigue siendo la
+   actual hasta el día del recordatorio de evidencias INCLUIDO: el primer día
+   laborable desde el 2 (o desde el 16). Desde el día siguiente, la nueva.
+   Devuelve la fecha a usar: el último día de la quincena cerrada mientras
+   dura ese margen; si no, hoy. El reparto usa siempre el día real. */
+export function hoyTR(festivos = {}, d = new Date()) {
+  const hoy = hoyISO(d);
+  const [a, m, dia] = hoy.split("-").map(Number);
+  const ult = new Date(a, m, 0).getDate();
+  const iso = (x) => `${a}-${String(m).padStart(2, "0")}-${String(x).padStart(2, "0")}`;
+  const primerLaborable = (desde) => { let x = desde; while (x < ult && !esLaborable(iso(x), festivos)) x++; return x; };
+  if (dia <= 15) { if (dia <= primerLaborable(2)) return hoyISO(new Date(a, m - 1, 0)); }
+  else if (dia <= primerLaborable(16)) return iso(15);
+  return hoy;
+}
 
 /* Jornada mínima de un día laborable: 9 h L-J, 6 h V; julio y agosto 6 h. */
 export function jornada(iso) {

@@ -8,7 +8,7 @@ import { useTimeReport, useFestivos, useEquipo, EVIDENCIAS_KEY, equipoValido } f
 import { EQUIPOS, EQUIPO, equipoTRDe } from "@/lib/equipos";
 import { useAuth } from "../chrome/AuthGate";
 import {
-  num, curQ, hoyISO, quincenasDeQ, quincenaDe, horasDe, esLaborable, jornada,
+  num, curQ, hoyISO, hoyTR, fechaDe, quincenasDeQ, quincenaDe, horasDe, esLaborable, jornada,
   repartir, capacidadMaxima, NIVELES2, NIVEL2_ANALISIS, SOPORTE_ID, MAX_DIA, etiquetaEvidencias,
 } from "./model";
 import { abrirResumenPdf } from "./resumenPdf";
@@ -80,7 +80,9 @@ function Estado({ letra, hoy, nombre, quincena }) {
 export default function GestionRoute() {
   const { showToast, getUrl } = useLinks();
   const { equipos: misEquipos } = useAuth();
-  const [q, setQ] = useState(curQ());
+  // Q y quincena de partida: las del «hoy» del Time Report (la quincena cerrada
+  // sigue siendo la actual hasta el día del recordatorio, incluido).
+  const [q, setQ] = useState(() => curQ(fechaDe(hoyTR())));
   const [eqTR, setEqTRRaw] = useState(() => {
     try { const g = localStorage.getItem(CLAVE_EQUIPO_TR); if (g) return equipoValido(g); } catch {}
     return equipoValido((misEquipos || [])[0]);
@@ -91,7 +93,7 @@ export default function GestionRoute() {
   const [tab, setTab] = useState("resumen"); // resumen | proyectos | imputacion | evidencias
   const [estado, setEstado] = useState(""); // "" | guardando | ok | error:...
   const [verQuincenas, setVerQuincenas] = useState(false);
-  const [quincenaVista, setQuincenaVista] = useState(() => Math.min(6, Math.max(1, quincenaDe(curQ(), hoyISO()) || 1)));
+  const [quincenaVista, setQuincenaVista] = useState(() => { const h = hoyTR(); return Math.min(6, Math.max(1, quincenaDe(curQ(fechaDe(h)), h) || 1)); });
   const [dirtyQ, setDirtyQ] = useState(null);
   const editBackup = useRef(null);
   const [evid, setEvid] = useState({ estado: "idle", data: null, error: "" });
@@ -118,9 +120,25 @@ export default function GestionRoute() {
   const raizEvidencias = getUrl(EVIDENCIAS_KEY[eqTR]);
   const nombreEq = EQUIPO[eqTR]?.nombre || "RDR";
   const qs = quincenasDeQ(q);
-  const hoy = hoyISO();
+  // hoy: el del Time Report (lo que se muestra: quincena actual, resumen,
+  // evidencias); hoyReal: el del calendario (el reparto, que nunca reescribe
+  // la quincena que se está entregando).
+  const hoyReal = hoyISO();
+  const hoy = hoyTR(festivos || {});
   const hoyQ = quincenaDe(q, hoy); // 0 = Q futuro, 7 = Q ya terminado
   const qActualN = Math.min(6, Math.max(1, hoyQ || 1));
+  const hoyQReal = quincenaDe(q, hoyReal);
+  const qActualNReal = Math.min(6, Math.max(1, hoyQReal || 1));
+  // Al llegar los festivos, se coloca en la quincena del «hoy» del Time Report.
+  const colocado = useRef(false);
+  useEffect(() => {
+    if (!festivos || colocado.current) return;
+    colocado.current = true;
+    const h = hoyTR(festivos);
+    const qh = curQ(fechaDe(h));
+    setQ(qh);
+    setQuincenaVista(Math.min(6, Math.max(1, quincenaDe(qh, h) || 1)));
+  }, [festivos]);
   const prefijoFeature = eqTR === "rdr" ? "CIBRDR-" : "";
 
   /* Estado LOCAL (optimista): los cambios se pintan al instante y el guardado
@@ -199,8 +217,8 @@ export default function GestionRoute() {
     sinRepartir: resumen.reduce((a, p) => a + p.sinRepartir, 0),
   }), [resumen]);
   const capMax = useMemo(
-    () => capacidadMaxima({ q, personas: personas.filter((p) => !bloqueadas.has(p)), festivos: festivos || {}, hoy }),
-    [q, personas, bloqueadas, festivos, hoy]
+    () => capacidadMaxima({ q, personas: personas.filter((p) => !bloqueadas.has(p)), festivos: festivos || {}, hoy: hoyReal }),
+    [q, personas, bloqueadas, festivos, hoyReal]
   );
 
   /* Guardado en SEGUNDO PLANO y EN COLA (si iban a la vez, el backend podía
@@ -338,7 +356,7 @@ export default function GestionRoute() {
 
   /* ── Reparto: se calcula, se revisa (antes → después) y se guarda ── */
   const calcularReparto = ({ desdeMin, desde } = {}) => {
-    const r = repartir({ q, proyectos, repartoActual: reparto, personas, bloqueadas: [...bloqueadas], festivos: festivos || {}, hoy, desdeMin, desde });
+    const r = repartir({ q, proyectos, repartoActual: reparto, personas, bloqueadas: [...bloqueadas], festivos: festivos || {}, hoy: hoyReal, desdeMin, desde });
     setPreview(r);
     setAceptoPasadas(false);
     focoTras.current = "trg-revision";
@@ -356,13 +374,13 @@ export default function GestionRoute() {
     }).filter((f) => qsR.some((n) => f.celdas[n].antes !== f.celdas[n].despues))
       .sort((a, b) => personas.indexOf(a.per) - personas.indexOf(b.per));
     const cambia = (f, n) => f.celdas[n].antes !== f.celdas[n].despues;
-    const pasadas = qsR.filter((n) => hoyQ > 0 && n < hoyQ);
+    const pasadas = qsR.filter((n) => hoyQReal > 0 && n < hoyQReal);
     return {
       qsR, filas, pasadas,
       quincenasCambian: qsR.filter((n) => filas.some((f) => cambia(f, n))).length,
       cambiosPasados: filas.reduce((a, f) => a + pasadas.filter((n) => cambia(f, n)).length, 0),
     };
-  }, [preview, reparto, qs, personas, hoyQ]);
+  }, [preview, reparto, qs, personas, hoyQReal]);
 
   const confirmarReparto = () => {
     const { desde } = preview;
@@ -767,7 +785,9 @@ export default function GestionRoute() {
               <p className="text-sm text-sand">
                 {rv.filas.length
                   ? <>Cambia las horas de proyecto de <b>{plural(rv.filas.length, "persona", "personas")}</b> en <b>{plural(rv.quincenasCambian, "quincena", "quincenas")}</b> (desde {qs[preview.desde - 1]?.label}){rv.cambiosPasados ? <> · <b>{plural(rv.cambiosPasados, "cambio", "cambios")} en quincenas ya imputadas</b></> : null}. Lo que no es de proyecto se rellena con Soporte.</>
-                  : <>El reparto no cambia las horas de proyecto de nadie desde {qs[preview.desde - 1]?.label}.</>}
+                  : !resumen.length
+                    ? <>Sin proyectos en {q}: cada persona completa su jornada con <b>Soporte a usuarios</b> desde {qs[preview.desde - 1]?.label}.</>
+                    : <>El reparto no cambia las horas de proyecto de nadie desde {qs[preview.desde - 1]?.label}.</>}
                 {preview.finDefecto === 6 && " Solo queda la última quincena: los proyectos sin fin propio se reparten en ella."}
               </p>
               {preview.pasadas && <Aviso>Reescribe quincenas ya imputadas{rv.pasadas.length ? ` (${rv.pasadas.map((n) => qs[n - 1]?.label).join(", ")})` : ""}: lo que esas personas copiaron al TR de BBVA habrá que corregirlo a mano.</Aviso>}
@@ -779,10 +799,10 @@ export default function GestionRoute() {
                       <tr className="text-xs font-bold text-sand/75">
                         <th className="trg-solido sticky top-0 px-2 py-2 text-left">Persona</th>
                         {rv.qsR.map((n) => (
-                          <th key={n} className={`sticky top-0 px-2 py-2 ${n <= qActualN && hoyQ >= 1 ? "trg-aten border-0" : "trg-solido"}`}>
+                          <th key={n} className={`sticky top-0 px-2 py-2 ${n <= qActualNReal && hoyQReal >= 1 ? "trg-aten border-0" : "trg-solido"}`}>
                             {qs[n - 1]?.label}
-                            {hoyQ >= 1 && n < hoyQ && <span className="block text-[11px] font-normal">ya imputada</span>}
-                            {n === hoyQ && <span className="block text-[11px] font-normal">en curso</span>}
+                            {hoyQReal >= 1 && n < hoyQReal && <span className="block text-[11px] font-normal">ya imputada</span>}
+                            {n === hoyQReal && <span className="block text-[11px] font-normal">en curso</span>}
                           </th>
                         ))}
                       </tr>
@@ -863,22 +883,22 @@ export default function GestionRoute() {
           <div className={`${CAJA} flex flex-col gap-2.5 p-4`}>
             <h2 className="text-base font-bold text-sand">Repartir horas</h2>
             <p className="text-[13px] leading-snug text-sand/75">
-              {tot.sinRepartir > 0 ? <b className="text-sand">Faltan {tot.sinRepartir} h por repartir. </b> : "Todo está repartido. "}
+              {!resumen.length ? <b className="text-sand">Aún no hay proyectos: el reparto pone a todo el equipo en Soporte a usuarios. </b> : tot.sinRepartir > 0 ? <b className="text-sand">Faltan {tot.sinRepartir} h por repartir. </b> : "Todo está repartido. "}
               Reparte lo pendiente entre las personas no bloqueadas (a partes iguales entre las elegidas de cada proyecto; si no hay, el mínimo de personas),
               dentro de la ventana de cada proyecto, y rellena la jornada con Soporte. Antes de guardar verás a quién afecta.
             </p>
             <label className="grid gap-1"><span className={ROT}>Recalcular desde</span>
               <Desplegable value={desdeReparto} onChange={(e) => { setPreview(null); setDesdeReparto(e.target.value); }}>
-                <option value="">{hoyQ > 6 ? "Automático (el trimestre ya terminó: elige una quincena)" : `La quincena actual (${qs[qActualN - 1]?.label})`}</option>
-                {qs.map((x) => <option key={x.n} value={x.n}>{x.label}{x.n < hoyQ ? " · ya imputada" : x.n === hoyQ ? " · actual" : ""}</option>)}
+                <option value="">{hoyQReal > 6 ? "Automático (el trimestre ya terminó: elige una quincena)" : `La quincena actual (${qs[qActualNReal - 1]?.label})`}</option>
+                {qs.map((x) => <option key={x.n} value={x.n}>{x.label}{x.n < hoyQReal ? " · ya imputada" : x.n === hoyQReal ? " · actual" : ""}</option>)}
               </Desplegable>
             </label>
-            {desdeReparto !== "" && Number(desdeReparto) < hoyQ && <Aviso>Reescribirá quincenas ya imputadas.</Aviso>}
+            {desdeReparto !== "" && Number(desdeReparto) < hoyQReal && <Aviso>Reescribirá quincenas ya imputadas.</Aviso>}
             {preview && !preview.error ? (
               <p className="text-[13px] text-sand/75"><b className="text-sand">Reparto calculado:</b> revísalo en la columna de la izquierda y guárdalo o descártalo.</p>
             ) : (
               <div>
-                <button type="button" id="trg-calcular" disabled={!resumen.length}
+                <button type="button" id="trg-calcular" disabled={!personas.length}
                   onClick={() => conGuardia(() => { cerrarEditor(); calcularReparto(desdeReparto === "" ? {} : { desde: Number(desdeReparto) }); })}
                   className={BTN_PRIM}>
                   <IconoBBVA nombre="arrows" size={18} />Calcular reparto
@@ -1048,7 +1068,7 @@ export default function GestionRoute() {
                 <th className="trg-solido sticky top-0 z-[2] px-2 py-2 text-right shadow-[inset_0_-1px_0_rgb(var(--c-white)/0.15)]">Total</th>
                 {qn.dias.map((d) => (
                   <th key={d} title={!lab(d) ? "No laborable" : `Jornada ${jornada(d)} h`}
-                    className={`trg-solido sticky top-0 z-[2] px-0.5 py-2 text-center ${lab(d) ? "" : "text-sand/50"} ${d === hoy ? "text-sand shadow-[inset_0_-3px_0_rgb(var(--c-sand))]" : "shadow-[inset_0_-1px_0_rgb(var(--c-white)/0.15)]"}`}>
+                    className={`trg-solido sticky top-0 z-[2] px-0.5 py-2 text-center ${lab(d) ? "" : "text-sand/50"} ${d === hoyReal ? "text-sand shadow-[inset_0_-3px_0_rgb(var(--c-sand))]" : "shadow-[inset_0_-1px_0_rgb(var(--c-white)/0.15)]"}`}>
                     <span className="block font-normal">{diaSemana(d)}</span>{Number(d.slice(8))}
                   </th>
                 ))}
