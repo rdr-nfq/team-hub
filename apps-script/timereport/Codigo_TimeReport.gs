@@ -27,7 +27,7 @@
  *   · RECORDATORIO por email el primer día laborable en Madrid desde el 2 y
  *     desde el 16 de cada mes (la quincena que acaba de cerrar): a las 9:00, a
  *     todo el equipo («hoy toca subir las evidencias»), con enlace a la web y
- *     a la carpeta de la quincena DE SU EQUIPO; a las 11, 13, 15 y 17 h, solo a
+ *     a la carpeta de la quincena DE SU EQUIPO; a las 11, 13, 15 y 17 h (viernes: 11, 13 y 14 h), solo a
  *     quien aún no ha subido la suya. Uno por equipo (con carpeta de
  *     evidencias configurada) y persona, desde el grupo (_comun/Correo.gs).
  *     A mano: enviarRecordatorioTRAhora() (a todos) y enviarPendientesTRAhora()
@@ -539,12 +539,20 @@ function descargarEvidencias(q, quincena, raiz, eq) {
 /* El primer día LABORABLE EN MADRID después del 1 y del 15 de cada mes (el 2
    y el 16, o el siguiente laborable), la quincena que acaba de cerrar:
      · 9:00  → a TODO el equipo: «hoy toca subir tu evidencia».
-     · 11:00, 13:00, 15:00 y 17:00 → solo a quien aún no la ha subido
+     · 11:00, 13:00, 15:00 y 17:00 (viernes: 11:00, 13:00 y 14:00, que se
+       termina a las 15:00) → solo a quien aún no la ha subido
        (estadoEvidencias de su carpeta); si ya no falta nadie, se para.
    Horas exactas: un disparador diario (7-8 h) decide si hoy toca y programa
    el de las 9:00; cada envío programa el siguiente (un solo disparador
    puntual a la vez, «recordatorioTRTramo»). */
 var TR_TRAMOS = [9, 11, 13, 15, 17];
+// Los viernes se termina a las 15:00: el último aviso, a las 14:00.
+var TR_TRAMOS_VIERNES = [9, 11, 13, 14];
+/* Tramos del día (AAAA-MM-DD): los del viernes o los de siempre. */
+function _tramosTR(hoy) {
+  var p = String(hoy || _hoyISOTR()).split('-').map(Number);
+  return new Date(p[0], p[1] - 1, p[2], 12).getDay() === 5 ? TR_TRAMOS_VIERNES : TR_TRAMOS;
+}
 var TR_PROP_RECORDATORIO = 'tr:recordatorio';
 
 /* Ejecutar UNA vez (lo hace instalarDisparadores; se puede repetir). */
@@ -554,7 +562,7 @@ function crearTriggerRecordatorioTR() {
     if (h === 'enviarRecordatorioTR' || h === 'recordatorioTRTramo') ScriptApp.deleteTrigger(t);
   });
   ScriptApp.newTrigger('enviarRecordatorioTR').timeBased().everyDays(1).atHour(7).inTimezone(TR_CONFIG.TZ).create();
-  Logger.log('Disparador creado: enviarRecordatorioTR, diario a las 7:00 (' + TR_CONFIG.TZ + '); los días de recordatorio programa los envíos de las ' + TR_TRAMOS.join(', ') + ' h.');
+  Logger.log('Disparador creado: enviarRecordatorioTR, diario a las 7:00 (' + TR_CONFIG.TZ + '); los días de recordatorio programa los envíos de las ' + TR_TRAMOS.join(', ') + ' h (viernes: ' + TR_TRAMOS_VIERNES.join(', ') + ' h).');
 }
 
 function _hoyISOTR() { return Utilities.formatDate(new Date(), TR_CONFIG.TZ, 'yyyy-MM-dd'); }
@@ -620,7 +628,7 @@ function enviarRecordatorioTR() {
   if (!r) { Logger.log(hoy + ': hoy no toca recordatorio.'); return; }
   PropertiesService.getScriptProperties().setProperty(TR_PROP_RECORDATORIO, JSON.stringify({ hoy: hoy, q: r.q, quincena: r.quincena, tramo: 0 }));
   _programarTramoTR(hoy, 0);
-  Logger.log(hoy + ': recordatorio de ' + r.info.carpeta + ' programado a las ' + TR_TRAMOS[0] + ':00.');
+  Logger.log(hoy + ': recordatorio de ' + r.info.carpeta + ' programado a las ' + _tramosTR(hoy)[0] + ':00.');
 }
 
 /* Un único disparador puntual a la hora del tramo i de hoy. */
@@ -628,8 +636,9 @@ function _programarTramoTR(hoy, i) {
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (t.getHandlerFunction() === 'recordatorioTRTramo') ScriptApp.deleteTrigger(t);
   });
-  if (i >= TR_TRAMOS.length) return;
-  var cuando = Utilities.parseDate(hoy + ' ' + ('0' + TR_TRAMOS[i]).slice(-2) + ':00', TR_CONFIG.TZ, 'yyyy-MM-dd HH:mm');
+  var tramos = _tramosTR(hoy);
+  if (i >= tramos.length) return;
+  var cuando = Utilities.parseDate(hoy + ' ' + ('0' + tramos[i]).slice(-2) + ':00', TR_CONFIG.TZ, 'yyyy-MM-dd HH:mm');
   ScriptApp.newTrigger('recordatorioTRTramo').timeBased().at(cuando).create();
 }
 
@@ -638,14 +647,14 @@ function recordatorioTRTramo() {
   var props = PropertiesService.getScriptProperties();
   var plan = JSON.parse(props.getProperty(TR_PROP_RECORDATORIO) || 'null');
   var hoy = _hoyISOTR();
-  if (!plan || plan.hoy !== hoy) { _programarTramoTR(hoy, TR_TRAMOS.length); Logger.log('Recordatorio TR: sin plan para hoy.'); return; }
+  if (!plan || plan.hoy !== hoy) { _programarTramoTR(hoy, _tramosTR(hoy).length); Logger.log('Recordatorio TR: sin plan para hoy.'); return; }
   var info = _infoQuincena(plan.q, plan.quincena);
   var siguen = 1;
   if (plan.tramo === 0) _recordarATodos(info, false);
-  else siguen = _recordarPendientes(info, TR_TRAMOS[plan.tramo]);
+  else siguen = _recordarPendientes(info, _tramosTR(hoy)[plan.tramo]);
   plan.tramo++;
   props.setProperty(TR_PROP_RECORDATORIO, JSON.stringify(plan));
-  _programarTramoTR(hoy, siguen ? plan.tramo : TR_TRAMOS.length);
+  _programarTramoTR(hoy, siguen ? plan.tramo : _tramosTR(hoy).length);
 }
 
 /* Manda YA el aviso a todo el equipo (última quincena cerrada). A mano. */
@@ -732,6 +741,8 @@ function _correoRecordatorio(info, carpetaUrl, manual, eq, persona, hora) {
   var nombreEq = TR_EQUIPOS[eq].nombre;
   var web = TR_CONFIG.WEB_URL + (eq === 'rdr' ? '' : '?equipo=' + eq);
   var fichero = _nombreEvidencia(info, persona || 'Nombre Apellido') + '.pdf';
+  var tramosHoy = _tramosTR(_hoyISOTR());
+  var ultimo = tramosHoy[tramosHoy.length - 1];
   var titulo = persona ? 'Te falta subir tu evidencia' : (manual ? 'Toca subir las evidencias' : 'Hoy toca subir las evidencias');
   var asunto = (persona ? '⏳📎 ' : '⏰📎 ') + 'Time Report ' + nombreEq + ' · ' + titulo.toLowerCase() + ' (' + info.etiqueta + ')';
   var saludo = persona ? String(persona).split(' ')[0] : 'equipo';
@@ -742,7 +753,7 @@ function _correoRecordatorio(info, carpetaUrl, manual, eq, persona, hora) {
     + '📊 Tu imputación: ' + web + '\n'
     + (carpetaUrl ? '📁 Carpeta de evidencias: ' + carpetaUrl + '\n' : '')
     + '\nEl fichero se renombra solo a «' + fichero + '».'
-    + (persona && hora && hora < TR_TRAMOS[TR_TRAMOS.length - 1] ? '\n\nTe lo volveremos a recordar cada dos horas (hasta las ' + TR_TRAMOS[TR_TRAMOS.length - 1] + ':00) mientras falte.' : '');
+    + (persona && hora && hora < ultimo ? '\n\nTe lo volveremos a recordar a lo largo del día (hasta las ' + ultimo + ':00) mientras falte.' : '');
   var btn = function (href, label, bg) {
     return '<a href="' + href + '" style="display:inline-block;background:' + bg + ';color:#001391;font-weight:bold;text-decoration:none;padding:12px 26px;border-radius:999px;font-size:15px;margin:0 8px 8px 0;">' + label + '</a>';
   };
@@ -760,7 +771,7 @@ function _correoRecordatorio(info, carpetaUrl, manual, eq, persona, hora) {
     +     '<span style="font-size:13px;color:#46536D;">Se renombra sola a <code>' + fichero + '</code></span></p>'
     +   (carpetaUrl ? btn(carpetaUrl, '📁 Subir mi evidencia', '#85C8FF') : '')
     +   btn(web, '📊 Ver mi Time Report →', '#FFB56B')
-    +   (persona && hora && hora < TR_TRAMOS[TR_TRAMOS.length - 1] ? '<p style="margin:10px 0 0;font-size:12px;color:#46536D;">Te lo recordaremos cada dos horas (hasta las ' + TR_TRAMOS[TR_TRAMOS.length - 1] + ':00) mientras falte.</p>' : '')
+    +   (persona && hora && hora < ultimo ? '<p style="margin:10px 0 0;font-size:12px;color:#46536D;">Te lo recordaremos a lo largo del día (hasta las ' + ultimo + ':00) mientras falte.</p>' : '')
     +   '<p style="margin:14px 0 0;font-size:12px;color:#46536D;">Si los botones no van: <a href="' + web + '" style="color:#001391;">' + web + '</a>'
     +   (carpetaUrl ? ' · <a href="' + carpetaUrl + '" style="color:#001391;">carpeta de evidencias</a>' : '') + '</p></div></div>';
   return { asunto: asunto, texto: texto, html: html, remite: 'Time Report ' + nombreEq };
