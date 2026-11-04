@@ -88,11 +88,14 @@ export function modelo(E, orden, dpMeta = {}) {
 
 /** Avisos (no impiden cerrar): componentes sin paquete, DP sin encargado, DP vacíos. */
 export function avisos(m) {
+  const visto = new Set(), repes = [];
+  m.pasos.forEach((p) => { if (p.t !== "dp") return; if (visto.has(p.cod)) repes.push(p.cod); else visto.add(p.cod); });
   const sinEnc = m.dps.filter((d) => d.comps.length && !d.enc);
   const vacios = m.dps.filter((d) => !d.comps.length);
   return [
     m.sinPaquete.length && { id: "sinpaq", txt: plural(m.sinPaquete.length, "componente sin paquete", "componentes sin paquete"), lista: m.sinPaquete.map((c) => c.nombre || "(sin nombre)") },
     sinEnc.length && { id: "sinenc", txt: plural(sinEnc.length, "DP sin encargado", "DP sin encargado"), lista: sinEnc.map((d) => d.cod) },
+    repes.length && { id: "repes", txt: plural(repes.length, "paso repetido en el orden", "pasos repetidos en el orden"), lista: repes },
     vacios.length && { id: "vacios", txt: plural(vacios.length, "DP vacío", "DP vacíos"), lista: vacios.map((d) => d.cod) },
   ].filter(Boolean);
 }

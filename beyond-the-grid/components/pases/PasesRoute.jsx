@@ -290,8 +290,9 @@ export default function PasesRoute() {
       abortRef.current = new AbortController();
 
       // Cambio de fecha / recarga explícita: el orden local deja de ser
-      // "protegido" (pertenece al pase anterior).
-      clearTimeout(ordenTimer.current);
+      // "protegido" (pertenece al pase anterior). Si quedaba un guardado
+      // pendiente, se manda ya (lleva su propia fecha).
+      if (ordenPend.current) { clearTimeout(ordenTimer.current); lanzarGuardadoOrden(); }
       ordenDirtyRef.current = false;
       ordenGraceUntil.current = 0;
 
@@ -368,9 +369,29 @@ export default function PasesRoute() {
   // Reconcilia tempOrden con el backend (primer render / cambio estructural).
   // NUNCA mientras haya edición local pendiente o guardado reciente: es la
   // otra mitad del arreglo del "orden que se vuelve hacia atrás".
+  const pendRevisado = useRef("");
   useEffect(() => {
     if (!E) return;
     if (ordenDirtyRef.current || Date.now() < ordenGraceUntil.current) return;
+    if (pendRevisado.current !== E.fechaSeleccionada) {
+      pendRevisado.current = E.fechaSeleccionada;
+      let p = null;
+      try { p = JSON.parse(sessionStorage.getItem("pases_orden_pendiente") || "null"); } catch {}
+      if (p && p.fechaStr === E.fechaSeleccionada && Date.now() - p.ts < 10 * 60 * 1000 && Array.isArray(p.elementos)) {
+        const iguales = p.elementos.length === (E.ordenPase || []).length && p.elementos.every((o, i) => o.elemento === E.ordenPase[i].elemento && (o.som || "") === (E.ordenPase[i].som || ""));
+        if (!iguales) {
+          // Se reaplica y se vuelve a mandar (el backend descarta si ya tenía uno más nuevo).
+          ordenDirtyRef.current = true;
+          setTempOrden(p.elementos.map((o) => ({ ...o, uid: ++ordenUidSeq.current })));
+          ordenPend.current = { fechaStr: p.fechaStr, elementos: p.elementos, ver: p.ver };
+          setEstadoOrden("pendiente");
+          clearTimeout(ordenTimer.current);
+          ordenTimer.current = setTimeout(() => lanzarGuardadoOrden(), 300);
+          return;
+        }
+        try { sessionStorage.removeItem("pases_orden_pendiente"); } catch {}
+      }
+    }
     const backendOrden = (E.ordenPase || []).map((o) => ({ elemento: o.elemento, som: o.som || "" }));
     setTempOrden((prev) => {
       const same = prev.length === backendOrden.length && prev.every((t, i) => t.elemento === backendOrden[i].elemento);
@@ -678,7 +699,7 @@ export default function PasesRoute() {
       const prev = ERef.current.ordenPase.find((o) => o.fila === fila)?.implantado;
       applyE((d) => d.ordenPase.forEach((o) => { if (o.fila === fila) o.implantado = val; }));
       try {
-        await call("actualizarCheckOrden", { fila, val });
+        await call("actualizarCheckOrden", { fila, val, fechaStr: ERef.current.fechaSeleccionada });
         cacheSet(ERef.current.fechaSeleccionada, ERef.current);
       } catch (e) {
         applyE((d) => d.ordenPase.forEach((o) => { if (o.fila === fila) o.implantado = prev; }));
@@ -692,7 +713,7 @@ export default function PasesRoute() {
     async (fila, val) => {
       applyE((d) => d.ordenPase.forEach((o) => { if (o.fila === fila) o.som = val; }));
       try {
-        await call("actualizarSomOrden", { fila, val });
+        await call("actualizarSomOrden", { fila, val, fechaStr: ERef.current.fechaSeleccionada });
         cacheSet(ERef.current.fechaSeleccionada, ERef.current);
       } catch (e) {
         showToast("Error · " + e.message, "error");
@@ -830,33 +851,82 @@ export default function PasesRoute() {
     [applyE, call, showToast]
   );
 
-  // ── Orden del pase: manipulación local + autosave 700 ms ──
+  // ── Orden del pase: manipulación local + guardado en cola ──
+  // · Un solo guardado a la vez; si hay más cambios mientras tanto, se manda
+  //   después solo el último (antes se lanzaban en paralelo y uno viejo podía
+  //   llegar el último y deshacer lo nuevo).
+  // · Cada guardado lleva la hora de la edición (ver): el backend ignora uno
+  //   más viejo que el último aplicado.
+  // · El orden pendiente se apunta en sessionStorage: si se refresca o se
+  //   cierra a medio guardar, se manda con un beacon y al volver se reaplica.
+  const ordenPend = useRef(null); // { fechaStr, elementos, ver }
+  const ordenGuardando = useRef(false);
+  const ordenReintentos = useRef(0);
+  const [estadoOrden, setEstadoOrden] = useState("ok"); // ok | pendiente | guardando | error
+  const CLAVE_ORDEN_PEND = "pases_orden_pendiente";
+  const apuntarPend = (p) => { try { p ? sessionStorage.setItem(CLAVE_ORDEN_PEND, JSON.stringify({ ...p, ts: Date.now() })) : sessionStorage.removeItem(CLAVE_ORDEN_PEND); } catch {} };
+  const lanzarGuardadoOrden = useCallback(async () => {
+    if (ordenGuardando.current || !ordenPend.current) return;
+    const p = ordenPend.current;
+    ordenPend.current = null;
+    ordenGuardando.current = true;
+    setEstadoOrden("guardando");
+    let fallo = null;
+    try {
+      await call("actualizarOrdenCompleto", { fechaStr: p.fechaStr, elementos: p.elementos, ver: p.ver });
+      ordenReintentos.current = 0;
+      if (ERef.current?.fechaSeleccionada === p.fechaStr) cacheSet(p.fechaStr, ERef.current);
+    } catch (e) {
+      fallo = e;
+      if (!ordenPend.current) ordenPend.current = p; // se reintenta con lo último
+    } finally {
+      ordenGuardando.current = false;
+    }
+    if (ordenPend.current && !fallo) return lanzarGuardadoOrden();
+    if (fallo) {
+      ordenReintentos.current += 1;
+      setEstadoOrden("error");
+      if (ordenReintentos.current <= 3) {
+        clearTimeout(ordenTimer.current);
+        ordenTimer.current = setTimeout(() => lanzarGuardadoOrden(), 2000 * ordenReintentos.current);
+      } else showToast("No se pudo guardar el orden · " + fallo.message + ". Pulsa «Reintentar» o vuelve a moverlo.", "error", 8000);
+      return;
+    }
+    // Todo guardado: ventana de gracia para revalidaciones que ya venían con el orden viejo.
+    ordenDirtyRef.current = false;
+    ordenGraceUntil.current = Date.now() + 5000;
+    apuntarPend(null);
+    setEstadoOrden("ok");
+  }, [call, showToast]);
+  const reintentarOrden = useCallback(() => { ordenReintentos.current = 0; lanzarGuardadoOrden(); }, [lanzarGuardadoOrden]);
   const guardarOrdenLocal = useCallback(
     (next) => {
       ordenDirtyRef.current = true; // protege tempOrden hasta confirmar el guardado
       setTempOrden(next);
       applyE((d) => {
-        d.ordenPase = next.map((el, i) => ({ fila: i + 1, orden: i + 1, elemento: el.elemento, implantado: false, som: el.som }));
+        d.ordenPase = next.map((el, i) => ({ fila: i + 1, orden: i + 1, elemento: el.elemento, implantado: !!(d.ordenPase || []).find((o) => o.elemento === el.elemento)?.implantado, som: el.som }));
       });
+      // El uid es solo local (keys del drag & drop): no se envía al backend.
+      ordenPend.current = { fechaStr: ERef.current.fechaSeleccionada, elementos: next.map(({ elemento, som }) => ({ elemento, som: som || "" })), ver: Date.now() };
+      apuntarPend(ordenPend.current);
+      setEstadoOrden((s) => (s === "guardando" ? s : "pendiente"));
       clearTimeout(ordenTimer.current);
-      ordenTimer.current = setTimeout(async () => {
-        try {
-          // El uid es solo local (keys del drag & drop): no se envía al backend.
-          const elementos = next.map(({ elemento, som }) => ({ elemento, som }));
-          await call("actualizarOrdenCompleto", { fechaStr: ERef.current.fechaSeleccionada, elementos });
-          cacheSet(ERef.current.fechaSeleccionada, ERef.current);
-          // Guardado OK: ventana de gracia para ignorar revalidaciones que ya
-          // estaban en vuelo con el orden antiguo.
-          ordenDirtyRef.current = false;
-          ordenGraceUntil.current = Date.now() + 5000;
-        } catch (e) {
-          // Guardado fallido: seguimos dirty → no se pierde el orden local.
-          showToast("Error al guardar secuencia · " + e.message, "error");
-        }
-      }, 700);
+      ordenTimer.current = setTimeout(() => lanzarGuardadoOrden(), 500);
     },
-    [applyE, call, showToast]
+    [applyE, lanzarGuardadoOrden]
   );
+  // Al irse con el orden sin guardar: aviso del navegador y beacon con lo último.
+  useEffect(() => {
+    const antes = (e) => { if (ordenPend.current || ordenGuardando.current) { e.preventDefault(); e.returnValue = ""; } };
+    const salir = () => {
+      const p = ordenPend.current;
+      if (!p || !apiUrlRef.current || !navigator.sendBeacon) return;
+      try { navigator.sendBeacon(apiUrlRef.current, new Blob([JSON.stringify({ action: "actualizarOrdenCompleto", payload: p })], { type: "text/plain;charset=utf-8" })); } catch {}
+    };
+    window.addEventListener("beforeunload", antes);
+    window.addEventListener("pagehide", salir);
+    return () => { window.removeEventListener("beforeunload", antes); window.removeEventListener("pagehide", salir); };
+  }, []);
 
   const ordenOps = useMemo(
     () => ({
@@ -981,7 +1051,7 @@ export default function PasesRoute() {
     E, fase, isCompletado, proyectosLocked, isAdmin, inflight,
     edicion: edicionActiva, setEdicion,
     cab, setCab, scheduleCabSave,
-    tempOrden, ordenOps,
+    tempOrden, ordenOps, estadoOrden, reintentarOrden,
     validador, validadorFlash,
     tpls: { jira: jiraTpl, enoa: enoaTpl, nova: novaTpl },
     showToast, removeToast,

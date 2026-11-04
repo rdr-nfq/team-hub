@@ -255,14 +255,16 @@ function doPostPases(e) {
         if (payload.fechaStr) invalidarDashboard(payload.fechaStr);
         break;
       case "actualizarOrdenCompleto":
-        resultado = actualizarOrdenCompleto(ctx, payload.fechaStr, payload.elementos);
+        resultado = actualizarOrdenCompleto(ctx, payload.fechaStr, payload.elementos, payload.ver);
         invalidarDashboard(payload.fechaStr);
         break;
       case "actualizarCheckOrden":
-        resultado = actualizarCheckOrden(ctx, payload.fila, payload.val);
+        resultado = actualizarCheckOrden(ctx, payload.fila, payload.val, payload.fechaStr);
+        invalidarDashboard(payload.fechaStr);
         break;
       case "actualizarSomOrden":
-        resultado = actualizarSomOrden(ctx, payload.fila, payload.val);
+        resultado = actualizarSomOrden(ctx, payload.fila, payload.val, payload.fechaStr);
+        invalidarDashboard(payload.fechaStr);
         break;
       case "debugTotal":
         resultado = debugTotal(ctx);
@@ -838,54 +840,95 @@ function asegurarColumnaProbado(sheet) {
    - Antes: deleteRow en bucle (cada delete dispara recálculo del spreadsheet).
    - Ahora: identifica el rango contiguo de filas con esta fecha y lo limpia/sobrescribe
      de una sola pasada. Si hay menos filas nuevas que viejas, limpia el sobrante. */
-function actualizarOrdenCompleto(ctx, fechaStr, elementos) {
-  const hOrden = ctx.sheet(CONSTANTES.HOJA_ORDEN);
+/* Guarda el orden completo de un pase.
+   · Con bloqueo: dos guardados a la vez (dos pestañas, un reintento) no se
+     mezclan en la hoja.
+   · Versión: cada guardado lleva la hora de la edición (ver); uno más viejo
+     que el último aplicado se ignora, así un reintento lento no deshace lo
+     que se cambió después.
+   · Las filas de un pase quedan siempre juntas: si crecen se insertan a
+     continuación (no al final de la hoja, donde se mezclaban con otros pases
+     y el siguiente guardado pisaba filas ajenas); si estaban repartidas, se
+     borran y se escriben juntas al final.
+   · Conserva la marca de implantado de cada paso que sigue en el orden. */
+function actualizarOrdenCompleto(ctx, fechaStr, elementos, ver) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const cache = CacheService.getScriptCache();
+    const claveVer = "ordenVer:" + fechaStr;
+    const verNum = Number(ver) || 0;
+    if (verNum) {
+      const ultima = Number(cache.get(claveVer)) || 0;
+      if (verNum < ultima) return "IGNORADO";
+    }
+
+    ctx.invalidar(CONSTANTES.HOJA_ORDEN);
+    const hOrden = ctx.sheet(CONSTANTES.HOJA_ORDEN);
+    const data = ctx.data(CONSTANTES.HOJA_ORDEN);
+    const filasExist = [];
+    const implantadoPor = {};
+    for (let i = 1; i < data.length; i++) {
+      if (formatearFechaSegura(data[i][0]) !== fechaStr) continue;
+      filasExist.push(i + 1);
+      const k = String(data[i][2] || "").trim().toUpperCase();
+      (implantadoPor[k] = implantadoPor[k] || []).push(data[i][3] === true || String(data[i][3]).toUpperCase() === "TRUE");
+    }
+
+    const dObj = parsearFechaEs(fechaStr);
+    const nuevasRows = (elementos || []).map((el, i) => {
+      const q = implantadoPor[String(el.elemento || "").trim().toUpperCase()];
+      return [dObj, i + 1, el.elemento, q && q.length ? q.shift() : false, el.som || ""];
+    });
+
+    const contiguas = filasExist.every((r, i) => r === filasExist[0] + i);
+    if (filasExist.length && contiguas) {
+      const first = filasExist[0];
+      const n = filasExist.length, m = nuevasRows.length;
+      if (m < n) hOrden.deleteRows(first + m, n - m);
+      if (m > n) hOrden.insertRowsAfter(first + n - 1, m - n);
+      if (m) hOrden.getRange(first, 1, m, 5).setValues(nuevasRows);
+    } else {
+      // Repartidas por la hoja (datos antiguos) o sin filas: se borran por
+      // bloques de abajo arriba y se escriben juntas al final.
+      for (let j = filasExist.length - 1; j >= 0;) {
+        let k = j;
+        while (k > 0 && filasExist[k - 1] === filasExist[k] - 1) k--;
+        hOrden.deleteRows(filasExist[k], j - k + 1);
+        j = k - 1;
+      }
+      if (nuevasRows.length) hOrden.getRange(hOrden.getLastRow() + 1, 1, nuevasRows.length, 5).setValues(nuevasRows);
+    }
+    SpreadsheetApp.flush();
+    if (verNum) cache.put(claveVer, String(verNum), 21600);
+    ctx.invalidar(CONSTANTES.HOJA_ORDEN);
+    return "OK";
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/* Fila real de la hoja para el paso n (1..N) de un pase: el cliente numera
+   los pasos de cada pase de 1 a N, no por fila de la hoja. */
+function _filaRealOrden(ctx, fechaStr, n) {
   const data = ctx.data(CONSTANTES.HOJA_ORDEN);
-
-  // Detectar filas existentes con esta fecha
-  const filasExist = [];
+  let k = 0;
   for (let i = 1; i < data.length; i++) {
-    if (formatearFechaSegura(data[i][0]) === fechaStr) filasExist.push(i + 1);
+    if (formatearFechaSegura(data[i][0]) !== fechaStr) continue;
+    if (++k === Number(n)) return i + 1;
   }
+  throw new Error("No existe el paso " + n + " del pase " + fechaStr + ". Recarga la página.");
+}
 
-  const dObj = parsearFechaEs(fechaStr);
-  const nuevasRows = (elementos || []).map((el, i) => [dObj, i + 1, el.elemento, false, el.som || ""]);
-
-  if (filasExist.length === 0 && nuevasRows.length === 0) return "OK";
-
-  if (filasExist.length === 0) {
-    // Solo append
-    hOrden.getRange(hOrden.getLastRow() + 1, 1, nuevasRows.length, 5).setValues(nuevasRows);
-  } else {
-    // Sobrescribir desde la primera fila existente
-    const firstRow = filasExist[0];
-    const overlap = Math.min(filasExist.length, nuevasRows.length);
-    if (overlap > 0) {
-      hOrden.getRange(firstRow, 1, overlap, 5).setValues(nuevasRows.slice(0, overlap));
-    }
-    // Limpiar filas sobrantes (si nuevasRows es más corto)
-    if (filasExist.length > nuevasRows.length) {
-      const toDelete = filasExist.slice(nuevasRows.length).reverse(); // borramos de abajo arriba
-      toDelete.forEach(r => hOrden.deleteRow(r));
-    }
-    // Append filas nuevas adicionales (si nuevasRows es más largo)
-    if (nuevasRows.length > filasExist.length) {
-      const extra = nuevasRows.slice(filasExist.length);
-      hOrden.getRange(hOrden.getLastRow() + 1, 1, extra.length, 5).setValues(extra);
-    }
-  }
-
-  ctx.invalidar(CONSTANTES.HOJA_ORDEN);
+function actualizarCheckOrden(ctx, fila, val, fechaStr) {
+  const row = fechaStr ? _filaRealOrden(ctx, fechaStr, fila) : fila;
+  ctx.sheet(CONSTANTES.HOJA_ORDEN).getRange(row, 4).setValue(val);
   return "OK";
 }
 
-function actualizarCheckOrden(ctx, fila, val) {
-  ctx.sheet(CONSTANTES.HOJA_ORDEN).getRange(fila, 4).setValue(val);
-  return "OK";
-}
-
-function actualizarSomOrden(ctx, fila, val) {
-  ctx.sheet(CONSTANTES.HOJA_ORDEN).getRange(fila, 5).setValue(val);
+function actualizarSomOrden(ctx, fila, val, fechaStr) {
+  const row = fechaStr ? _filaRealOrden(ctx, fechaStr, fila) : fila;
+  ctx.sheet(CONSTANTES.HOJA_ORDEN).getRange(row, 5).setValue(val);
   return "OK";
 }
 

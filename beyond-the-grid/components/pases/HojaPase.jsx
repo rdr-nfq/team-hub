@@ -23,7 +23,7 @@ const ATAJO_CAMPO = (el) => el && (el.tagName === "TEXTAREA" || el.tagName === "
 
 export default function HojaPase() {
   const P = usePases();
-  const { E, fase, cab, setCab, scheduleCabSave, tempOrden, ordenOps, validador, actions, proyectosLocked, edicion, setEdicion, isCompletado, showToast, inflight } = P;
+  const { E, fase, cab, setCab, scheduleCabSave, tempOrden, ordenOps, validador, actions, proyectosLocked, edicion, setEdicion, isCompletado, showToast, inflight, estadoOrden, reintentarOrden } = P;
   const editable = !proyectosLocked && !isCompletado;
   const cerrada = fase !== "FASE_2_3_PREPARACION";
 
@@ -60,6 +60,13 @@ export default function HojaPase() {
   const dpDe = (cod) => m.dps.find((d) => d.cod === cod);
   const avisos = useMemo(() => calcAvisos(m), [m]);
   const mal = useMemo(() => malColocados(m), [m]);
+  // Pasos repetidos: el mismo paquete en dos pasos del orden. Solo el primero
+  // muestra sus componentes; los demás se marcan para quitarlos.
+  const repetido = useMemo(() => {
+    const visto = new Set(), out = new Set();
+    m.pasos.forEach((p) => { if (p.t !== "dp") return; const k = p.cod; if (visto.has(k)) out.add(`${p.i}:${p.k}`); else visto.add(k); });
+    return out;
+  }, [m]);
 
   // ── Ancho disponible → columnas (nunca scroll lateral) ──
   useEffect(() => {
@@ -84,8 +91,11 @@ export default function HojaPase() {
   useEffect(() => {
     // Solo con el orden ya cargado del servidor (si no, se reharía el orden solo con los DP).
     if (!editable || renombrando.current || !m.fuera.length || (!tempOrden.length && (E.ordenPase || []).length)) return;
+    const texto = tempOrden.map((o) => String(o.elemento || "").toUpperCase()).join(" | ");
+    const faltan = m.fuera.filter((d) => !texto.includes(d.cod.toUpperCase()));
+    if (!faltan.length) return;
     const iA = tempOrden.findIndex((o) => esArranque(o.elemento));
-    const nuevos = m.fuera.map((d) => ({ elemento: etiquetaDp(d.subida, d.cod), som: "" }));
+    const nuevos = faltan.map((d) => ({ elemento: etiquetaDp(d.subida, d.cod), som: "" }));
     const next = [...tempOrden];
     next.splice(iA < 0 ? next.length : iA, 0, ...nuevos);
     ordenOps.set(next);
@@ -198,6 +208,13 @@ export default function HojaPase() {
     } finally { renombrando.current = false; }
   };
   const quitarDp = async (d) => {
+    // Si el paquete sale en más de un paso, la × quita solo ese paso (sus componentes siguen en el otro).
+    if (m.pasos.filter((p) => p.t === "dp" && p.cod === d.cod).length > 1) {
+      const next = [...tempOrden];
+      if (d.multi) next[d.i] = { ...next[d.i], elemento: next[d.i].elemento.replace(d.cod, "").replace(/\s+y\s*$|^\s*y\s+/i, "").trim() };
+      else next.splice(d.i, 1);
+      return setOrden(next, `Paso repetido de ${d.cod} quitado`);
+    }
     if (d.comps.length) await lote(d.comps.map((c) => ({ fila: c.fila, codigo: "" })));
     if (d.i !== undefined) {
       const next = [...tempOrden];
@@ -313,6 +330,12 @@ export default function HojaPase() {
       return;
     }
     if (id === "vacios") { setVista("paquete"); setFiltro(""); return avisar("Arrastra componentes a los DP vacíos o quítalos con la ×"); }
+    if (id === "repes") {
+      setVista("paquete"); setFiltro("");
+      const r = m.pasos.find((p) => p.t === "dp" && repetido.has(`${p.i}:${p.k}`));
+      if (r) { avisar(`${r.cod} sale dos veces en el orden: quita el paso marcado con la ×`); enfoca(`tr[data-paso="${r.i}"].mal .x`); }
+      return;
+    }
     setVista("paquete");
     setFiltro((f) => (f === id ? "" : id));
   };
@@ -611,11 +634,13 @@ export default function HojaPase() {
     const prob = d.comps.filter((c) => c.probado).length;
     const plegado = !filtraComp && !desplegados.has(d.cod);
     const ultimoDelPaso = !m.pasos.some((x) => x.t === "dp" && x.i === d.i && x.k > (d.k || 0));
+    const esRepe = repetido.has(`${d.i}:${d.k}`);
+    const kd = `${d.i ?? "f"}-${d.k || 0}-${d.cod}`;
     const proys = [...new Set(d.comps.map((c) => c.proyecto))];
     const sc = schemaDe(E, d.subida);
     const malSchema = !cumpleSchema(d.cod, sc);
     const filas = [
-      <tr key={"d" + d.cod} className={`grupo ${motivo || malSchema ? "mal" : ""} ${soltar === "d" + d.cod ? "soltar" : ""} ${d.i !== undefined && !d.k && soltar === `p${d.i}a` ? "soltar-antes" : ""} ${d.i !== undefined && ultimoDelPaso && plegado && soltar === `p${d.i}d` ? "soltar-despues" : ""}`} data-dp={d.cod} data-paso={d.i}>
+      <tr key={"d" + kd} className={`grupo ${motivo || malSchema || esRepe ? "mal" : ""} ${soltar === "d" + d.cod ? "soltar" : ""} ${d.i !== undefined && !d.k && soltar === `p${d.i}a` ? "soltar-antes" : ""} ${d.i !== undefined && ultimoDelPaso && plegado && soltar === `p${d.i}d` ? "soltar-despues" : ""}`} data-dp={d.cod} data-paso={d.i}>
         <td className="sel">{marcaGrupo(vis.map((c) => c.fila), d.cod)}</td>
         <td colSpan={span}>
           <span className="grp">
@@ -637,7 +662,8 @@ export default function HojaPase() {
               </select>
               {ic("fold", 11)}
             </span>
-            {(motivo || malSchema) && <span className="marca-mal">{motivo || `El código de un ${d.subida} empieza por ${prefijoSchema(sc)}`}</span>}
+            {esRepe && <span className="marca-mal">Repetido en el orden: quita este paso</span>}
+            {!esRepe && (motivo || malSchema) && <span className="marca-mal">{motivo || `El código de un ${d.subida} empieza por ${prefijoSchema(sc)}`}</span>}
             <span className="mini">{d.comps.length}</span>
             <span className="proys">{proys.map((x) => <span key={x} className="proy" style={{ background: m.colorProy[x] }}>{m.proys.find((p) => p.nombre === x)?.corto || x}</span>)}</span>
             <span className="der">
@@ -660,11 +686,11 @@ export default function HojaPase() {
         </td>
       </tr>,
     ];
-    if (!plegado) {
+    if (!plegado && !esRepe) {
       filas.push(...vis.map(filaComp));
-      if (d.i !== undefined && ultimoDelPaso && soltar === `p${d.i}d`) filas.push(<tr key={"sl" + d.cod} className="soltar-linea" aria-hidden="true"><td colSpan={span + 1} /></tr>);
+      if (d.i !== undefined && ultimoDelPaso && soltar === `p${d.i}d`) filas.push(<tr key={"sl" + kd} className="soltar-linea" aria-hidden="true"><td colSpan={span + 1} /></tr>);
       if (anadir && anadir.dp === d.cod) filas.push(filaAlta(d.cod, proys[0] || ""));
-      else if (!vis.length) filas.push(<tr key={"v" + d.cod} data-dp={d.cod}><td /><td colSpan={span} className="mini">Vacío: arrastra aquí componentes o pulsa «Añadir».</td></tr>);
+      else if (!vis.length) filas.push(<tr key={"v" + kd} data-dp={d.cod}><td /><td colSpan={span} className="mini">Vacío: arrastra aquí componentes o pulsa «Añadir».</td></tr>);
     }
     return filas;
   };
@@ -763,7 +789,9 @@ export default function HojaPase() {
             <span className="progreso" aria-hidden="true"><i style={{ width: `${items.length ? Math.round((hechos.length / items.length) * 100) : 0}%` }} /></span>
             <b>{hechos.length}/{items.length}</b> checks
           </span>
-          <span className="guardado" aria-live="polite">{inflight ? "Guardando…" : <>{ic("checkmark", 12)}Guardado</>}</span>
+          <span className="guardado" aria-live="polite">{estadoOrden === "error"
+            ? <button type="button" className="mini-btn" onClick={reintentarOrden}>No se guardó el orden · Reintentar</button>
+            : inflight || (estadoOrden && estadoOrden !== "ok") ? "Guardando…" : <>{ic("checkmark", 12)}Guardado</>}</span>
           <button type="button" className="btn btn-cerrar" aria-disabled={!validador?.todoCorrecto}
             onClick={() => { if (validador?.todoCorrecto) return actions.validarYAvanzarPrep(); const p0 = items.find((x) => !x.ok); if (p0) { avisar(`Aún falta: ${p0.id === "crq" ? "el CRQ" : p0.id === "inst" ? "la instalación técnica" : etiquetaCheck(p0)}`); if (p0.id === "crq") enfoca('[data-cab="crq"]'); else if (p0.id === "inst") enfoca('[data-cab="inst"]'); else irACheck(p0.id); } }}>
             Cerrar preparación{!validador?.todoCorrecto && <span className="cuantos"> · faltan {nPend}</span>}
