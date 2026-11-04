@@ -32,7 +32,8 @@ export function useGuardias(action, params) {
   const urlRef = useRef(null);
   const paramsKey = JSON.stringify(params || {});
 
-  const load = useCallback(async () => {
+  // silencioso: recarga sin vaciar lo que ya se ve (tras una acción o un conflicto).
+  const load = useCallback(async (silencioso = false) => {
     let url = null;
     if (!linksError) url = getUrl("guardiasBackend");
     urlRef.current = url;
@@ -41,7 +42,7 @@ export function useGuardias(action, params) {
       return;
     }
     if (!action) return;
-    setSnap(null);
+    if (silencioso !== true) setSnap(null);
     const qp = new URLSearchParams({ action, ...JSON.parse(paramsKey) }).toString();
     const u = url + (url.indexOf("?") < 0 ? "?" : "&") + qp;
     // Una lectura es idempotente: si Google devuelve una página suelta de
@@ -54,6 +55,7 @@ export function useGuardias(action, params) {
         return;
       } catch (e) {
         if (e.html && intento < 2) { await new Promise((ok) => setTimeout(ok, 1500)); continue; }
+        if (silencioso === true) return; // se queda lo que había
         setSnap({ data: null, error: String(e.message || e) });
         return;
       }
@@ -79,7 +81,15 @@ export function useGuardias(action, params) {
     return res.data;
   }, []);
 
-  return { snap, reload: load, post };
+  // Envío que sobrevive al cierre de la página (una resolución que aún
+  // esperaba su «Deshacer» cuando la persona se va).
+  const beacon = useCallback((act, body) => {
+    const url = urlRef.current;
+    if (!url || typeof navigator === "undefined" || !navigator.sendBeacon) return false;
+    return navigator.sendBeacon(url, new Blob([JSON.stringify({ action: act, ...body })], { type: "text/plain;charset=utf-8" }));
+  }, []);
+
+  return { snap, reload: load, post, beacon };
 }
 
 /* Texto del aviso cuando la guardia se guardó pero el correo no salió. */

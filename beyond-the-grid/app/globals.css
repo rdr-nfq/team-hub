@@ -698,6 +698,123 @@ html.rdr-light .vacu.vg { --v-tinte: rgb(150 148 255 / 0.16); --v-medio: rgb(150
 .vg-peligro { border: 1.5px dashed var(--v-ink); border-radius: 10px; padding: 12px; }
 @media (max-width: 700px) { .vg .v-btn { min-height: 44px; } }
 
+/* ── Guardias del equipo (Gestión, components/coordinacion/GuardiasRoute.jsx).
+   Lenguaje de Vacaciones del equipo (.vacu.vg): bandeja a la izquierda y panel
+   de decisión fijo a la derecha; en móvil, el panel primero. Año y trimestre
+   filtran todo; lo pendiente de otros trimestres se avisa en una franja. Los
+   estados son rellenos de acento con texto Electric en los dos temas. ── */
+.gu { --gu-dur: rgb(133 200 255 / 0.2); --gu-borde: rgb(247 248 248 / 0.5); }
+html.rdr-light .gu { --gu-dur: rgb(133 200 255 / 0.38); --gu-borde: rgb(70 83 109 / 0.8); }
+.gu .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.gu .v-btn-p { background: var(--v-ink); border-color: var(--v-ink); color: rgb(var(--c-midnight)); }
+.gu .v-btn-p:disabled { opacity: 0.45; }
+.gu .v-chip { min-height: 36px; }
+.gu-kbd-off .vg-kbd { display: none; }
+.gu-periodo { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.gu-periodo .gu-sep { width: 1px; align-self: stretch; background: var(--v-line-soft); margin: 2px 4px; }
+.gu-anio { position: relative; display: inline-flex; }
+.gu-anio select { width: auto; font-weight: 700; border-radius: 999px; min-height: 36px; padding: 6px 32px 6px 14px; }
+.gu-anio svg { position: absolute; right: 11px; top: 50%; transform: translateY(-50%) rotate(180deg); pointer-events: none; }
+.gu .v-chip .gu-n { display: inline-grid; place-items: center; min-width: 18px; height: 18px; border-radius: 999px; font-size: 11px; padding: 0 5px; }
+.gu .v-chip .gu-n-pend { background: #ffe761; color: #001391; }
+.gu .v-chip .gu-n-falta { box-shadow: inset 0 0 0 1.5px currentColor; }
+.gu-mas { position: relative; }
+.gu-mas > summary { list-style: none; }
+.gu-mas > summary::-webkit-details-marker { display: none; }
+.gu-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 270px; background: var(--v-solido); border: 1px solid var(--gu-borde); border-radius: 10px; box-shadow: 0 12px 30px -12px var(--v-sombra); padding: 6px; display: flex; flex-direction: column; }
+.gu-menu button { all: unset; cursor: pointer; padding: 9px 10px; border-radius: 6px; font-size: 14px; display: flex; gap: 8px; align-items: flex-start; color: var(--v-ink); }
+.gu-menu button:hover { background: var(--v-tinte); }
+.gu-menu button:focus-visible { background: var(--v-medio); outline: 3px solid var(--v-ink); outline-offset: -3px; }
+.gu-menu small { display: block; font-size: 12px; color: var(--v-soft); }
+.gu-otrosq { display: flex; gap: 8px 12px; align-items: center; flex-wrap: wrap; background: #ffe761; color: #001391; border-radius: 10px; padding: 8px 12px; font-size: 14px; }
+.gu-otrosq button { font-weight: 700; font-size: 13px; color: #001391; background: #fff; border: 1.5px solid #001391; border-radius: 999px; padding: 5px 12px; cursor: pointer; }
+.gu-otrosq button:focus-visible { outline: 3px solid #001391; outline-offset: 2px; }
+.gu-resumen { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 900px) { .gu-resumen { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.gu-kpi { text-align: left; cursor: pointer; background: var(--v-surface); border: 1.5px solid var(--v-line-soft); border-radius: 10px; padding: 10px 12px; color: var(--v-ink); display: flex; flex-direction: column; gap: 2px; min-width: 0; font: inherit; }
+.gu-kpi:hover { border-color: var(--v-ink); }
+.gu-kpi[aria-pressed="true"] { border-color: var(--v-ink); background: var(--v-medio); }
+.gu-kpi .gu-t { font-weight: 700; font-size: 12px; color: var(--v-soft); }
+.gu-kpi b { font-size: 22px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.gu-kpi .gu-s { font-size: 12px; color: var(--v-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gu-kpi.gu-aviso b::after { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 999px; background: #ffe761; margin-left: 8px; vertical-align: 3px; box-shadow: 0 0 0 1.5px #001391; }
+.gu-rejilla { display: grid; grid-template-columns: 360px minmax(0, 1fr); grid-template-areas: "lista panel"; gap: 24px; align-items: start; }
+.gu-lista { grid-area: lista; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.gu-panel-w { grid-area: panel; position: sticky; top: calc(var(--cabecera) + 16px); min-width: 0; display: flex; flex-direction: column; gap: 12px; scroll-margin-top: calc(var(--cabecera) + 12px); }
+@media (max-height: 700px) { .gu-panel-w { position: static; } }
+@media (max-width: 1000px) {
+  .gu-rejilla { grid-template-columns: minmax(0, 1fr); grid-template-areas: "panel" "lista"; }
+  .gu-panel-w { position: static; }
+}
+.gu-buscar { position: relative; display: block; }
+.gu-buscar svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--v-soft); }
+.gu-grupo { margin: 10px 0 2px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.gu-grupo h3 { font-weight: 700; font-size: 13px; color: var(--v-soft); }
+.gu-grupo small { font-size: 12px; color: var(--v-soft); }
+.gu-grupo .v-btn { font-size: 12px; padding: 3px 8px; }
+.gu-it { width: 100%; text-align: left; cursor: pointer; background: var(--v-solido); border: 1px solid var(--v-line-soft); border-radius: 10px; padding: 9px 11px; color: var(--v-ink); display: flex; flex-direction: column; gap: 3px; font: inherit; font-size: 13px; scroll-margin-top: calc(var(--cabecera) + 12px); }
+.gu-it:hover { border-color: var(--v-ink); }
+.gu-it[aria-current="true"] { border: 2px solid var(--v-ink); background: var(--v-medio); padding: 8px 10px; }
+.gu-it .v-fila b { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gu-it.gu-ocupada { opacity: 0.6; }
+.gu-est { font-size: 12px; font-weight: 700; color: #001391; border-radius: 999px; padding: 1px 9px; white-space: nowrap; }
+.gu-est-pend { background: #ffe761; } .gu-est-falta { background: #ffb56b; } .gu-est-alta { background: #88e783; }
+.gu-est-rech { background: none; color: var(--v-soft); border: 1.5px solid var(--gu-borde); padding: 0 8px; }
+.gu-est-prueba { background: none; color: var(--v-ink); border: 1.5px dashed var(--v-ink); padding: 0 8px; }
+.gu-dur { font-weight: 700; background: var(--gu-dur); border-radius: 6px; padding: 1px 7px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.gu-vacio-l { margin: 0; font-size: 13px; color: var(--v-soft); background: var(--v-surface); border: 1px dashed var(--gu-borde); border-radius: 10px; padding: 10px 12px; }
+.gu-panel { background: var(--v-tinte); border: 1px solid #9694ff; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+.gu-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; color: var(--v-soft); }
+.gu-top b { color: var(--v-ink); }
+.gu-top .v-btn-t { padding: 4px 6px; }
+.gu-panel h2 { font-size: 24px; line-height: 1.2; font-weight: 700; }
+.gu-panel h2:focus { outline: none; }
+.gu-panel h2:focus-visible { outline: 2px solid var(--v-ink); outline-offset: 4px; border-radius: 4px; }
+.gu-cuando { margin: 4px 0 0; font-size: 15px; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+.gu-desc { margin: 0; font-size: 15px; line-height: 1.5; background: var(--v-solido); border: 1px solid var(--v-line-soft); border-radius: 10px; padding: 10px 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.gu-contexto { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 16px; font-size: 13px; color: var(--v-soft); margin: 0; }
+@media (max-width: 700px) { .gu-contexto { grid-template-columns: minmax(0, 1fr); } }
+.gu-contexto b { color: var(--v-ink); }
+.gu-imps { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.gu-imp { font: inherit; font-weight: 700; font-size: 16px; color: var(--v-ink); background: var(--v-solido); border: 1.5px solid var(--gu-borde); border-radius: 10px; padding: 11px 14px; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; min-height: 48px; font-variant-numeric: tabular-nums; }
+.gu-imp:hover:not(:disabled) { border-color: var(--v-ink); }
+.gu-imp:disabled { opacity: 0.45; cursor: not-allowed; }
+.gu-imp[aria-pressed="true"] { background: var(--v-ink); color: rgb(var(--c-midnight)); border-color: var(--v-ink); }
+.gu-otro { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.gu-otro .v-inp { width: 96px; font-size: 16px; padding: 11px 10px; text-align: right; }
+.gu-error { margin: 0; flex-basis: 100%; font-size: 13px; font-weight: 700; background: #ffe761; color: #001391; border-radius: 8px; padding: 6px 10px; }
+.gu-decide { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; border-top: 1px solid #9694ff; padding-top: 14px; }
+.gu-decide .v-btn { padding: 12px 18px; font-size: 15px; }
+.gu-decide .gu-ancho { flex-basis: 100%; margin: 0; }
+.gu-pista { margin: 0; flex-basis: 100%; font-size: 12px; color: var(--v-soft); }
+.gu-rechazo { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #9694ff; padding-top: 14px; }
+.gu-rechazo textarea { min-height: 72px; resize: vertical; }
+.gu-ciclo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0; padding: 0; list-style: none; }
+.gu-ciclo li { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--v-soft); white-space: nowrap; }
+.gu-ciclo li.gu-hecho { color: var(--v-ink); font-weight: 700; }
+.gu-ciclo .gu-pt { width: 20px; height: 20px; border-radius: 999px; border: 1.5px solid var(--gu-borde); display: grid; place-items: center; }
+.gu-ciclo li.gu-hecho .gu-pt { background: var(--v-ink); border-color: var(--v-ink); color: rgb(var(--c-midnight)); }
+.gu-ciclo .gu-raya { width: 24px; height: 2px; background: var(--gu-borde); }
+.gu-ciclo .gu-raya.gu-hecho { background: var(--v-ink); }
+.gu-ciclo small { font-weight: 400; color: var(--v-soft); }
+.gu-alerta { margin: 0; background: #ffe761; color: #001391; border-radius: 8px; padding: 8px 10px; font-size: 14px; }
+.gu-prueba { margin: 0; font-size: 13px; border: 1.5px dashed var(--v-ink); border-radius: 8px; padding: 7px 10px; background: var(--v-solido); }
+.gu-peligro { border: 2px solid var(--v-ink); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; background: var(--v-solido); }
+.gu-atajos { margin: 0; font-size: 12px; color: var(--v-soft); display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
+.gu-atajos > span { display: inline-flex; gap: 4px; align-items: center; }
+.gu-atajos .v-btn { font-size: 12px; padding: 3px 8px; }
+@media (max-width: 700px), (hover: none) { .gu .vg-kbd, .gu-atajos { display: none; } }
+@media (max-width: 700px) { .gu .v-chip, .gu-anio select, .gu-mas > summary { min-height: 44px; } }
+.gu-envios { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 90; display: flex; flex-direction: column; gap: 6px; align-items: center; width: max-content; max-width: calc(100vw - 32px); }
+@media (max-width: 700px) { .gu-envios { left: 16px; right: 16px; transform: none; width: auto; bottom: 16px; } }
+.gu-envio { display: flex; align-items: center; gap: 12px; background: var(--v-ink); color: rgb(var(--c-midnight)); border-radius: 12px; padding: 10px 12px 10px 18px; box-shadow: 0 12px 30px -10px var(--v-sombra); font-size: 14px; }
+.gu-envio.gu-envio-error { background: #ffe761; color: #001391; }
+.gu-envio button { font: inherit; font-weight: 700; color: #001391; background: #85c8ff; border: 0; border-radius: 8px; padding: 6px 10px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
+.gu-envio .gu-cuenta { font-variant-numeric: tabular-nums; opacity: 0.85; white-space: nowrap; }
+.gu-esq { background: var(--v-surface); border: 1px solid var(--v-line-soft); border-radius: 10px; }
+@media (prefers-reduced-motion: no-preference) { .gu-esq { animation: gu-latido 1.4s ease-in-out infinite alternate; } }
+@keyframes gu-latido { from { opacity: 0.55; } to { opacity: 1; } }
+
 /* ── Pases Calendados: hoja de preparación (.ph) ── */
 .ph {
   --page: #f7f8f8; --surface: #ffffff; --solido: #ffffff;
