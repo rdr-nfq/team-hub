@@ -39,6 +39,14 @@ export function colorSubida(tiposSubida, subida) {
 
 /** Prefijo del código según el tipo de subida (Parametrizaciones). */
 export const schemaDe = (E, subida) => (E?.schemaPorSubida || {})[String(subida || "").trim()] || "";
+/** ¿El código empieza por el prefijo de su tipo? El guion final es opcional
+   («REQ-» y «REQ» valen igual: los Remedy van ya sin guion, REQ000123). */
+export const cumpleSchema = (cod, sc) => {
+  const c = String(cod || "").toUpperCase(), s = String(sc || "").toUpperCase().trim();
+  return !s || c.startsWith(s) || c.startsWith(s.replace(/-+$/, ""));
+};
+/** El prefijo tal cual se escribe (sin el guion final si es un REQ). */
+export const prefijoSchema = (sc) => (/^REQ-?$/i.test(String(sc || "").trim()) ? "REQ" : String(sc || "").toUpperCase());
 
 /**
  * Modelo de la hoja.

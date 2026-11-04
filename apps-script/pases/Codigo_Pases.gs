@@ -266,7 +266,7 @@ function doPostPases(e) {
         break;
       case "debugTotal":
         resultado = debugTotal(ctx);
-        try { CacheService.getScriptCache().removeAll(["RDR_Hub_Estaticos"]); } catch (_) {}
+        try { CacheService.getScriptCache().removeAll([PASES_CLAVE_ESTATICOS]); } catch (_) {}
         break;
 
       default:
@@ -316,11 +316,11 @@ function obtenerDatosDashboard(ctx, fechaRequerida) {
     }
 
     const cache = CacheService.getScriptCache();
-    // v3: invalidamos cache anterior porque ahora incluimos listadoRules.
-    const cacheKeyEst = "RDR_Hub_Estaticos_v3";
+    const cacheKeyEst = PASES_CLAVE_ESTATICOS;
     let equipo, clientes, tiposComp, tiposSubida, schemaPorSubida, listadoRules;
 
-    // ── Estáticos: equipo / clientes / tipos / schemas / rules. Cache 6 h ──
+    // ── Estáticos: equipo / clientes / tipos / schemas / rules. Cache 10 min
+    //    (un cambio en Parametrizaciones se ve en la web como mucho 10 min después) ──
     const cachedEst = cache.get(cacheKeyEst);
     if (cachedEst) {
       const parsed = JSON.parse(cachedEst);
@@ -345,7 +345,7 @@ function obtenerDatosDashboard(ctx, fechaRequerida) {
         // Listado Rules en la columna 5 (índice 4). Excepciones a la regla "rdrRules → Streetref".
         if (param[i][4]) listadoRules.push(String(param[i][4]).trim());
       }
-      cache.put(cacheKeyEst, JSON.stringify({ equipo, clientes, tiposComp, tiposSubida, schemaPorSubida, listadoRules }), 21600);
+      cache.put(cacheKeyEst, JSON.stringify({ equipo, clientes, tiposComp, tiposSubida, schemaPorSubida, listadoRules }), 600);
     }
 
     // ── Pases ──
@@ -674,7 +674,9 @@ function validarSchemaCod(schemaPorSubida, subida, cod) {
   const schema = schemaPorSubida[sub];
   if (!schema) return null; // tipo de subida sin schema parametrizado → no se valida
   const codTrim = String(cod).trim();
-  if (codTrim.toUpperCase().indexOf(schema.toUpperCase()) === 0) return null;
+  // El guion final del schema es opcional («REQ-» y «REQ» valen igual: los Remedy van ya sin guion).
+  const sch = schema.toUpperCase(), codUp = codTrim.toUpperCase();
+  if (codUp.indexOf(sch) === 0 || codUp.indexOf(sch.replace(/-+$/, "")) === 0) return null;
   return "El código \"" + codTrim + "\" no cumple el schema para subida \"" + sub + "\". Debe empezar por \"" + schema + "\".";
 }
 
@@ -1146,6 +1148,10 @@ function htmlCorreoEstado(opts) {
    Recorre el orden de ejecución y, para cada paso con código (paquete),
    lista sus componentes con su tipo de subida, para que el equipo compruebe
    que todo está listo antes de la implantación. */
+/* Caché de Parametrizaciones/equipo/clientes. Cambiar la versión invalida lo
+   guardado (v4: el Schema de Remedy pasó de «REQ-» a «REQ»). */
+const PASES_CLAVE_ESTATICOS = "RDR_Hub_Estaticos_v4";
+
 const RE_CODIGOS_PASO = /(?:DP-KYTL-|SS-|ARQDAT-)[A-Z0-9_-]+|REQ-?\d[A-Z0-9_-]*|\/todotasks\/[A-Z0-9_-]+/gi;
 
 function construirResumenPaquetesHtml(ctx, fechaStr) {

@@ -60,7 +60,8 @@ export function limpiarMulti(v) {
 export function validarCodVsSchema(cod, schema) {
   if (!cod || cod.trim() === "" || cod.trim() === "-") return null;
   if (!schema) return null;
-  return cod.trim().toUpperCase().indexOf(schema.toUpperCase()) === 0
+  const s = schema.toUpperCase(), u = cod.trim().toUpperCase();
+  return u.indexOf(s) === 0 || u.indexOf(s.replace(/-+$/, "")) === 0
     ? null
     : 'El código no cumple el schema. Debe empezar por "' + schema + '".';
 }

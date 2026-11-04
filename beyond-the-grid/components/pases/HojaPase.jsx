@@ -8,7 +8,7 @@ import { nombresCortos } from "@/components/vacaciones/vistaUsuario";
 import { RE_ID_TRASPASO, isT, limpiarMulti } from "./backend";
 import {
   analizarPegado, avisos as calcAvisos, colorSubida, esArranque, esParada, etiquetaDp, guardarEquiv, leerEquiv,
-  malColocados, modelo, normCod, plural, schemaDe, sinTilde, tipoPorNombre,
+  malColocados, modelo, normCod, plural, schemaDe, cumpleSchema, prefijoSchema, sinTilde, tipoPorNombre,
 } from "./hoja";
 import { extraerCodigosDeElemento } from "./comandos";
 
@@ -177,7 +177,7 @@ export default function HojaPase() {
     if (extraerCodigosDeElemento(nuevo).map((x) => x.toUpperCase()).join("|") !== nuevo)
       return showToast(`«${nuevo}» no es un código de paquete (DP-KYTL-…, REQ…, SS-…, ARQDAT-…)`, "error", 5000);
     const sc = schemaDe(E, d.subida);
-    if (sc && !nuevo.startsWith(sc.toUpperCase())) return showToast(`El código de un ${d.subida} empieza por ${sc}`, "error", 5000);
+    if (!cumpleSchema(nuevo, sc)) return showToast(`El código de un ${d.subida} empieza por ${prefijoSchema(sc)}`, "error", 5000);
     if (m.dps.some((x) => x.cod === nuevo)) return showToast(`${nuevo} ya está en el pase`, "error", 4500);
     const antes = tempOrden.map(({ elemento, som, uid }) => ({ elemento, som: som || "", uid }));
     renombrando.current = true;
@@ -209,7 +209,7 @@ export default function HojaPase() {
   };
   const cambiarSubidaDp = (d, sub) => {
     const sc = schemaDe(E, sub);
-    if (sc && !d.cod.startsWith(sc.toUpperCase())) return showToast(`El código de un ${sub} empieza por ${sc}: ${d.cod} no vale`, "error", 4500);
+    if (!cumpleSchema(d.cod, sc)) return showToast(`El código de un ${sub} empieza por ${prefijoSchema(sc)}: ${d.cod} no vale`, "error", 4500);
     if (d.comps.length) lote(d.comps.map((c) => ({ fila: c.fila, subida: sub })), `${d.cod}: subida ${sub}`);
     else setDpMeta((x) => ({ ...x, [d.cod]: { ...x[d.cod], subida: sub } }));
     if (d.i !== undefined && !d.multi) {
@@ -613,7 +613,7 @@ export default function HojaPase() {
     const ultimoDelPaso = !m.pasos.some((x) => x.t === "dp" && x.i === d.i && x.k > (d.k || 0));
     const proys = [...new Set(d.comps.map((c) => c.proyecto))];
     const sc = schemaDe(E, d.subida);
-    const malSchema = sc && !d.cod.startsWith(sc.toUpperCase());
+    const malSchema = !cumpleSchema(d.cod, sc);
     const filas = [
       <tr key={"d" + d.cod} className={`grupo ${motivo || malSchema ? "mal" : ""} ${soltar === "d" + d.cod ? "soltar" : ""} ${d.i !== undefined && !d.k && soltar === `p${d.i}a` ? "soltar-antes" : ""} ${d.i !== undefined && ultimoDelPaso && plegado && soltar === `p${d.i}d` ? "soltar-despues" : ""}`} data-dp={d.cod} data-paso={d.i}>
         <td className="sel">{marcaGrupo(vis.map((c) => c.fila), d.cod)}</td>
@@ -637,7 +637,7 @@ export default function HojaPase() {
               </select>
               {ic("fold", 11)}
             </span>
-            {(motivo || malSchema) && <span className="marca-mal">{motivo || `El código de un ${d.subida} empieza por ${sc}`}</span>}
+            {(motivo || malSchema) && <span className="marca-mal">{motivo || `El código de un ${d.subida} empieza por ${prefijoSchema(sc)}`}</span>}
             <span className="mini">{d.comps.length}</span>
             <span className="proys">{proys.map((x) => <span key={x} className="proy" style={{ background: m.colorProy[x] }}>{m.proys.find((p) => p.nombre === x)?.corto || x}</span>)}</span>
             <span className="der">
@@ -986,19 +986,20 @@ function Dialogo({ dlg, setDlg, E, m, tipos, subidas, nc, marcadas, onPegar, onN
   if (dlg.t === "pegar") { cuerpo = <DlgPegar d={dlg} set={set} E={E} m={m} tipos={tipos} onPegar={onPegar} cerrar={cerrar} />; ancho = 980; }
   if (dlg.t === "dp") {
     const sc = (E.schemaPorSubida || {})[dlg.subida] || "";
-    const cod = (dlg.cod || sc).toUpperCase().trim();
+    const cod = (dlg.cod || prefijoSchema(sc)).toUpperCase().trim();
     const reconocido = extraerCodigosDeElemento(cod).map((x) => x.toUpperCase()).join("|") === cod;
-    const okCod = cod.startsWith(sc.toUpperCase()) && cod.length > sc.length && reconocido && !m.dps.some((d) => d.cod === cod);
+    const pre = prefijoSchema(sc);
+    const okCod = cumpleSchema(cod, sc) && cod.length > pre.length && reconocido && !m.dps.some((d) => d.cod === cod);
     cuerpo = (
       <>
         <h2 id="dlg-t">Nuevo paquete</h2>
         <label className="campo"><span>Tipo de subida</span><span className="sel-wrap"><select className="inp" data-foco value={dlg.subida} onChange={(e) => set({ subida: e.target.value, cod: "" })}>{subidas.map((s) => <option key={s}>{s}</option>)}</select><IconoBBVA nombre="fold" size={14} /></span></label>
-        <label className="campo"><span>Código{sc ? ` (empieza por ${sc})` : ""}</span><input className="inp" value={dlg.cod || sc} onChange={(e) => set({ cod: e.target.value })} onKeyDown={(e) => e.key === "Enter" && okCod && onNuevoDp({ cod, subida: dlg.subida, enc: dlg.enc, mover: dlg.mover })} /></label>
+        <label className="campo"><span>Código{sc ? ` (empieza por ${prefijoSchema(sc)})` : ""}</span><input className="inp" value={dlg.cod || prefijoSchema(sc)} onChange={(e) => set({ cod: e.target.value })} onKeyDown={(e) => e.key === "Enter" && okCod && onNuevoDp({ cod, subida: dlg.subida, enc: dlg.enc, mover: dlg.mover })} /></label>
         <label className="campo"><span>Encargado</span><span className="sel-wrap"><select className="inp" value={dlg.enc} onChange={(e) => set({ enc: e.target.value })}><option value="">Sin encargado</option>{(E.equipo || []).map((x) => <option key={x} value={x}>{nc(x)}</option>)}</select><IconoBBVA nombre="fold" size={14} /></span></label>
         <p className="nota">Se añade antes del arranque; luego lo puedes arrastrar o mover con las flechas.{dlg.mover ? ` Se meten en él los ${plural(marcadas.size, "componente marcado", "componentes marcados")}.` : ""}</p>
-        {cod && sc && !cod.startsWith(sc.toUpperCase()) && <p className="aviso">El código de un paquete {dlg.subida} debe empezar por {sc}.</p>}
+        {cod && !cumpleSchema(cod, sc) && <p className="aviso">El código de un paquete {dlg.subida} debe empezar por {pre}.</p>}
         {m.dps.some((d) => d.cod === cod) && <p className="aviso">Ese paquete ya está en el pase.</p>}
-        {cod.length > sc.length && cod.startsWith(sc.toUpperCase()) && !reconocido && <p className="aviso">No es un código de paquete reconocible (DP-KYTL-…, REQ seguido de números, SS-…, ARQDAT-…).</p>}
+        {cod.length > pre.length && cumpleSchema(cod, sc) && !reconocido && <p className="aviso">No es un código de paquete reconocible (DP-KYTL-…, REQ seguido de números, SS-…, ARQDAT-…).</p>}
         {pie("Crear paquete", okCod, () => onNuevoDp({ cod, subida: dlg.subida, enc: dlg.enc, mover: dlg.mover }))}
       </>
     );
