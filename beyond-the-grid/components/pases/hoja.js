@@ -3,7 +3,7 @@
    la del paso del orden (Orden_Ejecucion) que lo nombra. Tipo de subida y
    encargado del DP se deducen de sus componentes (el valor más repetido). */
 import { isT } from "./backend";
-import { extraerCodigosDeElemento, etiquetaPorSubida } from "./comandos";
+import { extraerCodigosDeElemento, etiquetaPorSubida, esRemedy } from "./comandos";
 
 // Acentos BBVA para distinguir proyectos y tipos de subida (texto Electric encima).
 export const COLORES = ["#85C8FF", "#8BE1E9", "#9694FF", "#FFB56B", "#88E783", "#FFE761"];
@@ -97,7 +97,7 @@ export function malColocados(m) {
   if (iP < 0 || iA < 0 || iP > iA) return mal;
   m.pasos.forEach((p, i) => {
     if (p.t !== "dp" || !p.comps.length) return;
-    if (p.cod.startsWith("REQ-")) { if (i >= iA) mal.set(p.cod, "Debe ir antes del arranque"); }
+    if (esRemedy(p.cod)) { if (i >= iA) mal.set(p.cod, "Debe ir antes del arranque"); }
     else if (i <= iP) mal.set(p.cod, "Debe ir después de la parada");
   });
   return mal;

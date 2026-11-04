@@ -91,8 +91,8 @@ export function computeValidador(E, cab, tempOrden) {
         }
         // Excepción: los REMEDYs (REQ-) pueden ir ANTES de la PARADA;
         // solo se exige que estén antes del ARRANQUE.
-        const esRemedy = cod.startsWith("REQ-");
-        if (esRemedy) {
+        const esRemedyCod = /^REQ-?\d/i.test(cod);
+        if (esRemedyCod) {
           if (idxC >= idxA) faltan.push(cod);
         } else {
           // Despliegues y aperiódicos pueden ir antes O después del ARRANQUE;

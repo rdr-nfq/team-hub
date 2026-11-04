@@ -262,9 +262,12 @@ function resolverPlaceholders(bloque, vars) {
 /* "Instalar Componente: DP-KYTL-1234" → ["DP-KYTL-1234"]
    "DP-KYTL-A y DP-KYTL-B"             → ["DP-KYTL-A", "DP-KYTL-B"]
    "Instalar API (NOVA): /todotasks/56781926" → ["/todotasks/56781926"] */
+/** Remedy: «REQ» seguido de dígitos (con o sin guion: REQ000123 o REQ-000123). */
+export const esRemedy = (cod) => /^REQ-?\d/i.test(String(cod || "").trim());
+
 export function extraerCodigosDeElemento(elemento) {
   if (!elemento) return [];
-  const re = /(?:DP-KYTL-|SS-|ARQDAT-|REQ-)[A-Z0-9_-]+|\/todotasks\/[A-Z0-9_-]+/gi;
+  const re = /(?:DP-KYTL-|SS-|ARQDAT-)[A-Z0-9_-]+|REQ-?\d[A-Z0-9_-]*|\/todotasks\/[A-Z0-9_-]+/gi;
   return (elemento.match(re) || []).map((s) => s.trim());
 }
 
@@ -301,7 +304,7 @@ export function etiquetaPasoPorCod(E, cod) {
   const comps = buscarComponentesPorCod(E, cod);
   if (comps.length === 0) {
     const u = String(cod).toUpperCase();
-    if (u.startsWith("REQ-")) return "REMEDY: " + cod;
+    if (esRemedy(u)) return "REMEDY: " + cod;
     if (u.startsWith("SS-")) return "Aperiódico: " + cod;
     if (u.startsWith("ARQDAT-")) return "Modificación modelo BBDD: " + cod;
     if (u.startsWith("/TODOTASKS/")) return "Instalar API (NOVA): " + cod;

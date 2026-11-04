@@ -1146,7 +1146,7 @@ function htmlCorreoEstado(opts) {
    Recorre el orden de ejecución y, para cada paso con código (paquete),
    lista sus componentes con su tipo de subida, para que el equipo compruebe
    que todo está listo antes de la implantación. */
-const RE_CODIGOS_PASO = /(?:DP-KYTL-|SS-|ARQDAT-|REQ-)[A-Z0-9_-]+|\/todotasks\/[A-Z0-9_-]+/gi;
+const RE_CODIGOS_PASO = /(?:DP-KYTL-|SS-|ARQDAT-)[A-Z0-9_-]+|REQ-?\d[A-Z0-9_-]*|\/todotasks\/[A-Z0-9_-]+/gi;
 
 function construirResumenPaquetesHtml(ctx, fechaStr) {
   // Orden de ejecución de esta fecha.

@@ -10,6 +10,7 @@ import {
   analizarPegado, avisos as calcAvisos, colorSubida, esArranque, esParada, etiquetaDp, guardarEquiv, leerEquiv,
   malColocados, modelo, normCod, plural, schemaDe, sinTilde, tipoPorNombre,
 } from "./hoja";
+import { extraerCodigosDeElemento } from "./comandos";
 
 /* Hoja de preparación del pase: una sola tabla densa, agrupada por paquete
    (DP) en el orden de implantación, por proyecto o por encargado. Cambios en
@@ -30,7 +31,9 @@ export default function HojaPase() {
   const [vista, setVista] = useState("paquete");
   const [filtro, setFiltro] = useState("");
   const [buscar, setBuscar] = useState("");
-  const [plegados, setPlegados] = useState(() => new Set());
+  const [desplegados, setDesplegados] = useState(() => new Set()); // por defecto, todo plegado
+  const [editCod, setEditCod] = useState(null); // { cod, valor } mientras se renombra un paquete
+  const renombrando = useRef(false);
   const [marcadas, setMarcadas] = useState(() => new Set());
   const ultima = useRef(null);
   const [anadir, setAnadir] = useState(null); // { dp } | { proy }
@@ -80,7 +83,7 @@ export default function HojaPase() {
   // DP con componentes que aún no están en el orden: se colocan antes del arranque.
   useEffect(() => {
     // Solo con el orden ya cargado del servidor (si no, se reharía el orden solo con los DP).
-    if (!editable || !m.fuera.length || (!tempOrden.length && (E.ordenPase || []).length)) return;
+    if (!editable || renombrando.current || !m.fuera.length || (!tempOrden.length && (E.ordenPase || []).length)) return;
     const iA = tempOrden.findIndex((o) => esArranque(o.elemento));
     const nuevos = m.fuera.map((d) => ({ elemento: etiquetaDp(d.subida, d.cod), som: "" }));
     const next = [...tempOrden];
@@ -146,6 +149,53 @@ export default function HojaPase() {
     const [x] = next.splice(i, 1);
     next.splice(j, 0, x);
     setOrden(next, "Orden cambiado");
+  };
+  // Del todo arriba o abajo respetando las reglas: un DP no sube por encima de
+  // la parada y un REQ no baja por debajo del arranque.
+  const destinoExtremo = (i, arriba) => {
+    const iP = tempOrden.findIndex((o) => esParada(o.elemento));
+    const iA = tempOrden.findIndex((o) => esArranque(o.elemento));
+    const cods = extraerCodigosDeElemento(tempOrden[i]?.elemento);
+    const esDp = cods.length > 0;
+    const req = esDp && cods.every((x) => /^REQ-?\d/i.test(x));
+    if (arriba) return esDp && !req && iP >= 0 && i > iP ? iP + 1 : 0;
+    if (req && iA >= 0 && i < iA) return iA - 1;
+    return tempOrden.length - 1;
+  };
+  const moverExtremo = (i, arriba) => {
+    const j = destinoExtremo(i, arriba);
+    if (j === i) return avisar(arriba ? "Ya está lo más arriba posible" : "Ya está lo más abajo posible");
+    const next = [...tempOrden];
+    const [x] = next.splice(i, 1);
+    next.splice(j, 0, x);
+    setOrden(next, arriba ? "Movido arriba del todo" : "Movido abajo del todo");
+  };
+  const renombrarDp = async (d, crudo) => {
+    setEditCod(null);
+    const nuevo = normCod(crudo);
+    if (!nuevo || nuevo === d.cod) return;
+    if (extraerCodigosDeElemento(nuevo).map((x) => x.toUpperCase()).join("|") !== nuevo)
+      return showToast(`«${nuevo}» no es un código de paquete (DP-KYTL-…, REQ…, SS-…, ARQDAT-…)`, "error", 5000);
+    const sc = schemaDe(E, d.subida);
+    if (sc && !nuevo.startsWith(sc.toUpperCase())) return showToast(`El código de un ${d.subida} empieza por ${sc}`, "error", 5000);
+    if (m.dps.some((x) => x.cod === nuevo)) return showToast(`${nuevo} ya está en el pase`, "error", 4500);
+    const antes = tempOrden.map(({ elemento, som, uid }) => ({ elemento, som: som || "", uid }));
+    renombrando.current = true;
+    try {
+      if (d.i !== undefined) {
+        const next = [...tempOrden];
+        const re = new RegExp(d.cod.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+        next[d.i] = { ...next[d.i], elemento: re.test(next[d.i].elemento) ? next[d.i].elemento.replace(re, nuevo) : etiquetaDp(d.subida, nuevo) };
+        ordenOps.set(next);
+      }
+      setDpMeta((x) => { if (!x[d.cod]) return x; const n = { ...x, [nuevo]: x[d.cod] }; delete n[d.cod]; return n; });
+      setDesplegados((s) => { if (!s.has(d.cod)) return s; const n = new Set(s); n.delete(d.cod); n.add(nuevo); return n; });
+      const previos = d.comps.length ? await actions.editarLote(d.comps.map((c) => ({ fila: c.fila, codigo: nuevo }))) : null;
+      conDeshacer(`${d.cod} ahora es ${nuevo}`, async () => {
+        renombrando.current = true;
+        try { ordenOps.set(antes); if (previos) await actions.editarLote(previos); } finally { renombrando.current = false; }
+      });
+    } finally { renombrando.current = false; }
   };
   const quitarDp = async (d) => {
     if (d.comps.length) await lote(d.comps.map((c) => ({ fila: c.fila, codigo: "" })));
@@ -342,13 +392,41 @@ export default function HojaPase() {
   const destinoDe = (el) => {
     const a = arrastre.current;
     if (!a || !el.closest) return null;
-    if (a.t === "paso") { const tr = el.closest("tr[data-paso]"); return tr ? { key: "p" + tr.dataset.paso, paso: Number(tr.dataset.paso) } : null; }
+    if (a.t === "paso") return null; // los pasos usan destinoPaso (con la posición del ratón)
     if (vista === "persona") return null;
     if (vista === "proyecto") { const tr = el.closest("tr[data-proy-g], tr[data-proy]"); const pr = tr?.dataset.proyG || tr?.dataset.proy; return pr ? { key: "g" + pr, proy: pr } : null; }
     const tr = el.closest("tr[data-dp]");
     return tr ? { key: "d" + tr.dataset.dp, dp: tr.dataset.dp } : null;
   };
+  // Paso arrastrado: la fila bajo el ratón y si va antes o después (mitad de la fila).
+  // Sobre los componentes de un DP desplegado, cuenta como «después de ese DP».
+  const destinoPaso = (e) => {
+    let tr = e.target.closest?.("tr");
+    if (!tr || !tr.closest(".t tbody")) return null;
+    if (tr.dataset.paso !== undefined && tr.dataset.paso !== "") {
+      const r = tr.getBoundingClientRect();
+      const antes = e.clientY < r.top + r.height / 2;
+      return { key: `p${tr.dataset.paso}${antes ? "a" : "d"}`, paso: Number(tr.dataset.paso), antes };
+    }
+    let p = tr.previousElementSibling;
+    while (p && (p.dataset.paso === undefined || p.dataset.paso === "")) p = p.previousElementSibling;
+    return p ? { key: `p${p.dataset.paso}d`, paso: Number(p.dataset.paso), antes: false } : null;
+  };
+  const autoScroll = (y) => {
+    const arriba = (raiz.current?.querySelector(".herr")?.getBoundingClientRect().bottom || 120) + 40;
+    if (y < arriba) window.scrollBy(0, -Math.min(30, (arriba - y) / 2 + 6));
+    else if (y > window.innerHeight - 70) window.scrollBy(0, Math.min(30, (y - window.innerHeight + 70) / 2 + 6));
+  };
   const onDragOver = (e) => {
+    if (arrastre.current) autoScroll(e.clientY);
+    if (arrastre.current?.t === "paso") {
+      const d = destinoPaso(e);
+      if (!d) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      if (soltar !== d.key) setSoltar(d.key);
+      return;
+    }
     const d = destinoDe(e.target);
     if (!d) return;
     e.preventDefault();
@@ -356,12 +434,16 @@ export default function HojaPase() {
     if (soltar !== d.key) setSoltar(d.key);
   };
   const onDrop = (e) => {
-    const d = destinoDe(e.target);
     const a = arrastre.current;
+    const d = a?.t === "paso" ? destinoPaso(e) : destinoDe(e.target);
     setSoltar(null); arrastre.current = null;
     if (!d || !a) return;
     e.preventDefault();
-    if (a.t === "paso") return moverPaso(a.i, d.paso);
+    if (a.t === "paso") {
+      let j = d.antes ? d.paso : d.paso + 1;
+      if (a.i < j) j -= 1;
+      return moverPaso(a.i, j);
+    }
     if (d.proy !== undefined) {
       setMarcadas(new Set());
       return lote(a.filas.map((f) => ({ fila: f, proyecto: d.proy })), `${plural(a.filas.length, "componente pasa", "componentes pasan")} a ${d.proy}`);
@@ -466,8 +548,10 @@ export default function HojaPase() {
   const btnAlta = (attrs, txt) => editable && <button type="button" className="mini-btn" {...attrs}>{ic("add", 13)}{txt}</button>;
   const ord = (i) => editable && (
     <span className="ord">
-      <button type="button" data-sube={i} aria-label="Subir" disabled={i === 0} onClick={() => moverPaso(i, i - 1)}>{ic("fold", 12)}</button>
-      <button type="button" className="abajo" data-baja={i} aria-label="Bajar" disabled={i === tempOrden.length - 1} onClick={() => moverPaso(i, i + 1)}>{ic("fold", 12)}</button>
+      <button type="button" className="tope" data-tope-arriba={i} aria-label="Arriba del todo" title="Arriba del todo (un DP se queda justo después de la parada)" disabled={i === 0} onClick={() => moverExtremo(i, true)}>{ic("first", 12)}</button>
+      <button type="button" data-sube={i} aria-label="Subir" title="Subir uno" disabled={i === 0} onClick={() => moverPaso(i, i - 1)}>{ic("fold", 12)}</button>
+      <button type="button" className="abajo" data-baja={i} aria-label="Bajar" title="Bajar uno" disabled={i === tempOrden.length - 1} onClick={() => moverPaso(i, i + 1)}>{ic("fold", 12)}</button>
+      <button type="button" className="tope abajo" data-tope-abajo={i} aria-label="Abajo del todo" title="Abajo del todo (un REQ se queda justo antes del arranque)" disabled={i === tempOrden.length - 1} onClick={() => moverExtremo(i, false)}>{ic("first", 12)}</button>
     </span>
   );
 
@@ -480,7 +564,7 @@ export default function HojaPase() {
       if (p.t === "sis") {
         if (filtraComp || filtro === "sinenc") return;
         out.push(
-          <tr key={"s" + p.i} className={`sis ${soltar === "p" + p.i ? "soltar" : ""}`} data-paso={p.i}>
+          <tr key={"s" + p.i} className={`sis ${soltar === `p${p.i}a` ? "soltar-antes" : soltar === `p${p.i}d` ? "soltar-despues" : ""}`} data-paso={p.i}>
             <td className="sel" />
             <td colSpan={span}>
               <span className="grp">
@@ -525,18 +609,27 @@ export default function HojaPase() {
     if ((filtro === "sinenc" && d.enc) || (filtraComp && !vis.length) || filtro === "sinpaq") return [];
     const motivo = d.fuera ? "Fuera del orden" : mal.get(d.cod) || "";
     const prob = d.comps.filter((c) => c.probado).length;
-    const plegado = plegados.has(d.cod);
+    const plegado = !filtraComp && !desplegados.has(d.cod);
+    const ultimoDelPaso = !m.pasos.some((x) => x.t === "dp" && x.i === d.i && x.k > (d.k || 0));
     const proys = [...new Set(d.comps.map((c) => c.proyecto))];
     const sc = schemaDe(E, d.subida);
     const malSchema = sc && !d.cod.startsWith(sc.toUpperCase());
     const filas = [
-      <tr key={"d" + d.cod} className={`grupo ${motivo || malSchema ? "mal" : ""} ${soltar === "d" + d.cod ? "soltar" : ""}`} data-dp={d.cod} data-paso={d.i}>
+      <tr key={"d" + d.cod} className={`grupo ${motivo || malSchema ? "mal" : ""} ${soltar === "d" + d.cod ? "soltar" : ""} ${d.i !== undefined && !d.k && soltar === `p${d.i}a` ? "soltar-antes" : ""} ${d.i !== undefined && ultimoDelPaso && plegado && soltar === `p${d.i}d` ? "soltar-despues" : ""}`} data-dp={d.cod} data-paso={d.i}>
         <td className="sel">{marcaGrupo(vis.map((c) => c.fila), d.cod)}</td>
         <td colSpan={span}>
           <span className="grp">
             <b className="n">{n ?? "·"}</b>
-            <button type="button" className="pliegue" aria-expanded={!plegado} aria-label={`${plegado ? "Desplegar" : "Plegar"} ${d.cod}`} onClick={() => setPlegados((s) => { const x = new Set(s); x.has(d.cod) ? x.delete(d.cod) : x.add(d.cod); return x; })}>{ic("fold", 14)}</button>
-            <span className="cod" draggable={editable && d.i !== undefined} data-arrastra-paso={d.i} title={d.elemento || d.cod}>{editable && d.i !== undefined && <span className="asa" aria-hidden="true">⠿</span>}{d.cod}</span>
+            <button type="button" className="pliegue" aria-expanded={!plegado} aria-label={`${plegado ? "Desplegar" : "Plegar"} ${d.cod}`} disabled={filtraComp} onClick={() => setDesplegados((s) => { const x = new Set(s); x.has(d.cod) ? x.delete(d.cod) : x.add(d.cod); return x; })}>{ic("fold", 14)}</button>
+            {editCod?.cod === d.cod ? (
+              <input className="celda cod-inp" autoFocus value={editCod.valor} aria-label={`Nuevo código de ${d.cod}`} spellCheck={false}
+                onChange={(e) => setEditCod({ cod: d.cod, valor: e.target.value })}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } if (e.key === "Escape") { e.preventDefault(); setEditCod(null); } }}
+                onBlur={() => editCod && renombrarDp(d, editCod.valor)} />
+            ) : (<>
+              <span className="cod" draggable={editable && d.i !== undefined} data-arrastra-paso={d.i} title={d.elemento || d.cod}>{editable && d.i !== undefined && <span className="asa" aria-hidden="true">⠿</span>}{d.cod}</span>
+              {editable && <button type="button" className="cambiar-cod" aria-label={`Cambiar el código de ${d.cod}`} title="Cambiar el código del paquete" onClick={() => setEditCod({ cod: d.cod, valor: d.cod })}>Cambiar</button>}
+            </>)}
             <span className="sel-c" style={{ display: "inline-block", flex: "none" }}>
               <select className="celda tpaq" style={{ background: colorSubida(subidas, d.subida) }} value={d.subida} disabled={!editable} onChange={(e) => cambiarSubidaDp(d, e.target.value)} aria-label={`Tipo de subida de ${d.cod}`}>
                 {!d.subida && <option value="">Tipo de subida…</option>}
@@ -559,7 +652,7 @@ export default function HojaPase() {
                 </select>
                 {ic("fold", 11)}
               </span>
-              {btnAlta({ "aria-label": `Añadir componentes a ${d.cod}`, onClick: () => { setAnadir({ dp: d.cod }); setPlegados((s) => { const x = new Set(s); x.delete(d.cod); return x; }); } }, "Añadir")}
+              {btnAlta({ "aria-label": `Añadir componentes a ${d.cod}`, onClick: () => { setAnadir({ dp: d.cod }); setDesplegados((s) => new Set(s).add(d.cod)); } }, "Añadir")}
               {d.i !== undefined && ord(d.i)}
               {editable && <button type="button" className="x" aria-label={`Quitar el paquete ${d.cod}`} title="Quitar el paquete (sus componentes pasan a Sin paquete)" onClick={() => quitarDp(d)}>{ic("close", 13)}</button>}
             </span>
@@ -569,6 +662,7 @@ export default function HojaPase() {
     ];
     if (!plegado) {
       filas.push(...vis.map(filaComp));
+      if (d.i !== undefined && ultimoDelPaso && soltar === `p${d.i}d`) filas.push(<tr key={"sl" + d.cod} className="soltar-linea" aria-hidden="true"><td colSpan={span + 1} /></tr>);
       if (anadir && anadir.dp === d.cod) filas.push(filaAlta(d.cod, proys[0] || ""));
       else if (!vis.length) filas.push(<tr key={"v" + d.cod} data-dp={d.cod}><td /><td colSpan={span} className="mini">Vacío: arrastra aquí componentes o pulsa «Añadir».</td></tr>);
     }
@@ -698,7 +792,7 @@ export default function HojaPase() {
         <label className="buscar">{ic("filter", 14)}<span className="sr">Buscar componente</span><input className="inp" placeholder="Buscar…" value={buscar} onChange={(e) => setBuscar(e.target.value)} /></label>
         <span className="nota cuenta">{plural(m.dps.length, "DP", "DP")} · {plural(nComps, "componente", "componentes")}{filtro ? <> · <b>filtrado</b></> : null}</span>
         <span className="herr-der">
-          {vista === "paquete" && <button type="button" className="mini-btn" onClick={() => setPlegados((s) => (s.size ? new Set() : new Set(m.dps.map((d) => d.cod))))}>{plegados.size ? "Desplegar" : "Plegar"} todo</button>}
+          {vista === "paquete" && <button type="button" className="mini-btn" disabled={filtraComp} onClick={() => setDesplegados((s) => (s.size ? new Set() : new Set(m.dps.map((d) => d.cod))))}>{desplegados.size ? "Plegar" : "Desplegar"} todo</button>}
           {editable && (
             <>
               {vista === "paquete" && <button type="button" className="mini-btn" onClick={() => setDlg({ t: "sis", texto: "" })}>{ic("add", 13)}Paso de sistema</button>}
@@ -893,7 +987,8 @@ function Dialogo({ dlg, setDlg, E, m, tipos, subidas, nc, marcadas, onPegar, onN
   if (dlg.t === "dp") {
     const sc = (E.schemaPorSubida || {})[dlg.subida] || "";
     const cod = (dlg.cod || sc).toUpperCase().trim();
-    const okCod = cod.startsWith(sc.toUpperCase()) && cod.length > sc.length && !m.dps.some((d) => d.cod === cod);
+    const reconocido = extraerCodigosDeElemento(cod).map((x) => x.toUpperCase()).join("|") === cod;
+    const okCod = cod.startsWith(sc.toUpperCase()) && cod.length > sc.length && reconocido && !m.dps.some((d) => d.cod === cod);
     cuerpo = (
       <>
         <h2 id="dlg-t">Nuevo paquete</h2>
@@ -903,6 +998,7 @@ function Dialogo({ dlg, setDlg, E, m, tipos, subidas, nc, marcadas, onPegar, onN
         <p className="nota">Se añade antes del arranque; luego lo puedes arrastrar o mover con las flechas.{dlg.mover ? ` Se meten en él los ${plural(marcadas.size, "componente marcado", "componentes marcados")}.` : ""}</p>
         {cod && sc && !cod.startsWith(sc.toUpperCase()) && <p className="aviso">El código de un paquete {dlg.subida} debe empezar por {sc}.</p>}
         {m.dps.some((d) => d.cod === cod) && <p className="aviso">Ese paquete ya está en el pase.</p>}
+        {cod.length > sc.length && cod.startsWith(sc.toUpperCase()) && !reconocido && <p className="aviso">No es un código de paquete reconocible (DP-KYTL-…, REQ seguido de números, SS-…, ARQDAT-…).</p>}
         {pie("Crear paquete", okCod, () => onNuevoDp({ cod, subida: dlg.subida, enc: dlg.enc, mover: dlg.mover }))}
       </>
     );
