@@ -1009,6 +1009,8 @@ html:not(.rdr-light) .ph .celda.falta { background: #FFE761; color: #001391; }
 .ph .cod-inp { width: 22ch; font-weight: 700; font-size: 14px; }
 .ph .t tr.alta td { background: var(--eq-tinte); height: 31px; }
 .ph .alta-in { display: flex; gap: 8px; align-items: center; }
+.ph .alta-in .alta-err { background: #ffe761; color: #001391; font-weight: 700; border-radius: 6px; padding: 2px 8px; }
+.ph .alta-in select.mal { border-color: var(--ink); box-shadow: 0 0 0 2px #ffe761; }
 .ph .alta-in #alta-nom { flex: 1 1 auto; border-color: var(--ink); background: var(--solido); font-family: var(--mono); font-size: 12.5px; }
 .ph .aviso-tabla { margin: 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; background: #FFE761; color: #001391; border-radius: 8px; padding: 6px 10px; font-size: 13px; }
 .ph .lote { padding: 6px 10px; gap: 8px; bottom: 8px; }

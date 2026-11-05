@@ -931,38 +931,56 @@ export default function HojaPase() {
 }
 
 /* ── Alta rápida: escribe el nombre, Enter y sigue ── */
+/* Alta en línea. Enter añade y deja la fila abierta para el siguiente;
+   «Añadir» también; «Hecho» guarda lo que haya escrito y cierra (antes
+   cerraba sin guardar y el componente se perdía). Esc cierra sin guardar. */
 function FilaAlta({ span, dp, proyIni, proys, vista, onAlta, onCerrar, onPegarVarios }) {
   const [proy, setProy] = useState(proyIni || (proys.length === 1 ? proys[0].nombre : ""));
+  const [nombre, setNombre] = useState("");
+  const [error, setError] = useState("");
+  const [guardando, setGuardando] = useState(false);
   const ref = useRef(null);
   useEffect(() => { ref.current?.focus(); }, []);
+  const anadir = async (cerrar) => {
+    const v = nombre.trim();
+    if (!v) { if (cerrar) onCerrar(); else ref.current?.focus(); return; }
+    if (!proy) { setError("Elige el proyecto del componente"); document.getElementById("alta-proy")?.focus(); return; }
+    setGuardando(true); setError("");
+    const ok = await onAlta(v, proy);
+    setGuardando(false);
+    if (!ok) { ref.current?.focus(); return; } // se queda lo escrito para corregirlo
+    setNombre("");
+    if (cerrar) onCerrar(); else ref.current?.focus();
+  };
   return (
     <tr className="alta">
       <td className="sel" aria-hidden="true">+</td>
       <td colSpan={span}>
         <div className="alta-in">
-          <input ref={ref} id="alta-nom" className="celda" placeholder="Nombre del componente · Enter añade y sigue · pega varias líneas de golpe" aria-label="Nombre del componente nuevo" autoComplete="off"
+          <input ref={ref} id="alta-nom" className="celda" value={nombre} disabled={guardando}
+            placeholder="Nombre del componente · Enter añade y sigue · pega varias líneas de golpe" aria-label="Nombre del componente nuevo" autoComplete="off"
+            aria-invalid={!!error} aria-describedby={error ? "alta-err" : undefined}
+            onChange={(e) => { setNombre(e.target.value); setError(""); }}
             onPaste={(e) => { const t = e.clipboardData.getData("text"); if (/\n/.test(t.trim())) { e.preventDefault(); e.stopPropagation(); onPegarVarios(t, proy); } }}
-            onKeyDown={async (e) => {
+            onKeyDown={(e) => {
               if (e.key === "Escape") return onCerrar();
               if (e.key !== "Enter") return;
               e.preventDefault();
-              const v = e.currentTarget.value.trim();
-              if (!v) return;
-              if (!proy) return document.getElementById("alta-proy")?.focus();
-              const inp = e.currentTarget;
-              if (await onAlta(v, proy)) { inp.value = ""; inp.focus(); }
+              anadir(false);
             }} />
           {vista !== "proyecto" && (
             <span className="sel-c" style={{ width: 170, flex: "none" }}>
-              <select className="celda" id="alta-proy" value={proy} onChange={(e) => { setProy(e.target.value); ref.current?.focus(); }} aria-label="Proyecto del componente nuevo">
+              <select className={`celda ${error && !proy ? "mal" : ""}`} id="alta-proy" value={proy} onChange={(e) => { setProy(e.target.value); setError(""); ref.current?.focus(); }} aria-label="Proyecto del componente nuevo">
                 <option value="">Proyecto…</option>
                 {proys.map((p) => <option key={p.nombre} value={p.nombre}>{p.corto}</option>)}
               </select>
               <IconoBBVA nombre="fold" size={11} />
             </span>
           )}
-          <span className="mini">El tipo se deduce del nombre{dp ? ` · va a ${dp}` : ""}</span>
-          <button type="button" className="btn btn-t" style={{ padding: "2px 8px", fontSize: 12.5 }} onClick={onCerrar}>Hecho</button>
+          {error ? <span className="mini alta-err" id="alta-err" role="alert">{error}</span>
+            : <span className="mini">{guardando ? "Añadiendo…" : `El tipo se deduce del nombre${dp ? ` · va a ${dp}` : ""}`}</span>}
+          <button type="button" className="mini-btn" disabled={guardando || !nombre.trim()} onClick={() => anadir(false)}>{ic("add", 13)}Añadir</button>
+          <button type="button" className="btn btn-t" style={{ padding: "2px 8px", fontSize: 12.5 }} disabled={guardando} onClick={() => anadir(true)}>Hecho</button>
         </div>
       </td>
     </tr>
