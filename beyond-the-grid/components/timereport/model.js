@@ -368,6 +368,32 @@ export function capacidadMaxima({ q, personas, festivos, hoy }) {
   return dias.length * MAX_DIA * (personas || []).length;
 }
 
+/* ── Proyectos BAU (sin SDATOOL) ──
+   Se reparten como el resto, pero no tienen código en el TR de BBVA: no se
+   copian con la imputación y cada persona los imputa a mano. */
+export const BAU = "BAU";
+export const esBAU = (p) => String(p?.sdatool || "").trim().toUpperCase() === BAU;
+/* Horas BAU de la persona en lo que se copia (la quincena, o el mes entero en
+   la 2ª): [{ nombre, horas, dias: [{dia, horas}] }]. */
+export function horasBAU({ q, quincena, filas, proyectosPorId }) {
+  const qs = quincenasDeQ(q);
+  if (!qs.find((x) => x.n === quincena)) return [];
+  const ns = quincena % 2 === 0 ? [quincena - 1, quincena] : [quincena];
+  const por = new Map();
+  for (const r of filas || []) {
+    if (!ns.includes(r.quincena)) continue;
+    const p = proyectosPorId[r.proyectoId];
+    if (!esBAU(p)) continue;
+    const x = por.get(r.proyectoId) || { nombre: p.nombre || r.proyectoId, horas: 0, dias: {} };
+    for (const [d, h] of Object.entries(r.dias || {})) if (num(h) > 0) { x.dias[d] = (x.dias[d] || 0) + num(h); x.horas += num(h); }
+    por.set(r.proyectoId, x);
+  }
+  return [...por.values()].filter((x) => x.horas > 0).map((x) => ({
+    nombre: x.nombre, horas: Math.round(x.horas),
+    dias: Object.keys(x.dias).sort().map((d) => ({ dia: d, horas: Math.round(x.dias[d]) })),
+  }));
+}
+
 /* ── Portapapeles para el TR de BBVA ──
    Columnas: SDATOOL | Nombre | (vacío) | CIBRDR | Otras Tec | N1 | N2 | N3 |
    vacío | vacío | vacío | días.
@@ -403,6 +429,7 @@ export function filasTR({ q, quincena, filas, proyectosPorId }) {
   const lineas = new Map();
   for (const r of filas || []) {
     if (!ns.includes(r.quincena)) continue;
+    if (esBAU(proyectosPorId[r.proyectoId])) continue; // BAU: se imputa a mano
     const cab = cabecera(r, r.quincena);
     const clave = cab.join("\t");
     const l = lineas.get(clave) || { proyectoId: r.proyectoId, cab, horas: {} };

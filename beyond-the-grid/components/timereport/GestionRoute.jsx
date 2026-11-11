@@ -9,7 +9,7 @@ import { EQUIPOS, EQUIPO, equipoTRDe } from "@/lib/equipos";
 import { useAuth } from "../chrome/AuthGate";
 import {
   num, curQ, hoyISO, hoyTR, fechaDe, quincenasDeQ, quincenaDe, horasDe, esLaborable, jornada,
-  repartir, capacidadMaxima, NIVELES2, NIVEL2_ANALISIS, SOPORTE_ID, MAX_DIA, etiquetaEvidencias,
+  repartir, capacidadMaxima, NIVELES2, NIVEL2_ANALISIS, SOPORTE_ID, MAX_DIA, etiquetaEvidencias, esBAU, BAU,
 } from "./model";
 import { abrirResumenPdf } from "./resumenPdf";
 
@@ -271,11 +271,11 @@ export default function GestionRoute() {
       if (id === "nuevo") {
         const estados = {};
         for (let i = 1; i <= 6; i++) estados[i] = NIVEL2_ANALISIS;
-        b = { nombre: "", sdatool: "", feature: "", horas: "", incurridas: 0, inicio: 1, fin: 0, estados, personas: [] };
+        b = { nombre: "", sdatool: "", bau: false, feature: "", horas: "", incurridas: 0, inicio: 1, fin: 0, estados, personas: [] };
       } else {
         const p = proyectos.find((x) => x.id === id);
         b = {
-          nombre: p.nombre, sdatool: limpiaSdatool(p.sdatool), feature: limpiaFeature(p.feature),
+          nombre: p.nombre, sdatool: esBAU(p) ? "" : limpiaSdatool(p.sdatool), bau: esBAU(p), feature: limpiaFeature(p.feature),
           horas: num(p.horas), incurridas: num(p.incurridas), inicio: num(p.inicio) || 1, fin: num(p.fin) || 0,
           estados: { ...(p.estados || {}) }, personas: [...(p.personas || [])],
         };
@@ -285,12 +285,12 @@ export default function GestionRoute() {
       focoTras.current = "trg-nombre";
     });
   };
-  const valido = borrador && borrador.nombre.trim() && String(borrador.sdatool).trim() && num(borrador.horas) > 0;
+  const valido = borrador && borrador.nombre.trim() && (borrador.bau || String(borrador.sdatool).trim()) && num(borrador.horas) > 0;
   const guardaProyecto = () => {
     const b = borrador;
     const datos = {
       nombre: b.nombre.trim(),
-      sdatool: "SDATOOL-" + limpiaSdatool(b.sdatool),
+      sdatool: b.bau ? BAU : "SDATOOL-" + limpiaSdatool(b.sdatool),
       feature: String(b.feature).trim() ? prefijoFeature + limpiaFeature(b.feature) : "",
       horas: Math.round(num(b.horas)),
       incurridas: Math.max(0, Math.round(num(b.incurridas))),
@@ -616,13 +616,26 @@ export default function GestionRoute() {
             <label className="col-span-2 grid gap-1"><span className={ROT}>Nombre *</span>
               <input id="trg-nombre" className={INP} value={b.nombre} placeholder="Nombre del proyecto" onChange={(e) => ponB("nombre", e.target.value)} />
             </label>
-            <label className="grid gap-1"><span className={ROT}>SDATOOL *</span>
-              <span className="flex items-center rounded-lg border-[1.5px] border-white/55 bg-midnight pl-2.5 focus-within:border-sand">
-                <span className="text-sm text-sand/70">SDATOOL-</span>
-                <input className="w-full min-w-0 bg-transparent py-2 pr-2.5 text-sm text-sand placeholder:text-sand/50 focus:outline-none" value={b.sdatool} placeholder="49780"
-                  aria-label="Código SDATOOL" onChange={(e) => ponB("sdatool", limpiaSdatool(e.target.value))} />
+            <div className="grid gap-1">
+              <span className="flex flex-wrap items-center justify-between gap-x-2">
+                <span className={ROT}>SDATOOL{b.bau ? "" : " *"}</span>
+                <label className="inline-flex cursor-pointer items-center gap-1.5 text-[13px] font-bold text-sand">
+                  <input type="checkbox" className="h-4 w-4 accent-[#9694ff]" checked={!!b.bau} onChange={(e) => ponB("bau", e.target.checked)} />
+                  BAU (sin SDATOOL)
+                </label>
               </span>
-            </label>
+              {b.bau ? (
+                <span className="rounded-lg border-[1.5px] border-dashed border-white/55 px-2.5 py-2 text-[13px] leading-snug text-sand/85">
+                  Se reparte como el resto, pero no se copia al TR de BBVA: cada persona lo imputa a mano.
+                </span>
+              ) : (
+                <span className="flex items-center rounded-lg border-[1.5px] border-white/55 bg-midnight pl-2.5 focus-within:border-sand">
+                  <span className="text-sm text-sand/70">SDATOOL-</span>
+                  <input className="w-full min-w-0 bg-transparent py-2 pr-2.5 text-sm text-sand placeholder:text-sand/50 focus:outline-none" value={b.sdatool} placeholder="49780"
+                    aria-label="Código SDATOOL" onChange={(e) => ponB("sdatool", limpiaSdatool(e.target.value))} />
+                </span>
+              )}
+            </div>
             <label className="grid gap-1"><span className={ROT}>Feature</span>
               <span className="flex items-center rounded-lg border-[1.5px] border-white/55 bg-midnight pl-2.5 focus-within:border-sand">
                 {prefijoFeature && <span className="text-sm text-sand/70">{prefijoFeature}</span>}
@@ -718,7 +731,7 @@ export default function GestionRoute() {
               {nuevo ? "Añadir proyecto" : "Guardar cambios"}
             </button>
             <button type="button" onClick={() => { const id = abierto; cerrarEditor(); focoTras.current = id === "nuevo" ? "trg-nuevo" : `proy-${id}`; }} className={BTN_SEC}>Cancelar</button>
-            {!valido && <span id="trg-oblig" className="text-[13px] text-sand/75">Faltan campos obligatorios (*): nombre, SDATOOL y horas.</span>}
+            {!valido && <span id="trg-oblig" className="text-[13px] text-sand/75">Faltan campos obligatorios (*): nombre, SDATOOL (o márcalo como BAU) y horas.</span>}
             {!nuevo && (
               <span className="ml-auto flex flex-wrap items-center gap-2">
                 {confirmarBorrado ? (
@@ -751,7 +764,7 @@ export default function GestionRoute() {
           <span className="line-clamp-2 break-words text-[15px] font-bold">{p.nombre}</span>
           {p.sinRepartir > 0 && <span className="hub-etiqueta hub-eq mt-1 inline-block rounded-full px-[7px] text-[11px] font-bold leading-[17px] md:hidden">faltan {p.sinRepartir} h</span>}
         </span>
-        <span className="hidden truncate text-[13px] tabular-nums md:block">{p.sdatool}</span>
+        <span className="hidden truncate text-[13px] tabular-nums md:block">{esBAU(p) ? <span className="hub-etiqueta hub-ge rounded-full px-2 py-0.5 text-[12px] font-bold" title="Sin SDATOOL: cada persona lo imputa a mano">BAU</span> : p.sdatool}</span>
         <span className={`hidden truncate text-[13px] tabular-nums md:block ${p.feature ? "" : "text-sand/75"}`}>{p.feature || "sin feature"}</span>
         <span className="hidden gap-[3px] min-[1400px]:flex" aria-label="Estados por quincena">
           {qs.map((x) => { const v = (p.estados || {})[x.n] || NIVEL2_ANALISIS; return <Estado key={x.n} letra={LETRA[v] || "A"} nombre={NOMBRE_EST[v] || v} quincena={x.label} hoy={x.n === qActualN && hoyQ >= 1 && hoyQ <= 6} />; })}

@@ -10,7 +10,7 @@ import { EQUIPO, equiposDe, equipoTRDe } from "@/lib/equipos";
 import { mismoEmail } from "@/lib/email";
 import {
   num, curQ, hoyISO, hoyTR, fechaDe, quincenasDeQ, quincenaDe, horasDe,
-  filasTR, tsvTR, esFinde, SOPORTE_ID, NIVEL2_ANALISIS, etiquetaEvidencias,
+  filasTR, tsvTR, esFinde, SOPORTE_ID, NIVEL2_ANALISIS, etiquetaEvidencias, esBAU, horasBAU,
 } from "./model";
 
 /* Mi Time Report · vista de MIEMBRO (todo el equipo), en forma de «recibo»:
@@ -101,16 +101,24 @@ export default function MiTimeReportRoute() {
   const totalQuincena = misFilas.reduce((a, r) => a + horasDe(r.dias), 0);
   const laborables = qn ? qn.dias.filter((d) => !esFinde(d)).length : 0;
 
+  // Proyectos BAU (sin SDATOOL) en lo que se copia: no van al portapapeles.
+  const bau = useMemo(
+    () => horasBAU({ q, quincena, filas: (data?.reparto || []).filter((r) => r.persona === yo?.nombre), proyectosPorId }),
+    [data, yo, q, quincena, proyectosPorId]
+  );
+  const bauTxt = bau.map((x) => `${x.nombre} (${x.horas} h)`).join(", ");
   const copiarImputacion = async () => {
     if (!misFilas.length) return showToast("No hay imputación en esta quincena");
     const todas = (data?.reparto || []).filter((r) => r.persona === yo?.nombre);
     const filas = filasTR({ q, quincena, filas: todas, proyectosPorId });
+    if (!filas.length) return showToast(`Solo tienes horas en proyectos BAU (${bauTxt}): impútalas a mano en el TR de BBVA`);
     try {
       await navigator.clipboard.writeText(tsvTR(filas));
       const n = `${filas.length} fila${filas.length === 1 ? "" : "s"}`;
+      const extra = bau.length ? `. Ojo: ${bauTxt} es BAU y no se copia: impútalo a mano` : "";
       showToast(segundaQuincena
-        ? `Mes completo copiado (${n}, días 1-${qn.dias.length + 15}): pégalo en la MISMA celda que la 1ª quincena`
-        : `Imputación copiada (${n}): pégala en el TR de BBVA`);
+        ? `Mes completo copiado (${n}, días 1-${qn.dias.length + 15}): pégalo en la MISMA celda que la 1ª quincena${extra}`
+        : `Imputación copiada (${n}): pégala en el TR de BBVA${extra}`);
       confirmar("imp");
     } catch {
       showToast("No se pudo copiar al portapapeles");
@@ -142,6 +150,7 @@ export default function MiTimeReportRoute() {
       return { titulo: "Soporte usuarios", sub: "Sin código · Análisis y diseño" };
     const p = proyectosPorId[r.proyectoId] || {};
     const n2 = (p.estados || {})[quincena] || NIVEL2_ANALISIS;
+    if (esBAU(p)) return { titulo: p.nombre || r.proyectoId, sub: "BAU · sin SDATOOL: no se copia, se imputa a mano", bau: true };
     return {
       titulo: p.nombre || r.proyectoId,
       sub: `${p.sdatool || ""} · ${p.feature || "sin feature"} · ${n2 === NIVEL2_ANALISIS ? "Análisis y diseño" : n2}`,
@@ -195,7 +204,7 @@ export default function MiTimeReportRoute() {
                 return (
                   <li key={i} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1">
                     <div className="min-w-0">
-                      <b className={`block ${denso ? "text-sm" : "text-[15px]"}`}>{v.titulo}</b>
+                      <b className={`block ${denso ? "text-sm" : "text-[15px]"}`}>{v.titulo}{v.bau && <span className="hub-etiqueta hub-ge ml-2 inline-block rounded-full px-2 align-[2px] text-[11px] font-bold leading-[18px]">BAU</span>}</b>
                       <small className={`mt-0.5 block text-sand/80 ${denso ? "text-xs" : "text-[13px]"}`}>{v.sub}</small>
                     </div>
                     <span className="font-bold tabular-nums">{h} h</span>
@@ -213,6 +222,17 @@ export default function MiTimeReportRoute() {
               <IconoBBVA nombre={copiado === "imp" ? "checkmark" : "copy"} size={18} />
               {copiado === "imp" ? "Imputación copiada: pégala en el TR" : segundaQuincena ? "Copiar mi imputación del mes" : "Copiar mi imputación"}
             </button>
+            {bau.length > 0 && (
+              <div role="note" className="rounded-xl bg-canary px-4 py-3 text-[13px] leading-snug text-[#001391]">
+                <b className="block text-[14px]">Tienes {bau.length === 1 ? "un proyecto" : `${bau.length} proyectos`} a BAU: {bau.length === 1 ? "impútalo" : "impútalos"} a mano</b>
+                {bau.map((x) => (
+                  <span key={x.nombre} className="mt-1 block">
+                    <b>{x.nombre}</b> · {x.horas} h{segundaQuincena ? " en el mes" : ""}: {x.dias.map((d) => `día ${Number(d.dia.slice(8))} (${d.horas} h)`).join(", ")}
+                  </span>
+                ))}
+                <span className="mt-1 block">No tiene SDATOOL, así que no va en «Copiar mi imputación»: añádelo en el TR de BBVA a mano.</span>
+              </div>
+            )}
             <p className="mx-0.5 mb-1 text-[13px] leading-snug text-serene">
               {segundaQuincena
                 ? <>2ª quincena: se copia el <b className="text-sand">mes entero</b> (días 1-{qn.dias.length + 15}) para pegarlo en la misma celda que la 1ª sin borrar nada.</>
