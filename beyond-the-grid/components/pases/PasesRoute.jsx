@@ -201,6 +201,8 @@ export default function PasesRoute() {
   // respuesta del servidor con el orden ANTIGUO no debe pisar tempOrden — era
   // el bug de "reordeno y se vuelve hacia atrás".
   const ordenDirtyRef = useRef(false);
+  const ordenBaseRef = useRef(0); // versión del orden del servidor sobre la que se edita
+  const ordenFechaRef = useRef(""); // fecha del pase al que pertenece tempOrden
   const ordenGraceUntil = useRef(0);
   const ordenUidSeq = useRef(0); // ids estables para drag & drop (keys de Reorder)
   const idTraspasoTimers = useRef(new Map());
@@ -370,9 +372,18 @@ export default function PasesRoute() {
   // NUNCA mientras haya edición local pendiente o guardado reciente: es la
   // otra mitad del arreglo del "orden que se vuelve hacia atrás".
   const pendRevisado = useRef("");
+  // E con el que se ha reconciliado el orden local. La hoja solo autoinserta
+  // DP fuera del orden cuando coincide con el E actual: si no, tempOrden aún
+  // es el de antes (otra fecha, o un orden viejo) y lo guardaría encima del
+  // bueno — así se borraban parada, arranque y pasos de sistema.
+  const [ordenDeE, setOrdenDeE] = useState(null);
   useEffect(() => {
     if (!E) return;
-    if (ordenDirtyRef.current || Date.now() < ordenGraceUntil.current) return;
+    if (ordenDirtyRef.current || Date.now() < ordenGraceUntil.current) {
+      // El orden local es más nuevo que el de E: vale tal cual (si es de esta fecha).
+      if (ordenPend.current?.fechaStr === E.fechaSeleccionada || ordenFechaRef.current === E.fechaSeleccionada) setOrdenDeE(E);
+      return;
+    }
     if (pendRevisado.current !== E.fechaSeleccionada) {
       pendRevisado.current = E.fechaSeleccionada;
       let p = null;
@@ -382,8 +393,10 @@ export default function PasesRoute() {
         if (!iguales) {
           // Se reaplica y se vuelve a mandar (el backend descarta si ya tenía uno más nuevo).
           ordenDirtyRef.current = true;
+          ordenFechaRef.current = p.fechaStr;
           setTempOrden(p.elementos.map((o) => ({ ...o, uid: ++ordenUidSeq.current })));
-          ordenPend.current = { fechaStr: p.fechaStr, elementos: p.elementos, ver: p.ver };
+          ordenPend.current = { fechaStr: p.fechaStr, elementos: p.elementos, ver: p.ver, base: p.base };
+          setOrdenDeE(E);
           setEstadoOrden("pendiente");
           clearTimeout(ordenTimer.current);
           ordenTimer.current = setTimeout(() => lanzarGuardadoOrden(), 300);
@@ -393,8 +406,11 @@ export default function PasesRoute() {
       }
     }
     const backendOrden = (E.ordenPase || []).map((o) => ({ elemento: o.elemento, som: o.som || "" }));
+    ordenBaseRef.current = Number(E.ordenVer) || 0; // versión del servidor en la que se basa lo que se edite
+    ordenFechaRef.current = E.fechaSeleccionada;
+    setOrdenDeE(E);
     setTempOrden((prev) => {
-      const same = prev.length === backendOrden.length && prev.every((t, i) => t.elemento === backendOrden[i].elemento);
+      const same = prev.length === backendOrden.length && prev.every((t, i) => t.elemento === backendOrden[i].elemento && (t.som || "") === backendOrden[i].som);
       // uid estable por item: clave de Reorder (drag & drop) — no usar índices.
       return prev.length === 0 || !same ? backendOrden.map((o) => ({ ...o, uid: ++ordenUidSeq.current })) : prev;
     });
@@ -873,8 +889,21 @@ export default function PasesRoute() {
     setEstadoOrden("guardando");
     let fallo = null;
     try {
-      await call("actualizarOrdenCompleto", { fechaStr: p.fechaStr, elementos: p.elementos, ver: p.ver });
+      const r = await call("actualizarOrdenCompleto", { fechaStr: p.fechaStr, elementos: p.elementos, ver: p.ver, base: p.base !== undefined ? p.base : ordenBaseRef.current });
       ordenReintentos.current = 0;
+      if (r && r.conflicto) {
+        // Otra pestaña u otra persona guardó antes un orden distinto: no se pisa.
+        ordenPend.current = null;
+        ordenDirtyRef.current = false;
+        ordenGraceUntil.current = 0;
+        apuntarPend(null);
+        setEstadoOrden("ok");
+        ordenGuardando.current = false;
+        showToast("Otra persona u otra pestaña había cambiado el orden: te enseño el actual. Repite tu último cambio si hace falta.", "error", 9000);
+        if (ERef.current?.fechaSeleccionada === p.fechaStr) cargarCompleto(p.fechaStr, true);
+        return;
+      }
+      ordenBaseRef.current = p.ver;
       if (ERef.current?.fechaSeleccionada === p.fechaStr) cacheSet(p.fechaStr, ERef.current);
     } catch (e) {
       fallo = e;
@@ -897,7 +926,7 @@ export default function PasesRoute() {
     ordenGraceUntil.current = Date.now() + 5000;
     apuntarPend(null);
     setEstadoOrden("ok");
-  }, [call, showToast]);
+  }, [call, showToast, cargarCompleto]);
   const reintentarOrden = useCallback(() => { ordenReintentos.current = 0; lanzarGuardadoOrden(); }, [lanzarGuardadoOrden]);
   const guardarOrdenLocal = useCallback(
     (next) => {
@@ -907,8 +936,11 @@ export default function PasesRoute() {
         d.ordenPase = next.map((el, i) => ({ fila: i + 1, orden: i + 1, elemento: el.elemento, implantado: !!(d.ordenPase || []).find((o) => o.elemento === el.elemento)?.implantado, som: el.som }));
       });
       // El uid es solo local (keys del drag & drop): no se envía al backend.
+      // La base (versión del servidor sobre la que se edita) se pone al mandarlo:
+      // es la del último guardado confirmado, porque se mandan de uno en uno.
+      ordenFechaRef.current = ERef.current.fechaSeleccionada;
       ordenPend.current = { fechaStr: ERef.current.fechaSeleccionada, elementos: next.map(({ elemento, som }) => ({ elemento, som: som || "" })), ver: Date.now() };
-      apuntarPend(ordenPend.current);
+      apuntarPend({ ...ordenPend.current, base: ordenBaseRef.current });
       setEstadoOrden((s) => (s === "guardando" ? s : "pendiente"));
       clearTimeout(ordenTimer.current);
       ordenTimer.current = setTimeout(() => lanzarGuardadoOrden(), 500);
@@ -1051,7 +1083,7 @@ export default function PasesRoute() {
     E, fase, isCompletado, proyectosLocked, isAdmin, inflight,
     edicion: edicionActiva, setEdicion,
     cab, setCab, scheduleCabSave,
-    tempOrden, ordenOps, estadoOrden, reintentarOrden,
+    tempOrden, ordenOps, estadoOrden, reintentarOrden, ordenAlDia: !!E && ordenDeE === E,
     validador, validadorFlash,
     tpls: { jira: jiraTpl, enoa: enoaTpl, nova: novaTpl },
     showToast, removeToast,

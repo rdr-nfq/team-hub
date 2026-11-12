@@ -255,7 +255,7 @@ function doPostPases(e) {
         if (payload.fechaStr) invalidarDashboard(payload.fechaStr);
         break;
       case "actualizarOrdenCompleto":
-        resultado = actualizarOrdenCompleto(ctx, payload.fechaStr, payload.elementos, payload.ver);
+        resultado = actualizarOrdenCompleto(ctx, payload.fechaStr, payload.elementos, payload.ver, payload.base);
         invalidarDashboard(payload.fechaStr);
         break;
       case "actualizarCheckOrden":
@@ -482,6 +482,7 @@ function obtenerDatosDashboard(ctx, fechaRequerida) {
       equipo, clientes, tiposComp, tiposSubida, schemaPorSubida, listadoRules,
       proyectos: proyectosList,
       ordenPase: orden,
+      ordenVer: Number(PropertiesService.getScriptProperties().getProperty("ordenVer:" + fechaFinalStr)) || 0,
       modoDebug: getModoDebug(),
     };
 
@@ -851,16 +852,20 @@ function asegurarColumnaProbado(sheet) {
      y el siguiente guardado pisaba filas ajenas); si estaban repartidas, se
      borran y se escriben juntas al final.
    · Conserva la marca de implantado de cada paso que sigue en el orden. */
-function actualizarOrdenCompleto(ctx, fechaStr, elementos, ver) {
+function actualizarOrdenCompleto(ctx, fechaStr, elementos, ver, base) {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
-    const cache = CacheService.getScriptCache();
+    const props = PropertiesService.getScriptProperties();
     const claveVer = "ordenVer:" + fechaStr;
     const verNum = Number(ver) || 0;
-    if (verNum) {
-      const ultima = Number(cache.get(claveVer)) || 0;
-      if (verNum < ultima) return "IGNORADO";
+    const actual = Number(props.getProperty(claveVer)) || 0;
+    if (verNum && verNum < actual) return "IGNORADO";
+    // Conflicto: el orden que se manda se editó sobre una versión que ya no es
+    // la del servidor (otra pestaña u otra persona guardó entre medias). No se
+    // pisa: la web recarga y lo avisa.
+    if (base !== undefined && base !== null && base !== "" && Number(base) !== actual) {
+      return { conflicto: true, ordenVer: actual };
     }
 
     ctx.invalidar(CONSTANTES.HOJA_ORDEN);
@@ -900,7 +905,7 @@ function actualizarOrdenCompleto(ctx, fechaStr, elementos, ver) {
       if (nuevasRows.length) hOrden.getRange(hOrden.getLastRow() + 1, 1, nuevasRows.length, 5).setValues(nuevasRows);
     }
     SpreadsheetApp.flush();
-    if (verNum) cache.put(claveVer, String(verNum), 21600);
+    if (verNum) props.setProperty(claveVer, String(verNum));
     ctx.invalidar(CONSTANTES.HOJA_ORDEN);
     return "OK";
   } finally {

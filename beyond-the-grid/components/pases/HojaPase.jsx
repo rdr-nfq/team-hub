@@ -23,7 +23,7 @@ const ATAJO_CAMPO = (el) => el && (el.tagName === "TEXTAREA" || el.tagName === "
 
 export default function HojaPase() {
   const P = usePases();
-  const { E, fase, cab, setCab, scheduleCabSave, tempOrden, ordenOps, validador, actions, proyectosLocked, edicion, setEdicion, isCompletado, showToast, inflight, estadoOrden, reintentarOrden } = P;
+  const { E, fase, cab, setCab, scheduleCabSave, tempOrden, ordenOps, validador, actions, proyectosLocked, edicion, setEdicion, isCompletado, showToast, inflight, estadoOrden, reintentarOrden, ordenAlDia } = P;
   const editable = !proyectosLocked && !isCompletado;
   const cerrada = fase !== "FASE_2_3_PREPARACION";
 
@@ -89,8 +89,9 @@ export default function HojaPase() {
 
   // DP con componentes que aún no están en el orden: se colocan antes del arranque.
   useEffect(() => {
-    // Solo con el orden ya cargado del servidor (si no, se reharía el orden solo con los DP).
-    if (!editable || renombrando.current || !m.fuera.length || (!tempOrden.length && (E.ordenPase || []).length)) return;
+    // Solo con el orden local ya puesto al día con este E (misma fecha, mismo
+    // dato): si no, se insertaría en un orden viejo y se guardaría encima.
+    if (!editable || !ordenAlDia || renombrando.current || !m.fuera.length || (!tempOrden.length && (E.ordenPase || []).length)) return;
     const texto = tempOrden.map((o) => String(o.elemento || "").toUpperCase()).join(" | ");
     const faltan = m.fuera.filter((d) => !texto.includes(d.cod.toUpperCase()));
     if (!faltan.length) return;
@@ -100,7 +101,7 @@ export default function HojaPase() {
     next.splice(iA < 0 ? next.length : iA, 0, ...nuevos);
     ordenOps.set(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editable, m.fuera.map((d) => d.cod).join("|")]);
+  }, [editable, ordenAlDia, m.fuera.map((d) => d.cod).join("|")]);
 
   // ── Avisos con deshacer y pila de Ctrl+Z ──
   const avisar = useCallback((msg, deshacer) => {
