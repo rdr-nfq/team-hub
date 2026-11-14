@@ -815,6 +815,110 @@ html.rdr-light .gu { --gu-dur: rgb(133 200 255 / 0.38); --gu-borde: rgb(70 83 10
 @media (prefers-reduced-motion: no-preference) { .gu-esq { animation: gu-latido 1.4s ease-in-out infinite alternate; } }
 @keyframes gu-latido { from { opacity: 0.55; } to { opacity: 1; } }
 
+/* ── Mis guardias (Equipo, components/guardias/MisGuardiasRoute.jsx).
+   Mismo lenguaje que Guardias del equipo (.vacu.gu) con el acento Mandarin de
+   Equipo: pedir a la izquierda y «Mis guardias» a la derecha, a partes
+   iguales. Lo cerrado vive en la pestaña Histórico, por años. La hora se
+   escribe o se elige en una esfera (primero la hora, después los minutos). ── */
+.mg-rejilla { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 1000px) { .mg-rejilla { grid-template-columns: minmax(0, 1fr); } }
+.mg-pedir { background: var(--v-tinte); border: 1px solid #ffb56b; border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+@media (max-width: 700px) { .mg-pedir { padding: 14px; } }
+.mg-pedir h2, .mg-hist h2 { font-size: 18px; font-weight: 700; }
+.mg-cab { display: flex; justify-content: space-between; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
+.mg-form { display: flex; flex-direction: column; gap: 14px; }
+.mg-dos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.mg .v-inp { min-height: 44px; font-size: 15px; }
+.mg textarea.v-inp { min-height: 84px; resize: vertical; line-height: 1.45; }
+.mg .v-campo > span:first-child, .mg .v-campo > label { font-weight: 700; font-size: 13px; color: var(--v-soft); }
+.mg-sel { position: relative; display: flex; }
+.mg-sel select.v-inp { font-weight: 700; padding-right: 34px; }
+.mg-sel svg { position: absolute; right: 12px; top: 50%; transform: translateY(-50%) rotate(180deg); pointer-events: none; }
+.mg-resumen { margin: 0; font-size: 14px; background: var(--v-solido); border: 1px solid var(--v-line-soft); border-radius: 8px; padding: 8px 10px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.mg-error { margin: 0; font-size: 13px; font-weight: 700; background: #ffe761; color: #001391; border-radius: 8px; padding: 6px 10px; }
+.mg-aviso { margin: 0; font-size: 13px; color: var(--v-ink); background: var(--v-solido); border: 1.5px dashed var(--v-ink); border-radius: 8px; padding: 6px 10px; }
+.mg-aviso button { font: inherit; font-weight: 700; color: inherit; background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
+.mg-pista { margin: 0; font-size: 12.5px; color: var(--v-soft); }
+.mg-enviar { padding: 12px 18px; font-size: 15px; min-height: 48px; align-self: flex-start; }
+.mg-enviar svg { fill: currentColor; }
+/* Campo de hora: se escribe («2230») o se abre la esfera */
+.mg-hora { position: relative; }
+.mg-hora .v-inp { padding-right: 44px; font-weight: 700; font-size: 17px; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; }
+.mg-hora .v-inp::placeholder { font-weight: 400; font-size: 15px; letter-spacing: 0; }
+.mg-hora .v-inp[aria-expanded="true"] { border-color: var(--v-ink); box-shadow: 0 0 0 1px var(--v-ink); }
+.mg-hora-b { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; display: grid; place-items: center; border: 0; border-radius: 8px; background: none; color: var(--v-ink); cursor: pointer; }
+.mg-hora-b:hover { background: var(--v-medio); }
+.mg-pk { position: relative; background: var(--v-solido); border: 1px solid var(--v-ink); border-radius: 12px; padding: 14px 16px; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 12px 24px; box-shadow: 0 14px 30px -18px var(--v-sombra); }
+@media (prefers-reduced-motion: no-preference) { .mg-pk { animation: mg-pk-in 160ms cubic-bezier(0.2, 0.8, 0.2, 1); } }
+@keyframes mg-pk-in { from { opacity: 0; transform: translateY(-4px); } }
+.mg-pk::before { content: ""; position: absolute; top: -7px; left: var(--pk-x, 24px); width: 12px; height: 12px; background: var(--v-solido); border-left: 1px solid var(--v-ink); border-top: 1px solid var(--v-ink); transform: rotate(45deg); }
+.mg-pk-izq { flex: 1 1 200px; display: flex; flex-direction: column; gap: 10px; min-width: 0; align-self: stretch; }
+.mg-pk-q { margin: 0; font-size: 14px; font-weight: 700; }
+.mg-pk-disp { display: flex; align-items: center; gap: 2px; }
+.mg-pk-disp > span { font-size: 40px; font-weight: 700; color: var(--v-soft); line-height: 1; padding-bottom: 4px; }
+.mg-seg { font: 700 40px/1 var(--font-lato), Lato, sans-serif; font-variant-numeric: tabular-nums; color: var(--v-ink); background: var(--v-surface); border: 1.5px solid var(--v-line-soft); border-radius: 10px; padding: 6px 8px; cursor: pointer; min-width: 72px; }
+.mg-seg[aria-pressed="true"] { background: var(--v-medio); border-color: var(--v-ink); }
+.mg-seg.mg-seg-vacio { color: var(--v-soft); }
+.mg-pk-paso { margin: 0; font-size: 13px; color: var(--v-soft); }
+.mg-pk-paso b { color: var(--v-ink); }
+.mg-ley { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--v-soft); }
+.mg-ley i { width: 14px; height: 14px; border-radius: 999px; background: var(--v-medio); }
+.mg-pk-pie { margin: auto 0 0; font-size: 12.5px; color: var(--v-soft); display: flex; gap: 6px 10px; flex-wrap: wrap; align-items: center; }
+.mg-pk-pie kbd { font: 700 12px var(--font-lato), Lato, sans-serif; border: 1px solid var(--v-line); border-radius: 4px; padding: 0 4px; color: var(--v-ink); }
+.mg-dial { position: relative; width: 248px; height: 248px; flex: 0 0 auto; border-radius: 50%; background: var(--v-surface); border: 1px solid var(--v-line-soft); touch-action: none; user-select: none; cursor: pointer; }
+.mg-dial svg.mg-mano { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.mg-dial .mg-l { stroke: var(--v-ink); stroke-width: 2; }
+.mg-dial .mg-c { fill: var(--v-ink); }
+.mg-dial button { position: absolute; transform: translate(-50%, -50%); width: 36px; height: 36px; border-radius: 50%; border: 0; background: none; color: var(--v-ink); font: 700 15px var(--font-lato), Lato, sans-serif; font-variant-numeric: tabular-nums; cursor: pointer; padding: 0; display: grid; place-items: center; }
+.mg-dial button.mg-int { width: 32px; height: 32px; font-size: 13px; font-weight: 400; color: var(--v-soft); }
+.mg-dial button.mg-tip { background: var(--v-medio); color: var(--v-ink); }
+.mg-dial button:hover { box-shadow: inset 0 0 0 1.5px var(--v-ink); }
+.mg-dial button[aria-pressed="true"] { background: var(--v-ink); color: rgb(var(--c-midnight)); font-weight: 700; }
+.mg-dial button:focus-visible { outline: 2px solid var(--v-ink); outline-offset: 2px; }
+.mg-dial.mg-min button:not(.mg-q) { color: var(--v-soft); font-weight: 400; font-size: 14px; }
+.mg-dial.mg-min button[aria-pressed="true"] { color: rgb(var(--c-midnight)); font-weight: 700; }
+@media (max-width: 700px) { .mg-pk { padding: 12px; } .mg-pk-izq { flex-basis: 100%; } .mg-pk-pie { margin-top: 0; } .mg-seg { font-size: 34px; min-width: 62px; } .mg-pk-disp > span { font-size: 34px; } }
+/* Mis guardias: pestañas En curso / Histórico */
+.mg-hist { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.mg-pest { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--v-finde); border: 1px solid var(--v-line-soft); }
+.mg-pest button { font: 700 14px var(--font-lato), Lato, sans-serif; color: var(--v-soft); background: none; border: 0; border-radius: 8px; padding: 6px 12px; min-height: 34px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.mg-pest button:hover { color: var(--v-ink); }
+.mg-pest button[aria-selected="true"] { background: var(--v-ink); color: rgb(var(--c-midnight)); }
+.mg-pest .mg-n { font-weight: 400; font-variant-numeric: tabular-nums; }
+.mg-pest .mg-n.mg-viva { font-weight: 700; color: #001391; background: #ffe761; border-radius: 999px; padding: 0 7px; }
+@media (max-width: 700px) { .mg-pest button { min-height: 40px; } }
+.mg-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.mg-g { background: var(--v-solido); border: 1px solid var(--v-line-soft); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; scroll-margin-top: calc(var(--cabecera) + 16px); }
+.mg-g:focus { outline: none; }
+.mg-g:focus-visible { outline: 2px solid var(--v-ink); outline-offset: 2px; }
+.mg-g.mg-pend { border: 1.5px solid var(--v-ink); }
+.mg-g.mg-nueva { box-shadow: 0 0 0 3px #ffb56b; }
+.mg-l1 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; }
+.mg-l1 b { font-size: 15px; }
+.mg-acc { margin-left: auto; display: flex; gap: 4px; }
+.mg-acc .v-btn { padding: 6px 10px; font-size: 13px; }
+.mg-g p { margin: 0; font-size: 13.5px; overflow-wrap: anywhere; }
+.mg-desc { color: var(--v-soft); }
+.mg .gu-ciclo li { font-size: 12.5px; }
+.mg .gu-ciclo .gu-pt { width: 18px; height: 18px; }
+.mg .gu-ciclo .gu-raya { width: 16px; }
+.mg-nada { margin: 0; font-size: 14px; color: var(--v-soft); }
+.mg-vacio { margin: 0; font-size: 14px; background: var(--v-surface); border: 1.5px dashed var(--v-line); border-radius: 12px; padding: 16px; }
+/* Histórico: una sola superficie, una fila por guardia, rótulo por trimestre */
+.mg-resanio { margin: 0; font-size: 13px; color: var(--v-soft); font-variant-numeric: tabular-nums; }
+.mg-resanio b { color: var(--v-ink); }
+.mg-tabla { list-style: none; margin: 0; padding: 0; background: var(--v-solido); border: 1px solid var(--v-line-soft); border-radius: 12px; overflow: hidden; }
+.mg-tabla > li { border-top: 1px solid var(--v-line-soft); padding: 9px 14px; display: flex; flex-direction: column; gap: 3px; }
+.mg-tabla > li:first-child { border-top: 0; }
+.mg-tabla p { margin: 0; font-size: 13.5px; overflow-wrap: anywhere; }
+.mg-tabla .mg-subq { padding: 6px 14px; background: var(--v-finde); font-size: 12px; font-weight: 700; letter-spacing: 0.02em; color: var(--v-soft); }
+.mg-tabla .mg-l1 { flex-wrap: nowrap; min-width: 0; }
+.mg-tabla .mg-l1 > * { flex: none; }
+.mg-tabla .mg-l1 .mg-desc { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
+@media (max-width: 700px) { .mg-tabla .mg-l1 { flex-wrap: wrap; } .mg-tabla .mg-l1 .mg-desc { flex-basis: 100%; white-space: normal; } }
+.mg-esq { background: var(--v-surface); border: 1px solid var(--v-line-soft); border-radius: 12px; }
+@media (prefers-reduced-motion: no-preference) { .mg-esq { animation: gu-latido 1.4s ease-in-out infinite alternate; } }
+
 /* ── Pases Calendados: hoja de preparación (.ph) ── */
 .ph {
   --page: #f7f8f8; --surface: #ffffff; --solido: #ffffff;

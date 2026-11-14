@@ -23,7 +23,10 @@
  *      "guardiasBackend".
  *
  *  API (GET query o POST text/plain JSON):
- *   ?action=misGuardias&email=persona@nfq.es -> { guardias:[...] } (últimas 20)
+ *   ?action=misGuardias&email=persona@nfq.es -> { guardias:[...], pases:[...] }
+ *        Todas las suyas (sin las de prueba), de la más reciente a la más
+ *        antigua, y los Pases Calendados de los últimos 90 días (yyyy-MM-dd,
+ *        de la hoja de Pases) para el desplegable «Pase» de /guardias.
  *   ?action=todas                            -> { guardias:[...] } (todas, coordinación)
  *   POST { action:'crear', persona, email, fecha, horaEntrada, horaSalida, descripcion, prueba }
  *        -> { guardia, aviso:{ok, error?} }  — Estado nace 'pendiente'; avisa a
@@ -32,6 +35,12 @@
  *        `prueba:true` (botón de /guardias-gestion, solo coordinadores) la marca
  *        como guardia de PRUEBA: mismo circuito de avisos, pero etiquetado
  *        "[PRUEBA]" en los correos para no confundirla con una solicitud real.
+ *   POST { action:'retirar', id, email }
+ *        -> { id, retirada:true }  — quien la pidió la quita mientras siga
+ *        pendiente (la fila se borra). Si coordinación ya la resolvió, error.
+ *   POST { action:'corregir', id, email, fecha, horaEntrada, horaSalida, descripcion }
+ *        -> { guardia }  — quien la pidió la corrige mientras siga pendiente;
+ *        coordinación ve la versión corregida en su bandeja. Sin email.
  *   POST { action:'resolver', id, estado:'aprobada'|'rechazada', importe, motivo, resueltoPor }
  *        -> { guardia, aviso:{ok, error?} }  — avisa por email a quien la solicitó.
  *   POST { action:'marcarMyNfq', id, valor:true|false }
@@ -115,12 +124,14 @@ function _serveGuardias(e) {
     var data;
     switch (action) {
       case 'ping': data = { ok: 1, importesRapidos: G_CONFIG.IMPORTES_RAPIDOS }; break;
-      case 'misGuardias': data = { guardias: misGuardias(p.email) }; break;
+      case 'misGuardias': data = misGuardiasConPases(p.email); break;
       case 'todas': data = { guardias: todasLasGuardias() }; break;
       case 'crear': data = crearGuardia(p); break;
-      case 'resolver': data = resolverGuardia(p); break;
-      case 'marcarMyNfq': data = { guardia: marcarMyNfq(p) }; break;
-      case 'borrar': data = borrarGuardia(p); break;
+      case 'retirar': data = retirarGuardia(p); break;
+      case 'corregir': data = { guardia: corregirGuardia(p) }; break;
+      case 'resolver': data = _conCandadoGuardias(function () { return resolverGuardia(p); }); break;
+      case 'marcarMyNfq': data = { guardia: _conCandadoGuardias(function () { return marcarMyNfq(p); }) }; break;
+      case 'borrar': data = _conCandadoGuardias(function () { return borrarGuardia(p); }); break;
       default: throw new Error('Acción desconocida: ' + action);
     }
     return _jsonGuardias({ ok: true, action: action, data: data });
@@ -186,8 +197,40 @@ function misGuardias(email) {
     if (o.prueba) return;
     out.push(o);
   });
-  out.sort(function (a, b) { return b.creadoEn < a.creadoEn ? -1 : b.creadoEn > a.creadoEn ? 1 : 0; });
-  return out.slice(0, 20);
+  // Todas (el histórico va por años en la web), de la más reciente a la más antigua.
+  out.sort(function (a, b) { return b.fecha < a.fecha ? -1 : b.fecha > a.fecha ? 1 : b.creadoEn < a.creadoEn ? -1 : b.creadoEn > a.creadoEn ? 1 : 0; });
+  return out;
+}
+
+/* Mis guardias + los Pases Calendados recientes. Si la hoja de Pases no se
+   puede leer, las guardias salen igual y la web ofrece «Otro día». */
+function misGuardiasConPases(email) {
+  var out = { guardias: misGuardias(email), pases: [], pasesError: '' };
+  try { out.pases = pasesRecientesGuardias(90); }
+  catch (e) { out.pasesError = String(e && e.message ? e.message : e); }
+  return out;
+}
+
+/* Fechas (yyyy-MM-dd) de los Pases Calendados entre hace `dias` días y hoy,
+   de la más reciente a la más antigua. Lee la columna A de la hoja de Pases. */
+function pasesRecientesGuardias(dias) {
+  var nombre = (typeof CONSTANTES !== 'undefined' && CONSTANTES.HOJA_PASES) || 'Pases_Calendados';
+  var sh = _hubHoja('PASES').getSheetByName(nombre);
+  if (!sh) throw new Error('No encuentro la hoja ' + nombre + ' en la de Pases.');
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+  var hoy = Utilities.formatDate(new Date(), G_CONFIG.TZ, 'yyyy-MM-dd');
+  var desde = Utilities.formatDate(new Date(Date.now() - dias * 864e5), G_CONFIG.TZ, 'yyyy-MM-dd');
+  var vistos = {}, out = [];
+  sh.getRange(2, 1, last - 1, 1).getValues().forEach(function (r) {
+    var v = r[0], f = '';
+    if (v instanceof Date) f = Utilities.formatDate(v, G_CONFIG.TZ, 'yyyy-MM-dd');
+    else { var m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(v || '').trim()); if (m) f = m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2); }
+    if (!f || f < desde || f > hoy || vistos[f]) return;
+    vistos[f] = 1; out.push(f);
+  });
+  out.sort().reverse();
+  return out;
 }
 
 function todasLasGuardias() {
@@ -252,6 +295,52 @@ function _intentar(que, fn) {
     Logger.log(que + ': ' + msg);
     return { ok: false, error: msg };
   }
+}
+
+/* ─────────────────────── Retirar / corregir (quien la pidió) ─────────────────────── */
+
+function _mismaPersona(g, email) {
+  var x = String(email || '').trim().toLowerCase();
+  if (!x || String(g.email || '').trim().toLowerCase() !== x) throw new Error('Esta guardia no es tuya.');
+}
+function _sigueSinResolver(g) {
+  if (g.estado !== 'pendiente') {
+    throw new Error('Coordinación ya la ha ' + (g.estado === 'aprobada' ? 'aprobado' : 'rechazado') + (g.resueltoPor ? ' (' + g.resueltoPor + ')' : '') + ': ya no se puede cambiar.');
+  }
+}
+/* Con el candado: dos acciones a la vez sobre la misma hoja no se pisan las filas. */
+function _conCandadoGuardias(fn) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try { return fn(); } finally { lock.releaseLock(); }
+}
+
+function retirarGuardia(p) {
+  return _conCandadoGuardias(function () {
+    var actual = _porId(p.id);
+    _mismaPersona(actual, p.email);
+    _sigueSinResolver(actual);
+    _hojaGuardias().deleteRow(actual.row);
+    return { id: actual.id, retirada: true };
+  });
+}
+
+function corregirGuardia(p) {
+  var fecha = String(p.fecha || '').trim();
+  var horaEntrada = String(p.horaEntrada || '').trim();
+  var horaSalida = String(p.horaSalida || '').trim();
+  var descripcion = String(p.descripcion || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) throw new Error('Falta el día del Pase Calendado.');
+  if (!/^\d{2}:\d{2}$/.test(horaEntrada) || !/^\d{2}:\d{2}$/.test(horaSalida)) throw new Error('Faltan la hora de entrada y de salida.');
+  if (horaEntrada === horaSalida) throw new Error('La entrada y la salida son la misma hora.');
+  if (!descripcion) throw new Error('Falta la descripción.');
+  return _conCandadoGuardias(function () {
+    var actual = _porId(p.id);
+    _mismaPersona(actual, p.email);
+    _sigueSinResolver(actual);
+    _hojaGuardias().getRange(actual.row, 5, 1, 4).setValues([[fecha, horaEntrada, horaSalida, descripcion]]);
+    return Object.assign({}, actual, { fecha: fecha, horaEntrada: horaEntrada, horaSalida: horaSalida, descripcion: descripcion });
+  });
 }
 
 /* ────────────────────────────── Resolución ────────────────────────────── */
