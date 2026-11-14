@@ -100,7 +100,8 @@ export default function MisGuardiasRoute() {
 
   // Foco tras pintar (como en el prototipo): se pide un selector y se enfoca en el siguiente render.
   const foco = useRef(null);
-  const enfocar = (sel) => { foco.current = sel; };
+  const [, repintar] = useState(0);
+  const enfocar = (sel) => { foco.current = sel; repintar((t) => t + 1); }; // repinta aunque no cambie nada más
   useEffect(() => {
     if (!foco.current) return;
     const el = document.querySelector(foco.current); foco.current = null;
@@ -152,11 +153,8 @@ export default function MisGuardiasRoute() {
     setPicker(k); setModo("h"); enfocar(`#f-${k}`);
   };
   const cerrarPk = (volver) => { const k = picker; setPicker(null); if (volver && k) enfocar(`#f-${k}`); };
-  const tipica = (k) => (x) => {
-    if (k === "he") return x >= 20 && x <= 23;
-    const he = aMin(form.he); if (he == null) return x <= 2;
-    const d = (x * 60 - he + 1440) % 1440; return d > 0 && d <= 300;
-  };
+  // Lo habitual en un pase es entrar a las 7:00; para la salida no hay hora habitual.
+  const tipica = (k) => (x) => k === "he" && x === 7;
   const elegir = (k) => (m, x, teclado) => {
     const v = form[k];
     if (m === "h") {
@@ -175,13 +173,13 @@ export default function MisGuardiasRoute() {
     if (e.key === "Escape" && picker) { e.preventDefault(); setPicker(null); return; }
     if (e.key === "Tab" && !e.shiftKey && picker === k) {
       e.preventDefault(); const v = leerHora(k); setModo("h");
-      enfocar(`#mg-${k}-h${v ? Number(v.slice(0, 2)) : k === "he" ? 22 : 1}`); return;
+      enfocar(`#mg-${k}-h${v ? Number(v.slice(0, 2)) : k === "he" ? 7 : (Number(String(form.he).slice(0, 2)) || 7)}`); return;
     }
     if (e.key === "ArrowDown" && e.altKey) { e.preventDefault(); abrirPk(k); return; }
     if (e.key === "ArrowUp" || e.key === "ArrowDown") {
       e.preventDefault();
       const v = leerHora(k);
-      const cur = aMin(v) ?? (k === "he" ? 21 * 60 + 45 : aMin(form.he) ?? 21 * 60 + 45);
+      const cur = aMin(v) ?? (k === "he" ? 6 * 60 + 45 : aMin(form.he) ?? 6 * 60 + 45); // ↑ desde vacío: 7:00
       const n = (((Math.round(cur / 15) * 15 + (e.key === "ArrowUp" ? 15 : -15)) % 1440) + 1440) % 1440;
       fijarHora(k, `${pad(Math.floor(n / 60))}:${pad(n % 60)}`);
     }
@@ -293,7 +291,7 @@ export default function MisGuardiasRoute() {
   const boton = editando ? "Guardar la corrección" : fecha ? `Pedir la guardia del ${dia(fecha)}` : "Pedir la guardia";
   const pie = picker === "hs" && modo === "m" && a && !a.error
     ? <><span className="gu-dur">{fDur(a.m)}</span><span>{a.cruza ? `termina el ${dia(masUnDia(fecha || hoy))}` : "el mismo día"}</span></>
-    : <span>O escríbela: <kbd>2230</kbd> → 22:30</span>;
+    : <span>O escríbela: <kbd>730</kbd> → 07:30</span>;
 
   const fila = (g) => {
     const m = minutos(g);

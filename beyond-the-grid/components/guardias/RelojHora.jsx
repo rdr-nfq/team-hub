@@ -104,7 +104,7 @@ export function PanelReloj({ k, valor, modo, setModo, onElegir, tipica, pie, cer
           <button type="button" className={`mg-seg${mm == null ? " mg-seg-vacio" : ""}`} aria-pressed={modo === "m"} aria-label="Elegir los minutos" onClick={() => setModo("m")}>{mm == null ? "--" : pad(mm)}</button>
         </div>
         <p className="mg-pk-paso">{modo === "h" ? <><b>1.</b> Elige la hora · después, los minutos</> : <><b>2.</b> Elige los minutos</>}</p>
-        {modo === "h" && <span className="mg-ley"><i aria-hidden="true" />{k === "he" ? "lo habitual en un pase" : "hasta 5 h después de entrar"}</span>}
+        {modo === "h" && k === "he" && <span className="mg-ley"><i aria-hidden="true" />lo habitual: las 7:00</span>}
         <p className="mg-pk-pie">{pie}</p>
       </div>
       <div
