@@ -919,6 +919,90 @@ html.rdr-light .gu { --gu-dur: rgb(133 200 255 / 0.38); --gu-borde: rgb(70 83 10
 .mg-esq { background: var(--v-surface); border: 1px solid var(--v-line-soft); border-radius: 12px; }
 @media (prefers-reduced-motion: no-preference) { .mg-esq { animation: gu-latido 1.4s ease-in-out infinite alternate; } }
 
+/* ── Comidas (Equipo, components/comidas/ComidasRoute.jsx). Mismo lenguaje que
+   Mis guardias (.vacu.gu.mg): tu voto a la izquierda (tinte Mandarin) con los
+   restaurantes como papeleta, «Cómo va» a la derecha. ── */
+.cm { --cm-borde: rgb(247 248 248 / 0.32); --cm-barra: rgb(247 248 248 / 0.16); --cm-barra-i: #ffb56b; --cm-acc: #1e2050; }
+html.rdr-light .cm { --cm-borde: rgb(70 83 109 / 0.5); --cm-barra: rgb(70 83 109 / 0.22); --cm-barra-i: #e8892e; --cm-acc: #fcefe2; }
+.cm .cm-44 { min-height: 44px; }
+.cm-jueves { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.cm-jueves > span { font-weight: 700; font-size: 13px; color: var(--v-soft); margin-right: 4px; }
+.cm-chip { min-height: 40px; }
+.cm-chip small { font-weight: 400; font-size: 13px; }
+.cm-movil { display: none; margin: 0; font-size: 14px; }
+.cm-movil a { font-weight: 700; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; display: inline-block; padding: 12px 0; margin: -12px 0; }
+@media (max-width: 1050px) { .cm-movil { display: block; } }
+.cm-rej { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 1050px) { .cm-rej { grid-template-columns: minmax(0, 1fr); } }
+.cm-voto { background: var(--v-tinte); border: 1px solid #ffb56b; border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+@media (max-width: 700px) { .cm-voto { padding: 14px; } }
+.cm-voto h2, .cm-va h2 { font-size: 18px; font-weight: 700; }
+.cm-seg { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; border-radius: 10px; background: var(--v-finde); border: 1px solid var(--cm-borde); }
+.cm-seg button { font-weight: 700; font-size: 14px; color: var(--v-soft); background: none; border: 0; border-radius: 8px; padding: 7px 12px; min-height: 38px; cursor: pointer; }
+.cm-seg button:hover { color: var(--v-ink); }
+.cm-seg button[aria-checked="true"] { background: var(--v-ink); color: rgb(var(--c-midnight)); }
+.cm-seg button[aria-disabled="true"], .cm .v-btn[aria-disabled="true"] { opacity: 0.55; cursor: not-allowed; }
+@media (max-width: 700px) { .cm-seg { display: grid; grid-template-columns: 1fr 1fr; width: 100%; } .cm-seg button { min-height: 44px; } .cm-chip, .cm .mg-pest button { min-height: 44px; } }
+.cm-estado { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--v-solido); border: 1.5px solid var(--v-ink); border-radius: 10px; padding: 10px 12px; font-size: 15px; }
+.cm-estado.cm-sin { border-style: dashed; }
+.cm-estado svg { flex: none; }
+.cm-cambios { font-size: 13px; font-weight: 700; }
+.cm-lbl { margin: 0; font-weight: 700; font-size: 13px; color: var(--v-soft); }
+.cm-rests { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+@media (max-width: 700px) { .cm-rests { grid-template-columns: 1fr 1fr; } }
+.cm-rc { position: relative; background: var(--v-solido); border: 1px solid var(--cm-borde); border-radius: 12px; min-width: 0; }
+.cm-rc:hover { border-color: var(--v-ink); }
+.cm-rc.cm-sel { border: 2px solid var(--v-ink); }
+/* Toda la tarjeta es el botón (su ::after la cubre); la carta va encima, en su esquina */
+.cm-rc > button { all: unset; cursor: pointer; display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; min-height: 84px; box-sizing: border-box; width: 100%; color: var(--v-ink); }
+.cm-rc > button::after { content: ""; position: absolute; inset: 0; border-radius: 12px; }
+.cm-rc.cm-sel > button { padding: 11px 13px; }
+.cm-rc > button:focus-visible { outline: none; }
+.cm-rc:has(> button:focus-visible) { outline: 3px solid var(--v-ink); outline-offset: 2px; }
+.cm-rc > button[aria-disabled="true"] { cursor: progress; }
+.cm-rc > button:disabled { cursor: not-allowed; opacity: 0.6; }
+.cm-nom { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.cm-nom b { font-size: 16px; overflow-wrap: anywhere; }
+.cm-coc { font-size: 13px; color: var(--v-soft); }
+.cm-dato { font-size: 13px; margin-top: auto; padding-right: 52px; min-height: 18px; }
+.cm-carta { position: absolute; right: 4px; bottom: 0; z-index: 1; font-size: 13px; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; min-height: 44px; min-width: 48px; display: inline-flex; align-items: center; justify-content: center; color: var(--v-ink); }
+.cm-marca { font-weight: 700; font-size: 12px; border-radius: 999px; padding: 1px 9px; white-space: nowrap; }
+.cm-m1 { background: var(--v-ink); color: rgb(var(--c-midnight)); }
+.cm-m2 { background: #85c8ff; color: #001391; }
+.cm-otra { margin: 0; font-size: 15px; background: var(--v-solido); border: 1px solid var(--v-line-soft); border-radius: 10px; padding: 12px 14px; }
+/* Las acciones se quedan pegadas abajo mientras recorres las tarjetas */
+.cm-acc { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; position: sticky; bottom: 0; z-index: 2; margin: 0 -18px -18px; padding: 12px 18px; background: var(--cm-acc); border-top: 1px solid var(--v-line-soft); border-radius: 0 0 12px 12px; }
+@media (max-width: 700px) { .cm-acc { margin: 0 -14px -14px; padding: 10px 14px; } }
+.cm-va { background: var(--v-surface); border: 1px solid var(--v-line-soft); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.cm-lider { margin: 0; font-size: 16px; line-height: 1.45; }
+.cm-rank { list-style: none; margin: 0; padding: 0; }
+.cm-rank li { padding: 8px 0; border-top: 1px solid var(--v-line-soft); display: grid; grid-template-columns: minmax(0, 120px) minmax(0, 1fr) 56px; gap: 4px 10px; align-items: center; }
+.cm-rank li:first-child { border-top: 0; }
+.cm-rank li b { font-size: 14px; }
+.cm-barra { height: 8px; border-radius: 999px; background: var(--cm-barra); overflow: hidden; }
+.cm-barra i { display: block; height: 100%; background: var(--cm-barra-i); border-radius: 999px; }
+.cm-pts { font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; }
+.cm-quien { grid-column: 1 / -1; font-size: 13px; color: var(--v-soft); }
+.cm-grupos { display: grid; gap: 6px; font-size: 14px; margin: 0; padding: 0; list-style: none; }
+.cm-grupos span { color: var(--v-soft); font-size: 13px; }
+.cm-va details summary { font-weight: 700; cursor: pointer; font-size: 14px; min-height: 32px; display: flex; align-items: center; }
+.cm-va details p { margin: 6px 0 0; font-size: 13px; color: var(--v-soft); line-height: 1.5; }
+@media (max-width: 700px) { .cm-va details summary { min-height: 44px; } }
+.cm-hist { display: flex; flex-direction: column; gap: 10px; max-width: 900px; }
+.cm-hl { list-style: none; margin: 0; padding: 0; background: var(--v-solido); border: 1px solid var(--v-line-soft); border-radius: 12px; overflow: hidden; }
+.cm-hl li + li { border-top: 1px solid var(--v-line-soft); }
+.cm-hl summary { list-style: none; cursor: pointer; padding: 12px 14px; min-height: 48px; display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; font-size: 14px; }
+.cm-hl summary::-webkit-details-marker { display: none; }
+.cm-hl summary > b { font-size: 15px; min-width: 96px; }
+.cm-r { color: var(--v-soft); font-size: 13px; margin-left: auto; }
+.cm-flecha { display: grid; place-items: center; }
+.cm-flecha svg { transform: rotate(90deg); transition: transform 160ms ease; }
+.cm-hl details[open] .cm-flecha svg { transform: rotate(180deg); }
+.cm-det { padding: 0 14px 14px; font-size: 13.5px; color: var(--v-soft); display: grid; gap: 4px; }
+.cm-det b { color: var(--v-ink); }
+.cm .gu-envio button { min-height: 36px; }
+@media (max-width: 700px) { .cm .gu-envio button { min-height: 44px; } }
+
 /* ── Pases Calendados: hoja de preparación (.ph) ── */
 .ph {
   --page: #f7f8f8; --surface: #ffffff; --solido: #ffffff;
