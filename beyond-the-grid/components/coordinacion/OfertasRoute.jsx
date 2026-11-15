@@ -69,6 +69,12 @@ const qsSeleccionables = () => {
   return out;
 };
 
+// Proyecto de la oferta: lo único que cambia es el prefijo del nombre.
+const PROYECTOS = [
+  { id: "RDR", prefijo: "RDR" },
+  { id: "MAR", prefijo: "MARKET ABUSE" },
+  { id: "COMMS", prefijo: "COMM. SURVEILLANCE" },
+];
 const AMBITOS = [
   { id: "bbva-sa", nombre: "BBVA S.A. · España", iva: true },
   { id: "latam", nombre: "LATAM", iva: false },
@@ -87,6 +93,12 @@ export default function OfertasRoute() {
   const backendUrl = getUrl("ofertasBackend");
 
   const [plantilla, setPlantilla] = useState("bbva-sa");
+  // Proyecto: solo cambia el prefijo del nombre («RDR - …», «MARKET ABUSE - …»…).
+  // Se recuerda en este navegador para la próxima oferta.
+  const [proyecto, setProyectoRaw] = useState("RDR");
+  useEffect(() => { try { const v = localStorage.getItem("ofertas_proyecto"); if (PROYECTOS.some((p) => p.id === v)) setProyectoRaw(v); } catch {} }, []);
+  const setProyecto = (v) => { setProyectoRaw(v); try { localStorage.setItem("ofertas_proyecto", v); } catch {} };
+  const prefijo = (PROYECTOS.find((p) => p.id === proyecto) || PROYECTOS[0]).prefijo;
   const esLatam = plantilla === "latam";
   // Firmantes de LATAM: los del backend (compartidos por el equipo) o, si aún
   // no responde, los de siempre para no quedarse sin poder generar.
@@ -165,7 +177,7 @@ export default function OfertasRoute() {
   // sigue siendo obligatorio (vacío hasta que se rellena).
   const sdatoolValor = sdatool.trim() ? `SDATOOL-${sdatool.trim()}` : (esLatam ? "" : "BAU");
   const datos = useMemo(() => ({
-    dato1: nombre.trim() ? `RDR - ${nombre.trim()}` : "",
+    dato1: nombre.trim() ? `${prefijo} - ${nombre.trim()}` : "",
     dato2: sdatoolValor,
     dato3: mmf.trim() ? `MMF - ${mmf.trim()}` : "",
     dato4: fechaIni,
@@ -177,10 +189,10 @@ export default function OfertasRoute() {
     // (13) van vacíos, y sus marcadores desaparecen del documento.
     dato9: esLatam ? "" : horas ? eurTxt(conIva) : "",
     dato10: hoyDDMMYYYY(),
-    dato11: nombre.trim() && sdatoolValor ? `RDR - ${sdatoolValor}. ${nombre.trim()}` : "",
+    dato11: nombre.trim() && sdatoolValor ? `${prefijo} - ${sdatoolValor}. ${nombre.trim()}` : "",
     dato12: firmanteFinal,
     dato13: esLatam ? "" : String(horas || ""),
-  }), [nombre, sdatoolValor, mmf, fechaIni, fechaFin, detalle, horas, sinIva, conIva, esLatam, firmanteFinal]);
+  }), [prefijo, nombre, sdatoolValor, mmf, fechaIni, fechaFin, detalle, horas, sinIva, conIva, esLatam, firmanteFinal]);
 
   const listo = !!(datos.dato1 && datos.dato2 && datos.dato6 && horas > 0 && datos.dato12);
 
@@ -254,6 +266,27 @@ export default function OfertasRoute() {
           ))}
         </div>
 
+        {/* ── Proyecto: cambia solo el prefijo del nombre (dato 1 y dato 11) ── */}
+        <div className="-mt-2 mb-5 flex flex-wrap items-center gap-2" role="group" aria-label="Proyecto de la oferta">
+          <span className="mr-1 text-[11px] font-bold uppercase tracking-wider text-sand/55">Proyecto</span>
+          {PROYECTOS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              aria-pressed={proyecto === p.id}
+              title={`El nombre empieza por «${p.prefijo} - »`}
+              onClick={() => setProyecto(p.id)}
+              className={`rounded-full border px-3.5 py-1.5 text-xs font-bold tracking-wide transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-serene ${
+                proyecto === p.id
+                  ? "border-transparent bg-[#85C8FF] text-[#001391]"
+                  : "border-white/15 bg-white/[0.055] text-sand/80 hover:border-white/30 hover:bg-white/10"
+              }`}
+            >
+              {p.id}
+            </button>
+          ))}
+        </div>
+
         <div className="grid items-start gap-4 lg:grid-cols-[1.3fr_1fr]">
           {/* ── Formulario ── */}
           <section className={`${GLASS} space-y-4 p-5`} aria-label="Datos de la oferta">
@@ -309,10 +342,10 @@ export default function OfertasRoute() {
             <div className="grid gap-4 sm:grid-cols-2">
               <Campo etiqueta="Nombre del proyecto">
                 <div className={`${FIELD} flex items-center gap-0 !py-0`}>
-                  <span className="shrink-0 py-2 text-sand/45">RDR -&nbsp;</span>
+                  <span className="shrink-0 py-2 text-sand/45">{prefijo} -&nbsp;</span>
                   <input
                     type="text" value={nombre} onChange={(e) => setNombre(e.target.value)}
-                    placeholder="Migración Midas" aria-label="Nombre del proyecto (sin el prefijo RDR)"
+                    placeholder="Migración Midas" aria-label={`Nombre del proyecto (sin el prefijo ${prefijo})`}
                     className="w-full bg-transparent py-2 focus:outline-none"
                   />
                 </div>

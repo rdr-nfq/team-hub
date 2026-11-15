@@ -9,9 +9,9 @@ const DSEM = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "
 /* Motivo → relleno (acento BBVA, siempre con texto Electric). Tus días van en
    Lime; por eso Vacaciones es Mandarin (el color de la sección Equipo). */
 export const COLOR_YO = "#88E783";
-const COLORES = { VA: "#FFB56B", VP: "#8BE1E9", FO: "#85C8FF", ES: "#9694FF", BA: "#FFE761" };
+const COLORES = { VA: "#FFB56B", VX: "#FFB56B", VP: "#8BE1E9", FO: "#85C8FF", ES: "#9694FF", BA: "#FFE761" };
 export const colorMotivo = (m) => COLORES[m] || "#CAD1D8";
-const TEXTOS = { VA: "Vacaciones", VP: "Vacaciones proyecto", FO: "Formación", ES: "Permiso especial", BA: "Baja", RE: "Revisión", FT: "Festivo trabajado", VE: "Votación" };
+const TEXTOS = { VA: "Vacaciones", VX: "Vacaciones extraordinarias", VP: "Vacaciones proyecto", FO: "Formación", ES: "Permiso especial", BA: "Baja", RE: "Revisión", FT: "Festivo trabajado", VE: "Votación" };
 export const textoMotivo = (m) => TEXTOS[m] || m;
 export const LEYENDA = ["VA", "FO", "ES", "BA", "VP"];
 

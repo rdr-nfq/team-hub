@@ -51,7 +51,15 @@ function PedirDias({ datos, ctx }) {
   const tramos = !form.desde ? [] : cruza
     ? [[form.desde, `${a1}-12-31`], [`${a2}-01-01`, hasta]].filter(([x, y]) => laborables(x, y, fxg).length)
     : [[form.desde, hasta]];
-  const ok = dias.length > 0 && !pasado && !alReves && !choca.length && !mios.length && !cruzaMal;
+  // Bolsas: normales (VA) y extraordinarias (VX), contando lo ya pedido pendiente.
+  const saldo = yo.saldo;
+  const libresVA = saldo ? saldo.quedan - (saldo.pendientesVA || 0) : null;
+  const libresVX = saldo ? (saldo.extra?.quedan || 0) - (saldo.pendientesVX || 0) : 0;
+  const esVac = form.tipo === "VA" || form.tipo === "VX";
+  const conExtra = !!saldo && ((saldo.extra?.total || 0) > 0 || (saldo.extra?.quedan || 0) > 0 || form.tipo === "VX");
+  const vxCruza = form.tipo === "VX" && cruza;
+  const vxSinSaldo = form.tipo === "VX" && !vxCruza && a1 === anio && dias.length > libresVX;
+  const ok = dias.length > 0 && !pasado && !alReves && !choca.length && !mios.length && !cruzaMal && !vxCruza && !vxSinSaldo;
 
   const fuera = dias.map((s) => [s, (datos.ausenciasPorDia[s] || []).filter((a) => a.nombre !== yo.nombre).length]);
   const min = fuera.length ? Math.min(...fuera.map((x) => x[1])) : 0;
@@ -85,12 +93,25 @@ function PedirDias({ datos, ctx }) {
         <label className="v-campo v-ancho">
           <span>Tipo</span>
           <span className="relative flex">
-            <select className="v-inp" value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value })}>
-              {(datos.tipos || []).map((t) => <option key={t.id} value={t.id}>{t.texto}</option>)}
+            <select className="v-inp" value={form.tipo === "VX" ? "VA" : form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value })}>
+              {(datos.tipos || []).filter((t) => t.id !== "VX").map((t) => <option key={t.id} value={t.id}>{t.texto}</option>)}
             </select>
             <IconoBBVA nombre="fold" size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rotate-180" />
           </span>
         </label>
+        {esVac && conExtra && (
+          <div className="v-campo v-ancho" role="group" aria-labelledby="bolsa-tit">
+            <span id="bolsa-tit">Sacarlas de</span>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className="v-chip" aria-pressed={form.tipo === "VA"} onClick={() => setForm({ ...form, tipo: "VA" })}>
+                Vacaciones normales <span className="v-n">{libresVA}</span>
+              </button>
+              <button type="button" className="v-chip" aria-pressed={form.tipo === "VX"} onClick={() => setForm({ ...form, tipo: "VX" })}>
+                Extraordinarias <span className="v-n">{libresVX}</span>
+              </button>
+            </div>
+          </div>
+        )}
         <label className="v-campo">
           <span>Desde</span>
           <CampoFecha valor={form.desde} min={hoy} onFijar={(v) => fijarFechas({ desde: v })} />
@@ -113,6 +134,15 @@ function PedirDias({ datos, ctx }) {
         </label>
       </div>
 
+      {esVac && saldo && a1 === anio && (
+        <p className="v-nota">
+          {form.tipo === "VX"
+            ? <>Te quedan <b>{libresVX}</b> {libresVX === 1 ? "día extraordinario" : "días extraordinarios"}{saldo.pendientesVX ? " (descontando lo pendiente)" : ""}{dias.length && !vxSinSaldo ? <> → tras esta, <b>{libresVX - dias.length}</b></> : ""}. No tocan tus vacaciones normales.</>
+            : <>Te quedan <b>{libresVA}</b> días de vacaciones{saldo.pendientesVA ? " (descontando lo pendiente)" : ""}{dias.length ? <> → tras esta, {libresVA - dias.length < 0 ? <span className="v-neg">{libresVA - dias.length}</span> : <b>{libresVA - dias.length}</b>}</> : ""}.</>}
+        </p>
+      )}
+      {vxSinSaldo && <p className="v-aviso">{libresVX <= 0 ? "No te quedan vacaciones extraordinarias" : `Solo te quedan ${libresVX} ${libresVX === 1 ? "día extraordinario" : "días extraordinarios"}`} y pides {dias.length}: <button type="button" className="v-btn v-btn-t !inline !p-0 underline" onClick={() => setForm({ ...form, tipo: "VA" })}>sácalas de las normales</button>{libresVX > 0 ? " o pide menos días" : ""}.</p>}
+      {vxCruza && <p className="v-aviso">Las extraordinarias van por año: pide hasta el 31 de diciembre y el resto aparte.</p>}
       {pasado && <p className="v-aviso">No se pueden pedir días pasados: elige a partir de hoy.</p>}
       {alReves && <p className="v-aviso">La fecha final es anterior a la inicial.</p>}
       {cruzaMal && !pasado && <p className="v-aviso">{a2 !== a1 + 1 ? "Como mucho puede llegar al año siguiente." : `Todavía no está abierto ${a2}: pide hasta el 31 de diciembre y avisa a coordinación.`}</p>}

@@ -53,7 +53,7 @@ function Sincronizar({ post, onCambio }) {
   );
 }
 
-const COLS = [["nombre", "Persona"], ["grupo", "Sede (festivos)"], ["anteriores", "Del año anterior"], ["dias", "Días del año"], ["total", "Total"], ["va", "Cogidos"], ["quedan", "Quedan"], ["pendientesVA", "Pendientes"], ["quedanTrasPendientes", "Quedarían"]];
+const COLS = [["nombre", "Persona"], ["grupo", "Sede (festivos)"], ["anteriores", "Del año anterior"], ["dias", "Días del año"], ["total", "Total"], ["va", "Cogidos"], ["quedan", "Quedan"], ["pendientesVA", "Pendientes"], ["quedanTrasPendientes", "Quedarían"], ["exAsig", "Extraord."], ["exQuedan", "Quedan extra"]];
 
 export function Personas({ d, post, onCambio, avisar }) {
   const [guardando, setGuardando] = useState("");
@@ -62,7 +62,8 @@ export function Personas({ d, post, onCambio, avisar }) {
   const corto = (n) => d.cortos?.[n] || n;
   const enDirecto = (d.anios || []).includes(d.year - 1);
   const filas = useMemo(() => {
-    const out = (d.saldos || []).filter((p) => !buscar || coincide(`${p.nombre} ${corto(p.nombre)}`, buscar)).map((p) => ({ ...p, corto: corto(p.nombre) }));
+    const out = (d.saldos || []).filter((p) => !buscar || coincide(`${p.nombre} ${corto(p.nombre)}`, buscar))
+      .map((p) => ({ ...p, corto: corto(p.nombre), exAsig: p.extra?.asignadas || 0, exQuedan: p.extra?.quedan || 0 }));
     const { col, dir } = orden;
     const k = col === "nombre" ? "corto" : col;
     return out.sort((a, b) => (a.activo !== b.activo ? (a.activo ? -1 : 1) : (typeof a[k] === "string" ? String(a[k]).localeCompare(String(b[k]), "es") : (a[k] || 0) - (b[k] || 0)) * dir));
@@ -85,6 +86,7 @@ export function Personas({ d, post, onCambio, avisar }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="v-nota max-w-[760px]">
           <b>Cogidos</b> cuenta solo vacaciones (no formación ni permisos). <b>Quedarían</b> descuenta además lo pendiente de aprobar; una cancelación pendiente suma.
+          {" "}<b>Extraord.</b>: vacaciones extraordinarias dadas en {d.year} (su propia bolsa: se piden aparte y lo que no se gaste pasa al año siguiente).
           {enDirecto && <> «Del año anterior» va <b>en directo</b>: lo que le queda de {d.year - 1} y baja si coge días allí.</>} Los días sueltos se corrigen en el Excel (pestaña Vacas_{d.year}).
         </p>
         <label className="relative w-[240px] max-w-full">
@@ -95,7 +97,7 @@ export function Personas({ d, post, onCambio, avisar }) {
       </div>
       <Sincronizar post={post} onCambio={onCambio} />
       <div className="overflow-x-auto">
-        <table className="vg-tabla min-w-[820px]">
+        <table className="vg-tabla min-w-[980px]">
           <thead><tr>{COLS.map(([k, t]) => (
             <th key={k} className={k === "grupo" ? "vg-izq" : ""} aria-sort={orden.col === k ? (orden.dir > 0 ? "ascending" : "descending") : "none"}>
               <button type="button" onClick={() => ordenar(k)}>{t}{orden.col === k ? (orden.dir > 0 ? " ↑" : " ↓") : ""}</button>
@@ -121,6 +123,11 @@ export function Personas({ d, post, onCambio, avisar }) {
                 <td><b>{p.quedan < 0 ? <span className="v-neg">{p.quedan}</span> : p.quedan}</b></td>
                 <td>{p.pendientesVA > 0 ? p.pendientesVA : p.pendientesVA < 0 ? `+${-p.pendientesVA} (cancela)` : <span className="v-soft">—</span>}</td>
                 <td>{p.pendientesVA ? (p.quedanTrasPendientes < 0 ? <span className="v-neg">{p.quedanTrasPendientes}</span> : p.quedanTrasPendientes) : <span className="v-soft">—</span>}</td>
+                <td><DiasInput valor={p.exAsig} nombre={`${p.corto} (extraordinarias)`} deshabilitado={guardando === p.nombre} onGuardar={(n) => cambiar("ajustarExtra", p.nombre, "dias", n, p.exAsig, `${p.corto} tiene ${n} ${n === 1 ? "día extraordinario" : "días extraordinarios"} en ${d.year}`)} /></td>
+                <td title={p.extra ? `${p.extra.anteriores} del año anterior + ${p.extra.asignadas} de ${d.year} − ${p.extra.usadas} cogidos${p.pendientesVX ? ` · ${p.pendientesVX} pendientes` : ""}` : undefined}>
+                  {p.extra && (p.extra.total || p.extra.usadas) ? <b>{p.exQuedan < 0 ? <span className="v-neg">{p.exQuedan}</span> : p.exQuedan}</b> : <span className="v-soft">—</span>}
+                  {p.pendientesVX > 0 && <span className="v-soft"> ({p.pendientesVX} pend.)</span>}
+                </td>
               </tr>
             ))}
           </tbody>

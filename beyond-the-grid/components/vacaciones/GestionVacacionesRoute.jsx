@@ -84,6 +84,8 @@ function Decision({ s, idx, total, ctx }) {
       {saldo && s.deltaVA !== 0 ? (
         <p className="vg-dato">Le quedan <b>{saldo.quedan}</b> días → tras esta, {saldo.quedan - (s.deltaVA || 0) < 0 ? <span className="v-neg">{saldo.quedan - (s.deltaVA || 0)}</span> : <b>{saldo.quedan - (s.deltaVA || 0)}</b>}
           {(saldo.pendientesVA || 0) !== (s.deltaVA || 0) && <> · con sus otras pendientes, {saldo.quedanTrasPendientes}</>}</p>
+      ) : s.deltaVX && saldo ? (
+        <p className="vg-dato">Le quedan <b>{saldo.extra?.quedan ?? 0}</b> días <b>extraordinarios</b> → tras esta, {(saldo.extra?.quedan ?? 0) - s.deltaVX < 0 ? <span className="v-neg">{(saldo.extra?.quedan ?? 0) - s.deltaVX}</span> : <b>{(saldo.extra?.quedan ?? 0) - s.deltaVX}</b>}. No toca sus vacaciones normales.</p>
       ) : s.tipo !== "VA" ? <p className="vg-dato">{textoMotivo(s.tipo)}: no descuenta de sus vacaciones.</p> : null}
       {propios.length > 0 && <p className="v-aviso"><b>Ya tiene días apuntados</b> en ese rango: {propios.map((x) => fCorta(x, anio)).join(", ")}.</p>}
       {errorSel && <p className="v-aviso" role="alert">{errorSel.replace(/^SOLAPAMIENTO:\s*/, "")}</p>}

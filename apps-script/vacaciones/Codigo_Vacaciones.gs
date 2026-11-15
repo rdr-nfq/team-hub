@@ -39,11 +39,18 @@
  *       sobre Vacas_<año>). Julio y agosto 6 h/día; resto del año 9 h L-J y
  *       6 h V. Los códigos que cuentan, en la columna P (editables a mano).
  *       No escribir en ella: crearHorasAusencia() la rehace.
+ *   · Extra_<año>: vacaciones EXTRAORDINARIAS asignadas ese año (A Persona ·
+ *       B Días extraordinarios · C Nota). Se ponen desde la web (Personas) o a
+ *       mano. Se piden como «Vacaciones extraordinarias» (código VX en
+ *       Vacas_<año>) y tienen su propio saldo: lo que no se gaste pasa al año
+ *       siguiente (como las normales, pero en su bolsa). No se puede pedir más
+ *       VX de las que quedan.
  *   Las pestañas antiguas ("Vacaciones 2026", "2026_Calendario") quedan solo
  *   como registro: migrar2026() (Migracion_2026.gs) copia una vez a Vacas_2026.
  *
  *  REGLAS
- *   · Solo VA descuenta del saldo (igual que la fórmula del Excel antiguo).
+ *   · Solo VA descuenta del saldo (igual que la fórmula del Excel antiguo);
+ *     VX descuenta de la bolsa de extraordinarias (Extra_<año>).
  *   · Días de una solicitud = laborables: ni sábado/domingo ni festivo del
  *     grupo de la persona (ni celda FE en su fila).
  *   · Al aprobar se escribe el código en los días laborables del rango, se crea
@@ -94,6 +101,7 @@
  *        borrarGrupo   { grupo }                                                   (coord.)
  *        asignarGrupo  { anio, persona, grupo }                                    (coord.)
  *        ajustarDias   { anio, persona, dias }   ("Días del año", columna F)       (coord.)
+ *        ajustarExtra  { anio, persona, dias }   (extraordinarias de ese año, Extra_<año>) (coord.)
  *        sincronizarEquipo { miembros?:[{nombre,email,emailBBVA}] }   (coord.; lo llama
  *                      Gestión de equipo al guardar) quien falte en Vacas_<año> (y en el
  *                      año siguiente si existe) se añade; sin miembros: equipo.json
@@ -116,7 +124,7 @@ const V_CONFIG = {
   // Calendario compartido donde se crea un evento al aprobar (vacío = no se crea).
   CALENDARIO_ID: 'c_7f897d2240e831b1b87e40c7018e7c9d300b59f1b57146aade363d870536c314@group.calendar.google.com',
   REMITE: 'Vacaciones RDR',
-  TIPOS_SOLICITABLES: ['VA', 'FO', 'ES'],
+  TIPOS_SOLICITABLES: ['VA', 'VX', 'FO', 'ES'],
   // Días de vacaciones de un año por defecto al crear el año siguiente
   // (coordinación los cambia a mano por persona en la web: Personas).
   DIAS_ANIO: 27
@@ -126,6 +134,7 @@ const V_CONFIG = {
 const PREFIJO_ANIO = 'Vacas_';
 const PREFIJO_FESTIVOS = 'Festivos_';
 const PREFIJO_SOLICITUDES = 'Solicitudes_';
+const PREFIJO_EXTRA = 'Extra_';
 // Festivos_<año>: dos tablas lado a lado. A:B grupos · D:F festivos.
 const F = { GRUPO: 1, PAIS: 2, FECHA: 4, FGRUPO: 5, NOMBRE: 6 };
 
@@ -139,6 +148,7 @@ const CABECERA_GRID = ['Persona', 'Email', 'Grupo festivos', 'Activo', 'Días a�
 
 const CODIGOS = {
   VA: { texto: 'Vacaciones', color: '#88E783' },
+  VX: { texto: 'Vacaciones extraordinarias', color: '#B5E5A4' },
   VP: { texto: 'Vacaciones proyecto', color: '#8BE1E9' },
   FO: { texto: 'Formación', color: '#85C8FF' },
   ES: { texto: 'Permiso especial', color: '#9694FF' },
@@ -210,6 +220,7 @@ function _servir(p) {
       case 'asignarGrupo': _exigirCoord(p.email); data = asignarGrupo(p); break;
       case 'crearAnio': _exigirCoord(p.email); data = crearAnio(p); break;
       case 'ajustarDias': _exigirCoord(p.email); data = ajustarDias(p); break;
+      case 'ajustarExtra': _exigirCoord(p.email); data = ajustarExtra(p); break;
       case 'sincronizarEquipo': _exigirCoord(p.email); data = sincronizarEquipo(p); break;
       default: throw new Error('Acción desconocida: ' + p.action);
     }
@@ -482,6 +493,7 @@ function _leerAnio(ss, anio) {
       const anteriores = Number(r[G.ANTERIORES - 1]) || 0;
       const dias = Number(r[G.DIAS - 1]) || 0;
       const va = codigos.filter(function (c) { return c === 'VA'; }).length;
+      const vx = codigos.filter(function (c) { return c === 'VX'; }).length;
       const activoRaw = r[G.ACTIVO - 1];
       personas.push({
         fila: G.FILA_1 + i, nombre: nombre,
@@ -489,7 +501,7 @@ function _leerAnio(ss, anio) {
         grupo: String(r[G.GRUPO - 1] || '').trim(),
         activo: !(activoRaw === false || String(activoRaw).toUpperCase() === 'FALSE' || String(activoRaw).toUpperCase() === 'FALSO'),
         anteriores: anteriores, dias: dias, total: anteriores + dias, va: va, quedan: anteriores + dias - va,
-        codigos: codigos
+        vx: vx, codigos: codigos
       });
     });
   }
@@ -559,6 +571,7 @@ function _calcularBase(anioParam) {
 
   const grupos = _leerGrupos(ss, anio);
   const festivos = _leerFestivos(ss, anio);
+  const extra = _saldosExtra(ss, anio, grid);
 
   // Personas: activas primero y alfabético; color fijo por persona.
   const orden = grid.personas.slice().sort(function (a, b) {
@@ -584,7 +597,8 @@ function _calcularBase(anioParam) {
     anio: anio, anios: anios, generatedAt: new Date().toISOString(),
     personas: grid.personas.map(function (p) {
       return { nombre: p.nombre, email: p.email, grupo: p.grupo, activo: p.activo,
-        anteriores: p.anteriores, dias: p.dias, total: p.total, va: p.va, quedan: p.quedan };
+        anteriores: p.anteriores, dias: p.dias, total: p.total, va: p.va, quedan: p.quedan,
+        extra: extra[p.nombre] || _extraVacio() };
     }),
     empleados: empleados, empleadosMap: empleadosMap,
     ausenciasPorDia: ausenciasPorDia,
@@ -606,7 +620,7 @@ function datos(anioParam, email) {
   const out = {
     v: 2, year: anio, anios: b.anios, generatedAt: b.generatedAt,
     esCoordinador: esCoord,
-    yo: yo ? { nombre: yo.nombre, grupo: yo.grupo } : null,
+    yo: yo ? { nombre: yo.nombre, grupo: yo.grupo } : null, // + saldo, más abajo
     empleados: b.empleados, empleadosMap: b.empleadosMap, paletaEquipos: {},
     ausenciasPorDia: b.ausenciasPorDia,
     festivos: b.festivos,
@@ -617,6 +631,18 @@ function datos(anioParam, email) {
     // Formularios especiales (Navidad, Verano…): la gente solo ve los abiertos.
     campanas: _campanas().filter(function (c) { return c.activa; })
   };
+
+  if (yo) {
+    // Mi saldo (normales y extraordinarias) para elegir de dónde salen los días.
+    const mia = b.personas.filter(function (p) { return p.nombre === yo.nombre; })[0];
+    const misPend = b.sols.filter(function (s) { return s.estado === 'PENDIENTE' && s.persona === yo.nombre && s.desde.slice(0, 4) === String(anio); });
+    if (mia) out.yo.saldo = {
+      quedan: mia.quedan, total: mia.total, va: mia.va,
+      pendientesVA: misPend.reduce(function (n, s) { return n + (Number(s.deltaVA) || 0); }, 0),
+      extra: mia.extra || _extraVacio(),
+      pendientesVX: misPend.reduce(function (n, s) { return n + (Number(s.deltaVX) || 0); }, 0)
+    };
+  }
 
   if (email) {
     const alias = _aliasEmail(email);
@@ -633,10 +659,13 @@ function datos(anioParam, email) {
       // Efecto neto en VA de lo pendiente (las cancelaciones suman, los cambios compensan).
       const pend = pendientes.filter(function (s) { return s.persona === p.nombre && s.desde.slice(0, 4) === String(anio); })
         .reduce(function (n, s) { return n + (Number(s.deltaVA) || 0); }, 0);
+      const pendVX = pendientes.filter(function (s) { return s.persona === p.nombre && s.desde.slice(0, 4) === String(anio); })
+        .reduce(function (n, s) { return n + (Number(s.deltaVX) || 0); }, 0);
       return {
         nombre: p.nombre, email: p.email, grupo: p.grupo, activo: p.activo,
         anteriores: p.anteriores, dias: p.dias, total: p.total, va: p.va, quedan: p.quedan,
-        pendientesVA: pend, quedanTrasPendientes: p.quedan - pend
+        pendientesVA: pend, quedanTrasPendientes: p.quedan - pend,
+        extra: p.extra || _extraVacio(), pendientesVX: pendVX
       };
     });
     out.festivosTodos = b.festivosTodos;
@@ -730,15 +759,120 @@ function _solPublica(s) {
     id: s.id, creada: s.creada, persona: s.persona, clase: s.clase, tipo: s.tipo, desde: s.desde, hasta: s.hasta, dias: s.dias,
     tipoOrig: s.tipoOrig, origDesde: s.origDesde, origHasta: s.origHasta, diasOrig: s.diasOrig, ref: s.ref,
     comentario: s.comentario, estado: s.estado, resueltaPor: s.resueltaPor, resuelta: s.resuelta, motivo: s.motivo,
-    campana: s.campana || '', deltaVA: _deltaVA(s)
+    campana: s.campana || '', deltaVA: _deltaVA(s), deltaVX: _deltaVX(s)
   };
 }
 
-/** Efecto de la solicitud en los días de VA consumidos (+ consume, − libera). */
-function _deltaVA(s) {
-  if (s.clase === 'CANCELACION') return s.tipo === 'VA' ? -s.dias : 0;
-  if (s.clase === 'MODIFICACION') return (s.tipo === 'VA' ? s.dias : 0) - (s.tipoOrig === 'VA' ? s.diasOrig : 0);
-  return s.tipo === 'VA' ? s.dias : 0;
+/** Efecto de la solicitud en los días de un código consumidos (+ consume, − libera). */
+function _delta(s, cod) {
+  if (s.clase === 'CANCELACION') return s.tipo === cod ? -s.dias : 0;
+  if (s.clase === 'MODIFICACION') return (s.tipo === cod ? s.dias : 0) - (s.tipoOrig === cod ? s.diasOrig : 0);
+  return s.tipo === cod ? s.dias : 0;
+}
+function _deltaVA(s) { return _delta(s, 'VA'); }
+function _deltaVX(s) { return _delta(s, 'VX'); }
+
+// ── Vacaciones extraordinarias (Extra_<año>) ────────────────────────────────
+function _nombreExtra(anio) { return PREFIJO_EXTRA + anio; }
+function _extraVacio() { return { anteriores: 0, asignadas: 0, total: 0, usadas: 0, quedan: 0 }; }
+function _hojaExtra(ss, anio, crear) {
+  let sh = ss.getSheetByName(_nombreExtra(anio));
+  if (!sh && crear) {
+    const vacas = ss.getSheetByName(_nombreHoja(anio));
+    sh = ss.insertSheet(_nombreExtra(anio), vacas ? vacas.getIndex() : ss.getNumSheets());
+    sh.getRange(1, 1, 1, 3).setValues([['Persona', 'Días extraordinarios', 'Nota']])
+      .setFontWeight('bold').setBackground('#001391').setFontColor('#F7F8F8');
+    sh.setFrozenRows(1);
+    sh.setColumnWidth(1, 240); sh.setColumnWidth(2, 150); sh.setColumnWidth(3, 360);
+    sh.getRange('A1').setNote('Vacaciones extraordinarias asignadas en ' + anio + ' a cada persona (mismo nombre que en ' + _nombreHoja(anio) + '). '
+      + 'Se piden en la web como «Vacaciones extraordinarias» (código VX). Lo que no se gaste pasa al año siguiente.');
+  }
+  return sh;
+}
+/** {nombre: días asignados} de Extra_<anio>. */
+function _leerExtra(ss, anio) {
+  const sh = _hojaExtra(ss, anio, false);
+  const out = {};
+  if (!sh || sh.getLastRow() < 2) return out;
+  sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues().forEach(function (r) {
+    const n = String(r[0] || '').trim();
+    if (n) out[n] = (out[n] || 0) + (Number(String(r[1]).replace(',', '.')) || 0);
+  });
+  return out;
+}
+/** Saldo de extraordinarias por persona en `anio`: lo que quedó del año
+ *  anterior + lo asignado ese año − los VX de ese año. Encadena desde el
+ *  primer año con Extra_<año>; `grid` es la rejilla de `anio` ya leída. */
+function _saldosExtra(ss, anio, grid) {
+  const anios = _aniosDe(ss, PREFIJO_EXTRA).filter(function (a) { return a <= anio; });
+  if (!anios.length) return {};
+  let prev = {}, res = {};
+  for (let a = anios[0]; a <= anio; a++) {
+    const g = a === anio && grid ? grid : _leerAnio(ss, a);
+    const asign = _leerExtra(ss, a);
+    const usadas = {};
+    if (g) g.personas.forEach(function (p) { if (p.vx) usadas[p.nombre] = p.vx; });
+    const nombres = {};
+    [prev, asign, usadas].forEach(function (o) { Object.keys(o).forEach(function (n) { nombres[n] = true; }); });
+    res = {};
+    Object.keys(nombres).forEach(function (n) {
+      const ant = prev[n] ? prev[n].quedan : 0, asg = asign[n] || 0, u = usadas[n] || 0;
+      res[n] = { anteriores: ant, asignadas: asg, total: ant + asg, usadas: u, quedan: ant + asg - u };
+    });
+    prev = res;
+  }
+  return res;
+}
+/** VX en el formato de colores de Vacas_<anio> y en los códigos que cuentan
+ *  de Horas_<anio> (las pestañas creadas antes de existir VX no lo tenían). */
+function _asegurarVX(ss, anio) {
+  const sh = ss.getSheetByName(_nombreHoja(anio));
+  if (sh) {
+    const reglas = sh.getConditionalFormatRules();
+    const tiene = reglas.some(function (r) {
+      const b = r.getBooleanCondition();
+      return b && String(b.getCriteriaValues()[0]) === 'VX';
+    });
+    if (!tiene && reglas.length) {
+      reglas.push(SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('VX')
+        .setBackground(CODIGOS.VX.color).setFontColor('#001391').setBold(true).setRanges(reglas[0].getRanges()).build());
+      sh.setConditionalFormatRules(reglas);
+    }
+  }
+  const h = ss.getSheetByName(_nombreHoras(anio));
+  if (h) {
+    const col = h.getRange(HA.FILA_TOTAL, HA.CODIGO, 60 - HA.FILA_TOTAL + 1, 1).getValues().map(function (r) { return String(r[0] || '').trim().toUpperCase(); });
+    if (col.indexOf('VX') < 0) {
+      const libre = col.indexOf('');
+      if (libre >= 0) h.getRange(HA.FILA_TOTAL + libre, HA.CODIGO, 1, 2).setValues([['VX', CODIGOS.VX.texto]]);
+    }
+  }
+}
+/** Coordinación: días extraordinarios asignados a una persona en un año. */
+function ajustarExtra(p) {
+  const ss = _ss();
+  const anio = Number(p.anio);
+  const grid = _leerAnio(ss, anio);
+  if (!grid) throw new Error('No existe ' + _nombreHoja(anio) + '.');
+  const persona = _personaPorNombre(grid, String(p.persona || ''));
+  if (!persona) throw new Error('No existe ' + p.persona + ' en ' + _nombreHoja(anio) + '.');
+  const dias = Number(String(p.dias).replace(',', '.'));
+  if (!isFinite(dias) || dias < 0 || dias > 99 || Math.round(dias * 2) !== dias * 2) throw new Error('Días no válidos: usa un número entre 0 y 99 (admite medios días, p. ej. 2,5).');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const sh = _hojaExtra(ss, anio, true);
+    const n = sh.getLastRow();
+    const nombres = n >= 2 ? sh.getRange(2, 1, n - 1, 1).getValues().map(function (r) { return String(r[0] || '').trim(); }) : [];
+    const k = nombres.indexOf(persona.nombre);
+    if (k >= 0) sh.getRange(2 + k, 2).setValue(dias);
+    else sh.getRange(n + 1, 1, 1, 2).setValues([[persona.nombre, dias]]);
+    _asegurarVX(ss, anio);
+  } finally {
+    lock.releaseLock();
+  }
+  const saldo = _saldosExtra(ss, anio, grid)[persona.nombre] || _extraVacio();
+  return { persona: persona.nombre, anio: anio, dias: dias, extra: saldo };
 }
 
 /** Días laborables del rango para la persona y días en conflicto (celdas ocupadas,
@@ -823,7 +957,22 @@ function solicitar(p) {
       return rangos.some(function (r) { return suyos.some(function (x) { return !(x[1] < r[0] || x[0] > r[1]); }); });
     });
     if (solapa.length) throw new Error('Ya tienes una solicitud pendiente sobre esos días (' + _fechaEs(solapa[0].desde) + ' – ' + _fechaEs(solapa[0].hasta) + '): espera a que se resuelva o cancélala.');
-    if (p.soloValidar === true) return { dias: dias }; // solicitarCampana comprueba todo antes de escribir nada
+    // (soloValidar: solicitarCampana comprueba todo antes de escribir nada; se responde tras mirar las extraordinarias)
+
+    // Extraordinarias: no se pueden pedir más de las que quedan (contando lo pendiente).
+    const deltaVX = _delta({ clase: clase, tipo: tipo, dias: dias, tipoOrig: tipoOrig, diasOrig: diasOrig }, 'VX');
+    if (deltaVX > 0) {
+      const ex = _saldosExtra(ss, anio, grid)[persona.nombre] || _extraVacio();
+      const pendVX = sols.filter(function (s) { return s.estado === 'PENDIENTE' && s.persona === persona.nombre && s.desde.slice(0, 4) === String(anio); })
+        .reduce(function (n, s) { return n + _deltaVX(s); }, 0);
+      const libres = ex.quedan - pendVX;
+      if (deltaVX > libres) {
+        throw new Error(libres <= 0
+          ? 'No te quedan vacaciones extraordinarias en ' + anio + (pendVX ? ' (tienes ' + pendVX + ' pedidas pendientes)' : '') + ': sácalas de las normales.'
+          : 'Solo te quedan ' + libres + ' ' + (libres === 1 ? 'día' : 'días') + ' de vacaciones extraordinarias en ' + anio + (pendVX ? ' (descontando ' + pendVX + ' pendientes)' : '') + ' y pides ' + deltaVX + ': pide menos días o sácalas de las normales.');
+      }
+    }
+    if (p.soloValidar === true) return { dias: dias };
 
     let ref = String(p.ref || '').trim();
     if (ref && !sols.some(function (s) { return s.id === ref && s.persona === persona.nombre && s.estado === 'APROBADA'; })) ref = '';
@@ -895,6 +1044,11 @@ function resolver(p) {
       const fxg = _festivosPorGrupo(_leerFestivos(ss));
       const celda = function (iso) { return grid.sh.getRange(persona.fila, _colDia(iso)); };
       const ref = s.ref ? sols.filter(function (x) { return x.id === s.ref; })[0] : null;
+      if (_deltaVX(s) > 0) {
+        const ex = _saldosExtra(ss, anio, grid)[persona.nombre] || _extraVacio();
+        if (_deltaVX(s) > ex.quedan) throw new Error(s.persona + ' solo tiene ' + ex.quedan + ' días de vacaciones extraordinarias en ' + anio + ' y esta solicitud usa ' + _deltaVX(s) + ': súbeselas en Personas o recházala.');
+        _asegurarVX(ss, anio);
+      }
 
       if (s.clase === 'NUEVA') {
         const a = _analizarRango(persona, s.desde, s.hasta, fxg);
@@ -967,7 +1121,7 @@ function _crearEvento(s) {
     const finExcl = new Date(p2[0], p2[1] - 1, p2[2]);
     const titulo = s.persona + ' — ' + ((CODIGOS[s.tipo] || {}).texto || s.tipo);
     const ev = cal.createAllDayEvent(titulo, ini, finExcl, { description: 'Solicitud ' + s.id + ' · generado por Vacaciones RDR.' });
-    try { ev.setColor(s.tipo === 'VA' ? CalendarApp.EventColor.GREEN : s.tipo === 'FO' ? CalendarApp.EventColor.BLUE : CalendarApp.EventColor.MAUVE); } catch (_) {}
+    try { ev.setColor(s.tipo === 'VA' || s.tipo === 'VX' ? CalendarApp.EventColor.GREEN : s.tipo === 'FO' ? CalendarApp.EventColor.BLUE : CalendarApp.EventColor.MAUVE); } catch (_) {}
     return ev.getId();
   } catch (e) {
     console.error('Calendario: ' + e);
@@ -1665,7 +1819,7 @@ function aplicarFormatoVacas() {
    crearHorasAusencia() desde el editor. */
 const PREFIJO_HORAS = 'Horas_';
 const HA = { FILA_CAB: 2, FILA_TOTAL: 3, PERSONA: 1, MES1: 2, TOTAL: 14, CODIGO: 16, TEXTO: 17 };
-const CODIGOS_AUSENCIA = ['VA', 'VP', 'FO', 'ES', 'BA', 'RE', 'VE'];
+const CODIGOS_AUSENCIA = ['VA', 'VX', 'VP', 'FO', 'ES', 'BA', 'RE', 'VE'];
 function _nombreHoras(anio) { return PREFIJO_HORAS + anio; }
 
 /* EJECUTAR DESDE EL EDITOR: crea (o rehace) Horas_<año> para cada
