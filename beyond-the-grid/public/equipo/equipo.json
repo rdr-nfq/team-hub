@@ -147,7 +147,7 @@
       "email": "iker.cid@nfq.es",
       "emailBBVA": "iker.cid.contractor@bbva.com",
       "track": "funcional",
-      "coordinador": false,
+      "coordinador": true,
       "equipoTR": "rdr",
       "activo": true
     },
