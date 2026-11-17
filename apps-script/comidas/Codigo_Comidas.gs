@@ -58,8 +58,9 @@ function doGetComidas(e) {
       noEstoy:    String(row[5]).trim().toLowerCase() === 'sí' || String(row[5]).trim().toLowerCase() === 'si'
     }));
 
+  // v: 3 = vota con el email y admite retirar (la web solo ofrece «Retirar» si lo ve).
   return ContentService
-    .createTextOutput(JSON.stringify({ restaurantes, semanas, votos }))
+    .createTextOutput(JSON.stringify({ v: 3, restaurantes, semanas, votos }))
     .setMimeType(ContentService.MimeType.JSON);
 }
 

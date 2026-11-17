@@ -81,7 +81,8 @@ export default function ComidasRoute() {
     try {
       const d = await fetch(url, { cache: "no-store" }).then((r) => r.json());
       if (!d || !Array.isArray(d.semanas)) throw new Error("respuesta inesperada");
-      setDatos({ restaurantes: d.restaurantes || [], semanas: d.semanas || [], votos: d.votos || [] });
+      // v >= 3: Apps Script nuevo (vota con el email y deja retirar). Con el antiguo se vota igual (manda el nombre).
+      setDatos({ restaurantes: d.restaurantes || [], semanas: d.semanas || [], votos: d.votos || [], v3: Number(d.v) >= 3 });
     } catch (e) {
       setDatos({ error: String(e.message || e) });
     }
@@ -149,7 +150,7 @@ export default function ComidasRoute() {
 
   /* ── Enviar al Apps Script (POST text/plain, sin preflight) ── */
   const enviar = async (cuerpo) => {
-    const res = await fetch(urlRef.current, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ ...cuerpo, email }) }).then((r) => r.json());
+    const res = await fetch(urlRef.current, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ ...cuerpo, email, nombre: yo.nombre }) }).then((r) => r.json());
     if (!res || res.status !== "success") throw new Error((res && res.message) || "error del servidor");
     return res;
   };
@@ -374,7 +375,7 @@ export default function ComidasRoute() {
               </p>
             )}
             {errGuardar && <p className="mg-error" id="cm-err" role="alert">{errGuardar}</p>}
-            {(cambiado || guardando || v) && !sinYo && (
+            {(cambiado || guardando || (v && datos.v3)) && !sinYo && (
               <div className="cm-acc">
                 {(cambiado || guardando) && (
                   <>
@@ -386,7 +387,7 @@ export default function ComidasRoute() {
                     {!listo && <span className="v-nota" id="cm-pista">Elige tu 1ª opción para guardar.</span>}
                   </>
                 )}
-                {v && <button type="button" className="v-btn v-btn-t cm-44" {...bloq} onClick={() => { if (!guardando) retirar(); }}>Retirar mi voto</button>}
+                {v && datos.v3 && <button type="button" className="v-btn v-btn-t cm-44" {...bloq} onClick={() => { if (!guardando) retirar(); }}>Retirar mi voto</button>}
                 {v && sinGuardar() && <button type="button" className="v-btn v-btn-t cm-44" {...bloq} onClick={() => { setBorr((o) => { const n = { ...o }; delete n[sem]; return n; }); anunciar("Cambios descartados"); enfocar("#voto-tit"); }}>Descartar cambios</button>}
               </div>
             )}
