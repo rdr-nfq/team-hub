@@ -288,6 +288,21 @@
       "track": "tecnico",
       "coordinador": false,
       "activo": true
+    },
+    {
+      "id": "",
+      "nombre": "Alex",
+      "email": "alexandre.casal@nfq.es",
+      "emailBBVA": "",
+      "equipos": [
+        "rdr",
+        "market-abuse",
+        "comms-surveillance"
+      ],
+      "equipoTR": "rdr",
+      "track": "funcional",
+      "coordinador": true,
+      "activo": true
     }
   ]
 }
