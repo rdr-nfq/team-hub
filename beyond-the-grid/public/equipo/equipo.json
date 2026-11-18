@@ -225,7 +225,7 @@
       "track": "funcional",
       "coordinador": false,
       "equipoTR": "rdr",
-      "activo": true
+      "activo": false
     },
     {
       "id": "T074424",
@@ -274,6 +274,19 @@
       "track": "funcional",
       "coordinador": false,
       "equipoTR": "market-abuse",
+      "activo": true
+    },
+    {
+      "id": "T064633",
+      "nombre": "Manuel Gutierrez",
+      "email": "manuel.gutierrez@nfq.es",
+      "emailBBVA": "manuel.gutierrrez.contractor@bbva.com",
+      "equipos": [
+        "rdr"
+      ],
+      "equipoTR": "rdr",
+      "track": "tecnico",
+      "coordinador": false,
       "activo": true
     }
   ]
