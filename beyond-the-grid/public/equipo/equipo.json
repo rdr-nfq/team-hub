@@ -290,10 +290,10 @@
       "activo": true
     },
     {
-      "id": "",
+      "id": "XE70454",
       "nombre": "Alex Casal",
       "email": "alexandre.casal@nfq.es",
-      "emailBBVA": "",
+      "emailBBVA": "alexandre.casal.contractor@bbva.com",
       "equipos": [
         "rdr",
         "market-abuse",
