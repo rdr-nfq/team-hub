@@ -475,6 +475,7 @@ function obtenerDatosDashboard(ctx, fechaRequerida) {
       checksPre: {
         dpPro:     pC(paseEncontrado[6]),
         jiraOk:    pC(paseEncontrado[7]),
+        permAper:  pC(paseEncontrado[8]), // col 9: antes «REMEDYs listos»
         remOk:     pC(paseEncontrado[8]),
         docPruebas: pC(paseEncontrado[9]),
         traspaso:  pC(paseEncontrado[10]),
@@ -586,7 +587,7 @@ function actualizarChecksPre(ctx, fila, checks) {
   // No tocamos la col 11 para no perder histórico de pases ya cerrados.
   const eC = c => c.aplica === 'NA' ? 'NA' : (c.ok ? 'OK' : 'PENDIENTE');
   ctx.sheet(CONSTANTES.HOJA_PASES).getRange(fila, 7, 1, 4).setValues([[
-    eC(checks.dpPro), eC(checks.jiraOk), eC(checks.remOk), eC(checks.docPruebas)
+    eC(checks.dpPro), eC(checks.jiraOk), eC(checks.permAper || checks.remOk), eC(checks.docPruebas)
   ]]);
   return "OK";
 }
@@ -1036,7 +1037,7 @@ function avanzarFase(ctx, fila, fechaStr, faseActual) {
         titulo: "Pase cerrado · Lista de componentes validada",
         parrafos: [
           "La preparación se ha cerrado con éxito. Todos los proyectos están listos para la fase de pre-implantación.",
-          "Próximo paso: completar los checks pre-implantación del jueves al viernes (DPs, JIRAs, REMEDYs, Documento de pruebas y Correo ANS por proyecto)."
+          "Próximo paso: completar los checks pre-implantación del jueves al viernes (DPs, JIRAs, permisos de aperiódicos en producción, Documento de pruebas y Correo ANS por proyecto)."
         ],
       },
       "FASE_6_IMPLANTACION": {

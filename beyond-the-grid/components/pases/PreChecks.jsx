@@ -9,7 +9,7 @@ import { BTN, CARD_CLS, SELECT_CLS, Empty, PanelTitle, LABEL_CLS } from "./ui";
 const CHECKS = [
   { id: "dpPro", label: "DPs que suben pendientes de PRO" },
   { id: "jiraOk", label: "JIRAs resueltos y marcados para el pase" },
-  { id: "remOk", label: "REMEDYs listos" },
+  { id: "permAper", label: "Pedir permisos de ejecución de aperiódicos en producción" },
   { id: "docPruebas", label: "Documento de pruebas post-implantación creado" },
 ];
 
@@ -26,7 +26,7 @@ export default function PreChecks() {
 
       <ul className="space-y-2">
         {CHECKS.map(({ id, label }) => {
-          const v = cp[id] || { aplica: "APLICA", ok: false };
+          const v = cp[id] || (id === "permAper" && cp.remOk) || { aplica: "APLICA", ok: false }; // remOk: Apps Script anterior
           const na = v.aplica !== "APLICA";
           return (
             <li key={id} className={`flex flex-wrap items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 sm:flex-nowrap ${na ? "opacity-55" : ""}`}>

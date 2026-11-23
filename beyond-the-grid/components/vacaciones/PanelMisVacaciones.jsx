@@ -319,6 +319,65 @@ function Solicitudes({ datos, ctx }) {
   );
 }
 
+/* ── Tu saldo del año: cuánto te queda y en qué se te ha ido ── */
+const dd = (n) => `${n} ${Math.abs(n) === 1 ? "día" : "días"}`;
+function Saldo({ datos, hoy }) {
+  const s = datos.yo.saldo;
+  const anio = datos.year;
+  // Mis días de vacaciones aprobados que aún no han llegado (el calendario
+  // trae también enero del año siguiente: se queda fuera).
+  const proximos = useMemo(() => Object.entries(datos.ausenciasPorDia || {})
+    .filter(([iso, l]) => iso.startsWith(`${anio}-`) && iso >= hoy && l.some((a) => a.nombre === datos.yo.nombre && a.motivo === "VA")).length,
+  [datos, anio, hoy]);
+  if (!s) return null;
+  const total = Math.max(0, s.total || 0);
+  const usados = Math.max(0, s.va || 0);
+  const prox = Math.min(proximos, usados);
+  const disfrutados = usados - prox;
+  const pendientes = Math.max(0, s.pendientesVA || 0);
+  const quedan = s.quedan ?? total - usados;
+  const libres = quedan - pendientes;
+  const ex = s.extra || {};
+  const conExtra = (ex.total || 0) > 0 || (ex.quedan || 0) > 0;
+  const exLibres = (ex.quedan || 0) - Math.max(0, s.pendientesVX || 0);
+  const pasado = Number(hoy.slice(0, 4)) > anio;
+  const tramos = [
+    { k: "hechos", n: disfrutados, t: pasado ? "disfrutados" : "ya disfrutados" },
+    { k: "prox", n: prox, t: "aprobados que aún no han llegado" },
+    { k: "pend", n: pendientes, barra: Math.min(pendientes, Math.max(0, quedan)), t: "pendientes de aprobar" },
+    { k: "libres", n: Math.max(0, libres), t: "sin pedir" },
+  ];
+  return (
+    <div className="v-saldo">
+      <p className="v-saldo-cab">
+        <span className="v-saldo-n">{Math.abs(quedan)}</span>
+        <span>
+          {quedan < 0
+            ? <><b>{quedan === -1 ? "día de más" : "días de más"}</b> sobre los {total} de {anio}</>
+            : <><b>{quedan === 1 ? "día te queda" : "días te quedan"}</b> de {total} en {anio}</>}
+          {pendientes > 0 && <span className="v-nota">{libres < 0 ? <>Con lo pendiente, {dd(-libres)} de más</> : <>{dd(libres)} si te aprueban lo pendiente</>}</span>}
+        </span>
+      </p>
+      <div className="v-saldo-barra" aria-hidden="true">
+        {tramos.filter((x) => (x.barra ?? x.n) > 0).map((x) => <i key={x.k} className={`v-saldo-${x.k}`} style={{ flexGrow: x.barra ?? x.n }} />)}
+      </div>
+      <ul className="v-saldo-ley">
+        {tramos.map((x) => (
+          <li key={x.k} className={x.n ? "" : "v-saldo-cero"}><i className={`v-saldo-${x.k}`} aria-hidden="true" /><b>{x.n}</b> {x.t}</li>
+        ))}
+      </ul>
+      {s.anteriores > 0 && <p className="v-nota">Los {total} son {s.dias} de {anio} y {s.anteriores} que te sobraron de {anio - 1}.</p>}
+      {s.anteriores < 0 && <p className="v-nota">Los {total} son {s.dias} de {anio} menos {-s.anteriores} que gastaste de más en {anio - 1}.</p>}
+      {conExtra && (
+        <p className="v-nota">
+          Además, <b>{dd(exLibres)} extraordinari{Math.abs(exLibres) === 1 ? "o" : "os"}</b>
+          {ex.total ? ` de ${ex.total}` : ""}{s.pendientesVX > 0 ? ` (descontando ${s.pendientesVX} pendientes)` : ""}. Lo que no gastes pasa al año siguiente.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function PanelMisVacaciones({ datos, tab, setTab, ctx }) {
   const bloques = useMisBloques(datos);
   const campanas = (datos.campanas || []).filter((c) => c.activa);
@@ -352,6 +411,7 @@ export default function PanelMisVacaciones({ datos, tab, setTab, ctx }) {
   return (
     <section className="v-mis" aria-labelledby="v-mis-t">
       <h2 id="v-mis-t" className="text-[17px] font-bold">Mis vacaciones</h2>
+      <Saldo datos={datos} hoy={ctx.hoy} />
       <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Mis vacaciones" onKeyDown={teclas}>
         {pestanas.map((p) => (
           <button key={p.id} id={`v-tab-${p.id}`} type="button" role="tab" className="v-chip" aria-selected={p.id === actual.id}

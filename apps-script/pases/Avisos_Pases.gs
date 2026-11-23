@@ -354,7 +354,7 @@ function pendientes_(s) {
       const f = [];
       if (!esNA_(s.checks.dpPro) && !isT_(s.checks.dpPro)) f.push("DPs pendientes de PRO");
       if (!esNA_(s.checks.jiraOk) && !isT_(s.checks.jiraOk)) f.push("JIRAs resueltos");
-      if (!esNA_(s.checks.remOk) && !isT_(s.checks.remOk)) f.push("REMEDYs listos");
+      if (!esNA_(s.checks.remOk) && !isT_(s.checks.remOk)) f.push("Permisos de ejecución de aperiódicos en producción");
       if (!esNA_(s.checks.docPruebas) && !isT_(s.checks.docPruebas)) f.push("Documento de pruebas post-implantación");
       if (!esNA_(s.checks.traspaso) && !isT_(s.checks.traspaso)) f.push("Correo de traspaso al ANS");
       return f;

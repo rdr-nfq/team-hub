@@ -637,7 +637,7 @@ function datos(anioParam, email) {
     const mia = b.personas.filter(function (p) { return p.nombre === yo.nombre; })[0];
     const misPend = b.sols.filter(function (s) { return s.estado === 'PENDIENTE' && s.persona === yo.nombre && s.desde.slice(0, 4) === String(anio); });
     if (mia) out.yo.saldo = {
-      quedan: mia.quedan, total: mia.total, va: mia.va,
+      quedan: mia.quedan, total: mia.total, va: mia.va, anteriores: mia.anteriores, dias: mia.dias,
       pendientesVA: misPend.reduce(function (n, s) { return n + (Number(s.deltaVA) || 0); }, 0),
       extra: mia.extra || _extraVacio(),
       pendientesVX: misPend.reduce(function (n, s) { return n + (Number(s.deltaVX) || 0); }, 0)

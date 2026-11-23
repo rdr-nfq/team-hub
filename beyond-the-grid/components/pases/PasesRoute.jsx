@@ -826,7 +826,7 @@ export default function PasesRoute() {
     (id, patch) => {
       const next = applyE((d) => {
         const cp = (d.checksPre = d.checksPre || {});
-        const cur = (cp[id] = { aplica: "APLICA", ok: false, ...(cp[id] || {}) });
+        const cur = (cp[id] = { aplica: "APLICA", ok: false, ...(cp[id] || (id === "permAper" && cp.remOk) || {}) });
         Object.assign(cur, patch);
         if (cur.aplica !== "APLICA") cur.ok = false; // NA → check apagado
       });
@@ -834,7 +834,9 @@ export default function PasesRoute() {
       preTimer.current = setTimeout(async () => {
         const cp = ERef.current.checksPre || {};
         const get = (k) => ({ aplica: cp[k]?.aplica ?? "APLICA", ok: !!cp[k]?.ok });
-        const checks = { dpPro: get("dpPro"), jiraOk: get("jiraOk"), remOk: get("remOk"), docPruebas: get("docPruebas") };
+        // permAper ocupa la columna del antiguo «REMEDYs listos»; se manda también como
+        // remOk para que el Apps Script anterior lo siga guardando.
+        const checks = { dpPro: get("dpPro"), jiraOk: get("jiraOk"), permAper: get("permAper"), remOk: get("permAper"), docPruebas: get("docPruebas") };
         try {
           await call("actualizarChecksPre", { fila: ERef.current.fila, checks });
           cacheSet(ERef.current.fechaSeleccionada, ERef.current);
@@ -1030,9 +1032,10 @@ export default function PasesRoute() {
   };
   const validarYAvanzarPre = () => {
     const cp = ERef.current.checksPre || {};
-    for (const id of ["dpPro", "jiraOk", "remOk", "docPruebas"]) {
-      const aplica = (cp[id]?.aplica ?? "APLICA") === "APLICA";
-      if (aplica && !cp[id]?.ok) return showToast("Completa los checks generales que aplican", "error", 4000);
+    for (const id of ["dpPro", "jiraOk", "permAper", "docPruebas"]) {
+      const c = cp[id] || (id === "permAper" ? cp.remOk : null);
+      const aplica = (c?.aplica ?? "APLICA") === "APLICA";
+      if (aplica && !c?.ok) return showToast("Completa los checks generales que aplican", "error", 4000);
     }
     const sinAns = (ERef.current.proyectos || []).filter((p) => !p.correoAns).map((p) => p.nombre);
     if (sinAns.length > 0) return showToast("Falta marcar correo ANS enviado en: " + sinAns.join(", "), "error", 5000);

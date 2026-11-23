@@ -97,6 +97,27 @@ export function generarPresentacion(PptxGenJS, datos, assets, opts = {}) {
     return ancho;
   };
 
+  /** Identificadores del proyecto encima del título: SDATOOL en Serene y el
+      ID de traspaso en Lime; si falta el traspaso, la píldora queda vacía
+      (borde discontinuo) para que se vea de un vistazo sin hacer de alarma. */
+  const idsProyecto = (slide, p, y = 0.97) => {
+    const H = 0.3, SIZE = 10;
+    const ancho = (t) => 0.34 + String(t).length * 0.074;
+    let x = MX;
+    const chip = (t, { fill, color = C.electric, borde }) => {
+      const w = ancho(t);
+      rect(slide, x, y, w, H, fill || C.white, H / 2, borde ? { line: { color: borde, width: 1, dashType: "dash" } } : {});
+      txt(slide, t, { x, y, w, h: H, size: SIZE, bold: true, color, align: "center", valign: "middle", charSpacing: 0.3 });
+      x += w + 0.1;
+    };
+    const sda = String(p.sdatool || "").trim();
+    const tr = String(p.traspaso || "").trim();
+    if (sda) chip(sda.toUpperCase(), { fill: C.serene });
+    else chip("SIN SDATOOL", { color: C.gray5, borde: C.gray4 });
+    if (tr) chip(`TRASPASO ${tr}`, { fill: C.lime });
+    else chip("SIN ID DE TRASPASO", { color: C.gray5, borde: C.gray4 });
+  };
+
   /** Cabecera y pie comunes de las slides interiores. */
   const marco = (slide, { oscuro, kicker, pie, page, total }) => {
     const mute = oscuro ? C.mute : C.gray5;
@@ -330,6 +351,7 @@ export function generarPresentacion(PptxGenJS, datos, assets, opts = {}) {
     ["TAREA", 0.79, 2.19], ["FECHA LÍMITE", 3.17, 0.93], ["COMENTARIOS", 4.3, 4.12],
     ["ASIGNACIÓN", 8.61, 1.03], ["AVANCE", 9.84, 1.29], ["ESTADO", 11.32, 1.22],
   ];
+  const CENTRADAS = new Set(["FECHA LÍMITE", "ASIGNACIÓN"]);
   const T_Y = 2.19; // arriba de la tabla
   const T_MAX = 6.9; // abajo máximo de la tabla
   const lineasDe = (s, porLinea) => Math.max(1, Math.ceil(String(s || "").length / porLinea));
@@ -375,8 +397,8 @@ export function generarPresentacion(PptxGenJS, datos, assets, opts = {}) {
             pie: anexo ? "Seguimiento RDR · Anexo" : `02 · Seguimiento de proyectos — ${p.interno}`,
             page, total,
           });
+          idsProyecto(s, p);
           cabecera(s, {
-            sobre: [p.sdatool, p.traspaso].filter(Boolean).join(" · "),
             titulo: p.nombre + (paginas.length > 1 ? ` (${pi + 1}/${paginas.length})` : ""),
             sub: resumenProyecto(p),
           });
@@ -385,14 +407,14 @@ export function generarPresentacion(PptxGenJS, datos, assets, opts = {}) {
           rect(s, MX, T_Y, CW, 0.36, C.gray2, 0.12);
           rect(s, MX, T_Y + 0.18, CW, 0.18, C.gray2);
           for (const [label, x, w] of COLS)
-            txt(s, label, { x, y: T_Y, w, h: 0.36, size: 7.5, bold: true, valign: "middle" });
+            txt(s, label, { x, y: T_Y, w, h: 0.36, size: 7.5, bold: true, valign: "middle", align: CENTRADAS.has(label) ? "center" : "left" });
           let y = T_Y + 0.46;
           filas.forEach((t, i) => {
             const h = altoFila(t);
             const fase = FASE[t.fase];
             pildora(s, etiquetaFase(t), 0.79, y, fase ? fase.color : C.gray3);
             if (t.nombre) txt(s, t.nombre, { x: 0.79, y: y + 0.29, w: 2.19, h: Math.max(0.17, h - pad - 0.29), size: 9, bold: true });
-            txt(s, fechaTarea(t.fecha), { x: 3.17, y, w: 0.93, h: 0.24, size: 9, bold: true, valign: "middle" });
+            txt(s, fechaTarea(t.fecha), { x: 3.17, y, w: 0.93, h: 0.24, size: 9, bold: true, align: "center", valign: "middle" });
             const coms = (t.comentarios || []).filter(Boolean);
             if (coms.length === 1) {
               txt(s, coms[0], { x: 4.3, y: y + 0.03, w: 4.12, h: h - pad - 0.03, size: 8.5 });
@@ -402,7 +424,7 @@ export function generarPresentacion(PptxGenJS, datos, assets, opts = {}) {
                 options: { bullet: { indent: 10 }, ...(j < coms.length - 1 ? { breakLine: true } : {}) },
               })), { x: 4.3, y: y + 0.03, w: 4.12, h: h - pad - 0.03, size: 8.5, paraSpaceAfter: 1 });
             }
-            txt(s, t.asignacion || "—", { x: 8.61, y, w: 1.03, h: 0.24, size: 9, valign: "middle" });
+            txt(s, t.asignacion || "—", { x: 8.61, y, w: 1.03, h: 0.24, size: 9, align: "center", valign: "middle" });
             const conPct = t.avance !== null && t.avance !== undefined && t.avance !== "";
             if (conPct) {
               const pct = Math.max(0, Math.min(100, Number(t.avance)));
@@ -421,7 +443,7 @@ export function generarPresentacion(PptxGenJS, datos, assets, opts = {}) {
           });
           const pendientes = tareas.filter((t) => !completa(t));
           s.addNotes(
-            `${p.nombre} (${[p.sdatool, p.traspaso].filter(Boolean).join(" · ")}).${resumenProyecto(p) ? ` ${resumenProyecto(p)}.` : ""}` +
+            `${p.nombre} (${p.sdatool || "sin SDATOOL"} · ${p.traspaso ? `traspaso ${p.traspaso}` : "sin ID de traspaso"}).${resumenProyecto(p) ? ` ${resumenProyecto(p)}.` : ""}` +
               (pendientes.length
                 ? ` Pendiente: ${pendientes.map((t) => `${t.nombre || etiquetaFase(t).toLowerCase()} (${fechaTarea(t.fecha)}, ${t.avance ?? "—"} %, ${ESTADO[estadoTarea(t.estado)].label.toLowerCase()})`).join("; ")}.`
                 : ""),

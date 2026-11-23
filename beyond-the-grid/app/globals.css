@@ -565,6 +565,23 @@ select.v-inp { appearance: none; padding-right: 30px; }
 
 /* Mis vacaciones */
 .v-mis { background: var(--v-tinte); border: 1px solid #ffb56b; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+/* Saldo del año en «Mis vacaciones»: tus días van en Lime (como en el calendario),
+   lo aprobado por llegar a rayas, lo pendiente discontinuo y lo libre vacío. */
+.v-saldo { background: var(--v-solido); border: 1px solid var(--v-line-soft); border-radius: 10px; padding: 12px 14px; display: grid; gap: 10px; }
+.v-saldo-cab { margin: 0; display: flex; align-items: center; gap: 12px; font-size: 14px; line-height: 1.3; }
+.v-saldo-cab > span:last-child { display: grid; gap: 2px; }
+.v-saldo-n { font-family: var(--font-serif), "Source Serif 4", Georgia, serif; font-size: 44px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.v-saldo-barra { display: flex; gap: 3px; height: 14px; }
+.v-saldo-barra > i { flex-basis: 0; min-width: 6px; border-radius: 4px; }
+.v-saldo-hechos { background: #88E783; }
+.v-saldo-prox { background: repeating-linear-gradient(135deg, #88E783 0 4px, rgb(136 231 131 / 0.35) 4px 7px); }
+.v-saldo-pend { background: var(--v-solido); border: 1.5px dashed var(--v-ink); }
+.v-saldo-libres { background: var(--v-medio); border: 1.5px solid #ffb56b; }
+.v-saldo-ley { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; color: var(--v-soft); }
+.v-saldo-ley li { display: flex; align-items: center; gap: 7px; }
+.v-saldo-ley b { color: var(--v-ink); font-variant-numeric: tabular-nums; }
+.v-saldo-ley i { flex: none; width: 12px; height: 12px; border-radius: 3px; }
+.v-saldo-cero { opacity: 0.6; }
 .v-form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .v-form .v-ancho { grid-column: 1 / -1; }
 .v-lista { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
