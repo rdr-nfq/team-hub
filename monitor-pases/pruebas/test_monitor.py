@@ -95,6 +95,25 @@ class TestConGitHubSimulado(unittest.TestCase):
         merg = [x for x in r["ramas"] if x["mergeada"] and not x.get("release")]
         self.assertEqual([x["id"] for x in merg], ["equipo-demo/rdr-cadenas:feature/CIBRDR-2405-informe-regulatorio"])
 
+    def test_repos_filtrados_por_propiedad(self):
+        from mp.sincro import cliente_bbva
+        repos = self.mon.resumen()["repos"]
+        todos = [r for r in self.datos.repos.values()]
+        del_equipo = {r["full"] for r in todos if r["props"]["uuaa"] == "KYTL0000"}
+        self.assertLess(len(del_equipo), len(todos))  # hay repos de otras UUAA en la organización
+        self.assertEqual({r["nombre"] for r in repos}, del_equipo)
+        self.assertTrue(all(r["propiedades"].get("uuaa") == "KYTL0000" for r in repos))
+        self.assertTrue(any(r["lenguaje"] for r in repos))
+        # Un GitHub sin la API de propiedades: la búsqueda de repositorios entiende la misma consulta.
+        self.datos.sin_propiedades = True
+        try:
+            cli = cliente_bbva(self.cfg.get())
+            vistos = self.mon._descubrir(cli, self.cfg.get()["bbva"])
+        finally:
+            self.datos.sin_propiedades = False
+        self.assertEqual({r["full_name"] for r in vistos}, del_equipo)
+        self.assertTrue(any("/search/repositories" in p for m, p, h in self.pedidas))
+
     def test_dps_de_las_tres_fuentes(self):
         fuentes = {d["fuente"] for x in self.mon.resumen()["ramas"] for d in x["dps"]}
         self.assertEqual(fuentes, {"resumen", "anotación", "log"})
@@ -110,6 +129,8 @@ class TestConGitHubSimulado(unittest.TestCase):
         self.assertEqual(self.mon.sincro["estado"], "ok")
         a_bbva = [p for m, p, h in self.pedidas[antes:] if "/contents/" not in p]  # sin la publicación en pases-datos
         self.assertEqual(self.mon.sincro["ahorradas"], len(a_bbva))  # todo 304
+        # Las listas de varias páginas siguen enteras aunque GitHub conteste 304 (sin cabecera Link).
+        self.assertEqual(len(self.mon.repos), sum(1 for r in self.datos.repos.values() if r["props"]["uuaa"] == "KYTL0000"))
 
     def test_propuesta_guardar_y_subir(self):
         prop = self.app.rutas("POST", "/api/propuesta", {}, {"features": ["CIBRDR-2311"]})["proyectos"][0]

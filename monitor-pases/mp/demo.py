@@ -28,6 +28,36 @@ PROYECTOS = {
 }
 AUTORES = ["ana-ruiz", "jmartin", "lgarrido", "pnavarro", "ctorres"]
 
+# Más proyectos y ~150 repositorios más, para ver la app a escala real.
+PROYECTOS_EXTRA = {
+    "CIBRDR-2501": ("limites-contrapartida", "Límites por contrapartida"),
+    "CIBRDR-2513": ("conciliacion-diaria", "Conciliación diaria"),
+    "CIBRDR-2520": ("colaterales-ccp", "Colaterales con CCP"),
+    "CIBRDR-2534": ("precios-cierre", "Precios de cierre"),
+    "CIBRDR-2547": ("riesgo-divisa", "Riesgo de divisa"),
+    "CIBRDR-2552": ("fondos-garantia", "Fondos de garantía"),
+    "CIBRDR-2560": ("reporting-emir", "Reporting EMIR"),
+    "CIBRDR-2578": ("baja-productos", None),
+    "CIBRDR-2583": ("tesoreria-intradia", "Tesorería intradía"),
+    "CIBRDR-2591": ("valoracion-derivados", "Valoración de derivados"),
+}
+AUTORES_EXTRA = ["mgil", "sortega", "rcampos", "evidal", "dprieto", "ibenitez", "acastro"]
+DOMINIOS = ["posiciones", "liquidez", "contabilidad", "riesgos", "sicor", "tesoreria", "derivados", "renta-fija", "divisas",
+            "colaterales", "garantias", "clientes", "contratos", "precios", "limites", "regulatorio", "conciliacion",
+            "cierres", "mercados", "fondos", "valores", "prestamos"]
+# sufijo -> (tipo de repo fijo cuyo contenido imita, fuente del DP, tecnología, lenguaje)
+TIPOS_EXTRA = {
+    "java": ("rdr-javas", "resumen", "Java", "Java"),
+    "ws": ("rdr-workstation", "anotacion", "Workstation", "JavaScript"),
+    "gs": ("rdr-objetos-gs", "log", "Objetos GS", "PLSQL"),
+    "estaticos": ("rdr-estaticos", "resumen", "Estáticos", None),
+    "datax": ("rdr-datax", "resumen", "DataX", None),
+    "cadenas": ("rdr-cadenas", None, "Cadenas", None),
+    "aperiodicos": ("rdr-aperiodicos", None, "Aperiódicos", "Shell"),
+}
+TECNOLOGIA = {v[0]: (v[2], v[3]) for v in TIPOS_EXTRA.values()}
+OTRAS_UUAA = ["MDSC0000", "KQPR0000"]  # repos de la organización que no son del equipo: el filtro los deja fuera
+
 # repo -> (cómo genera el DP, generador de rutas)
 REPOS = {
     "rdr-javas": "resumen",
@@ -44,7 +74,7 @@ CLASES = ["CargadorTerceros", "ValidadorOperacion", "InformeMensual", "ServicioL
 
 
 def _rutas(repo, rnd, feature):
-    slug = PROYECTOS[feature][0].replace("-", "_")
+    slug = {**PROYECTOS, **PROYECTOS_EXTRA}[feature][0].replace("-", "_")
     if repo == "rdr-javas":
         cl = rnd.sample(CLASES, rnd.randint(2, 4))
         out = ["src/main/java/com/equipo/rdr/%s/%s.java" % (slug, c) for c in cl]
@@ -183,7 +213,7 @@ class Datos:
     def _run(self, *a):
         return _crear_run(self, *a)
 
-    def __init__(self, semilla=7):
+    def __init__(self, semilla=7, extra=150):
         rnd = random.Random(semilla)
         hoy = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
         self.hoy = hoy
@@ -192,10 +222,13 @@ class Datos:
         self.jobs = {}  # id -> job (incluye salida y log)
         self.contenidos = {}  # (repo, ruta) -> {sha, texto}   (repositorio de NFQ: lo subido)
         self.versiones = {}  # (repo, sha) -> {ruta: [líneas]}  (ficheros en cada commit)
+        self.sin_propiedades = False  # True: como un GitHub sin la API de propiedades (se usa la búsqueda)
         run_id, job_id, pr_n, dp_n = [9000], [70000], [1], [48000]
 
+        rmin = random.Random(semilla + 7)  # minutos sueltos: que nada pase «ahora mismo» (otra semilla: no cambia el resto)
+
         def cuando(dias, horas=0):
-            return (hoy - dt.timedelta(days=dias, hours=horas)).isoformat().replace("+00:00", "Z")
+            return (hoy - dt.timedelta(days=dias, hours=horas, minutes=rmin.randint(4, 58))).isoformat().replace("+00:00", "Z")
 
         # Qué proyectos tocan qué repos.
         tocan = {
@@ -205,14 +238,14 @@ class Datos:
             "CIBRDR-2470": ["rdr-workstation", "rdr-estaticos"],
             "CIBRDR-2488": ["rdr-javas", "rdr-datax"],
         }
-        for repo, fuente in REPOS.items():
+        def hacer(repo, fuente, tipo, feats, rnd, rel=("2.107.0", "2.108.0"), uuaa="KYTL0000", autores=AUTORES):
             full = "%s/%s" % (ORG, repo)
             master_sha = _sha(full, "master", 1)
             base_commits = []
             for i in range(rnd.randint(4, 9)):
                 d = rnd.randint(0, 40)
                 base_commits.append({"sha": _sha(full, "base", i), "fecha": cuando(d, rnd.randint(0, 20)),
-                                     "autor": rnd.choice(AUTORES), "mensaje": rnd.choice([
+                                     "autor": rnd.choice(autores), "mensaje": rnd.choice([
                                          "Merge pull request #%d from %s/hotfix" % (rnd.randint(1, 90), ORG),
                                          "Ajuste de configuración de entornos", "Actualiza versiones de dependencias"])})
             base_commits.sort(key=lambda c: c["fecha"])
@@ -227,8 +260,8 @@ class Datos:
             ramas = {"master": {"sha": master_sha, "commits": [], "files": [], "behind": 0, "base": True},
                      "develop": {"sha": _sha(full, "develop"), "commits": [], "files": [], "behind": 3}}
             prs, runs = [], []
-            for feat, (slug, _) in PROYECTOS.items():
-                if repo not in tocan[feat]:
+            for feat, (slug, _) in {**PROYECTOS, **PROYECTOS_EXTRA}.items():
+                if feat not in feats:
                     continue
                 nombre = "feature/%s-%s" % (feat, slug)
                 mergeada = (feat == "CIBRDR-2405" and repo == "rdr-cadenas")
@@ -238,14 +271,14 @@ class Datos:
                 for i in range(n_commits):
                     d = max(0, inicio - int((inicio / max(1, n_commits)) * i) - rnd.randint(0, 2))
                     commits.append({"sha": _sha(full, nombre, i), "fecha": cuando(d, rnd.randint(0, 9)),
-                                    "autor": rnd.choice(AUTORES), "mensaje": rnd.choice([
+                                    "autor": rnd.choice(autores), "mensaje": rnd.choice([
                                         "%s: alta de componentes" % feat, "%s: corrige validación de importes" % feat,
                                         "%s: ajustes tras revisión" % feat, "%s: pruebas unitarias" % feat,
                                         "%s: renombra campos del informe" % feat, "%s: añade parámetros de entorno" % feat])})
                 commits.sort(key=lambda c: c["fecha"])
                 files = []
                 if not mergeada:
-                    rutas = _rutas(repo, rnd, feat)
+                    rutas = _rutas(tipo, rnd, feat)
                     estados = {r: rnd.choice(["modified", "modified", "added"]) for r in rutas}
                     if rnd.random() < 0.15 and len(rutas) > 1:
                         estados[rutas[-1]] = "removed"
@@ -327,28 +360,28 @@ class Datos:
             # Releases: cada una es una subida y su Action genera el DP.
             ramas_feat = [(n, b) for n, b in ramas.items() if n.startswith("feature/") and b["commits"]]
             if fuente and ramas_feat:
-                ramas["release/2.107.0"] = {"sha": master_sha, "commits": [], "files": [], "behind": 0}  # ya en producción
-                runs.append(self._run(full, "release/2.107.0", master_sha, "Release 2.107.0", fuente, cuando(12), rnd, dp_n, run_id, job_id))
+                ramas["release/" + rel[0]] = {"sha": master_sha, "commits": [], "files": [], "behind": 0}  # ya en producción
+                runs.append(self._run(full, "release/" + rel[0], master_sha, "Release " + rel[0], fuente, cuando(12), rnd, dp_n, run_id, job_id))
                 vers, rcommits, rfiles, padre = dict(base_vers), [], {}, master_sha
                 for i, (n, b) in enumerate(ramas_feat):
-                    sha_m = _sha(full, "release-2.108.0", i)
+                    sha_m = _sha(full, "release-" + rel[1], i)
                     vers.update(self.versiones.get((full, b["sha"])) or {})
-                    rcommits.append({"sha": sha_m, "fecha": cuando(max(0, 3 - i), 2), "autor": rnd.choice(AUTORES),
+                    rcommits.append({"sha": sha_m, "fecha": cuando(max(0, 3 - i), 2), "autor": rnd.choice(autores),
                                      "mensaje": "Merge pull request #%d from %s/%s" % (pr_n[0], ORG, n), "files": b["files"], "padre": padre})
-                    prs.append({"number": pr_n[0], "title": "%s a la release 2.108.0" % n.split("/")[-1][:11], "state": "closed",
+                    prs.append({"number": pr_n[0], "title": "%s a la release %s" % (n.split("/")[-1][:11], rel[1]), "state": "closed",
                                 "merged_at": cuando(max(0, 3 - i), 2), "draft": False, "html_url": "https://demo.invalid/%s/pull/%d" % (full, pr_n[0]),
-                                "head": {"ref": n}, "base": {"ref": "release/2.108.0"}, "updated_at": cuando(max(0, 3 - i), 2)})
+                                "head": {"ref": n}, "base": {"ref": "release/" + rel[1]}, "updated_at": cuando(max(0, 3 - i), 2)})
                     pr_n[0] += 1
                     padre = sha_m
                     self.versiones[(full, sha_m)] = dict(vers)
                     for f in b["files"]:
                         rfiles[f["filename"]] = f
-                ramas["release/2.108.0"] = {"sha": padre, "commits": rcommits, "files": list(rfiles.values()), "behind": 0}
-                prs.append({"number": pr_n[0], "title": "Release 2.108.0", "state": "open", "merged_at": None, "draft": False,
-                            "html_url": "https://demo.invalid/%s/pull/%d" % (full, pr_n[0]), "head": {"ref": "release/2.108.0"},
+                ramas["release/" + rel[1]] = {"sha": padre, "commits": rcommits, "files": list(rfiles.values()), "behind": 0}
+                prs.append({"number": pr_n[0], "title": "Release " + rel[1], "state": "open", "merged_at": None, "draft": False,
+                            "html_url": "https://demo.invalid/%s/pull/%d" % (full, pr_n[0]), "head": {"ref": "release/" + rel[1]},
                             "base": {"ref": "master"}, "updated_at": cuando(0, 3)})
                 pr_n[0] += 1
-                runs.append(self._run(full, "release/2.108.0", padre, "Release 2.108.0", fuente, cuando(0, 4), rnd, dp_n, run_id, job_id))
+                runs.append(self._run(full, "release/" + rel[1], padre, "Release " + rel[1], fuente, cuando(0, 4), rnd, dp_n, run_id, job_id))
             for k, pr in enumerate(prs):  # lo que falta para ver los PRs como en GitHub
                 pr.setdefault("user", {"login": AUTORES[(pr["number"] + k) % len(AUTORES)]})
                 pr.setdefault("created_at", pr["updated_at"])
@@ -360,8 +393,29 @@ class Datos:
                 {"sha": _sha(full, "hotfix"), "fecha": cuando(5), "autor": "jmartin", "mensaje": "Ajuste de entornos", "files": fh,
                  "padre": master_sha}], "files": fh, "behind": 1}
             self.versiones[(full, _sha(full, "hotfix"))] = dict(base_vers, **{"config/entornos.yml": hot})
+            tec, leng = TECNOLOGIA.get(tipo, ("", None))
             self.repos[full] = {"nombre": repo, "full": full, "ramas": ramas, "prs": prs, "runs": runs,
-                                "base_commits": base_commits, "pushed_at": cuando(rnd.randint(0, 5))}
+                                "base_commits": base_commits, "pushed_at": max([c["fecha"] for b in ramas.values() for c in b["commits"]] + [c["fecha"] for c in base_commits]) if feats
+                                else cuando(rnd.randint(6, 300), rnd.randint(0, 20)),
+                                "rel": rel, "lenguaje": leng, "props": {"uuaa": uuaa, "tecnologia": tec},
+                                "descripcion": "%s · %s" % (tec, repo.split("-", 1)[-1].replace("-", " "))}
+
+        for repo, fuente in REPOS.items():
+            hacer(repo, fuente, repo, [f for f in PROYECTOS if repo in tocan[f]], rnd)
+        if extra:
+            r2 = random.Random(semilla + 1000)
+            nombres = ["kytl-%s-%s" % (d, t) for d in DOMINIOS for t in TIPOS_EXTRA][:extra]
+            feats_extra = list(PROYECTOS_EXTRA)
+            for k, repo in enumerate(nombres):
+                tipo, fuente, _, _ = TIPOS_EXTRA[repo.rsplit("-", 1)[-1]]
+                activo = r2.random() < 0.45  # la mayoría de repos no se tocan en cada pase
+                feats = r2.sample(feats_extra, r2.choice([1, 1, 2, 3])) if activo else []
+                menor = r2.randint(3, 40)
+                rel = ("1.%d.0" % menor, "1.%d.0" % (menor + 1))
+                hacer(repo, fuente if activo else None, tipo, feats, r2, rel, "KYTL0000", AUTORES + AUTORES_EXTRA)
+            for k in range(min(14, extra // 10)):
+                uuaa = OTRAS_UUAA[k % 2]
+                hacer("%s-%s-%02d" % (uuaa[:4].lower(), r2.choice(DOMINIOS), k), None, "rdr-datax", [], r2, uuaa=uuaa)
 
 
 def _crear_run(datos, full, rama, sha, titulo, fuente, fecha, rnd, dp_n, run_id, job_id):
@@ -399,7 +453,23 @@ def _commit_json(full, c):
 def _repo_json(r):
     return {"full_name": r["full"], "name": r["nombre"], "html_url": "https://demo.invalid/" + r["full"],
             "default_branch": "develop", "pushed_at": r["pushed_at"], "archived": False, "private": True,
+            "language": r.get("lenguaje"), "topics": [], "description": r.get("descripcion"),
             "permissions": {"push": True}}
+
+
+def _cumple(r, consulta):
+    """Lo que entiende la búsqueda de repos de GitHub, en pequeño: props.X:Y, org:X y palabras del nombre."""
+    for t in (consulta or "").split():
+        k, _, v = t.partition(":")
+        if k.startswith("props.") and v:
+            if str((r.get("props") or {}).get(k[6:], "")).lower() != v.lower():
+                return False
+        elif k == "org" and v:
+            if r["full"].split("/")[0].lower() != v.lower():
+                return False
+        elif t.lower() not in r["nombre"].lower():
+            return False
+    return True
 
 
 class _H(BaseHTTPRequestHandler):
@@ -472,6 +542,19 @@ class _H(BaseHTTPRequestHandler):
             lista = [_repo_json(r) for r in d.repos.values()]
             trozo, extra = self._paginar(lista, q, p)
             return self._json(200, trozo, extra)
+        m = re.match(r"^/orgs/([^/]+)/properties/values$", p)
+        if m:
+            if m.group(1) != ORG or d.sin_propiedades:
+                return self._json(404, {"message": "Not Found"})
+            lista = [{"repository_id": k, "repository_name": r["nombre"], "repository_full_name": r["full"],
+                      "properties": [{"property_name": n, "value": v} for n, v in (r.get("props") or {}).items()]}
+                     for k, r in enumerate(d.repos.values()) if _cumple(r, q.get("repository_query"))]
+            trozo, extra = self._paginar(lista, q, p)
+            return self._json(200, trozo, extra)
+        if p == "/search/repositories":
+            lista = [_repo_json(r) for r in d.repos.values() if _cumple(r, q.get("q"))]
+            trozo, extra = self._paginar(lista, q, p)
+            return self._json(200, {"total_count": len(lista), "incomplete_results": False, "items": trozo}, extra)
         m = re.match(r"^/repos/([^/]+/[^/]+)(/.*)?$", p)
         if not m:
             return self._json(404, {"message": "Not Found"})
@@ -535,7 +618,7 @@ class _H(BaseHTTPRequestHandler):
                                      "body": "Ojo con este cambio: revisa el redondeo.",
                                      "diff_hunk": "\n".join((f0.get("patch") or "").split("\n")[:5])}] if f0 else [])
         if resto == "/tags":
-            return self._json(200, [{"name": "v2.107.0", "commit": {"sha": r["ramas"]["master"]["sha"]}}])
+            return self._json(200, [{"name": "v" + r["rel"][0], "commit": {"sha": r["ramas"]["master"]["sha"]}}])
         m = re.match(r"^/git/trees/([0-9a-f]+)$", resto)
         if m:
             v = d.versiones.get((full, m.group(1))) or {}
@@ -549,7 +632,7 @@ class _H(BaseHTTPRequestHandler):
             return self._json(200, {"sha": m.group(1), "tree": arbol, "truncated": False})
         if resto.startswith("/commits/") and "vnd.github.sha" in (self.headers.get("Accept") or ""):
             ref = urllib.parse.unquote(resto[len("/commits/"):])
-            sha = (r["ramas"].get(ref) or {}).get("sha") or ({"v2.107.0": r["ramas"]["master"]["sha"]}.get(ref)) or ref
+            sha = (r["ramas"].get(ref) or {}).get("sha") or ({"v" + r["rel"][0]: r["ramas"]["master"]["sha"]}.get(ref)) or ref
             texto = sha.encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/plain")
@@ -635,9 +718,9 @@ class _H(BaseHTTPRequestHandler):
                                                          "commit": {"html_url": "https://demo.invalid/%s/commit/%s" % (full, nuevo["sha"])}})
 
 
-def arrancar(puerto=0, semilla=7, pedidas=None):
+def arrancar(puerto=0, semilla=7, pedidas=None, extra=150):
     """Arranca el GitHub simulado en 127.0.0.1. -> (servidor, puerto, datos)"""
-    datos = Datos(semilla)
+    datos = Datos(semilla, extra)
     H = type("H", (_H,), {"datos": datos, "pedidas": pedidas})
     srv = ThreadingHTTPServer(("127.0.0.1", puerto), H)
     H.puerto = srv.server_address[1]
@@ -662,8 +745,8 @@ REGLAS_DEMO = [
 def config_demo(puerto_ghe):
     return {
         "bbva": {"host": "demo.invalid", "api": "http://127.0.0.1:%d" % puerto_ghe, "token": "",
-                 "organizaciones": [ORG], "refrescoMin": 60, "proxy": "", "ca": ""},
+                 "organizaciones": [ORG], "filtroRepos": "props.uuaa:KYTL0000", "refrescoMin": 60, "proxy": "", "ca": ""},
         "nfq": {"host": "github.com", "repo": "rdr-nfq/pases-datos", "token": "", "publicarDPs": False},
-        "proyectos": {k: v for k, (_, v) in PROYECTOS.items() if v},
+        "proyectos": {k: v for k, (_, v) in {**PROYECTOS, **PROYECTOS_EXTRA}.items() if v},
         "reglas": REGLAS_DEMO,
     }

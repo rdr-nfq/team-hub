@@ -2,32 +2,82 @@
 // ficheros en cualquier rama, etiqueta o commit), historial, pull requests con
 // su conversación y comparar dos referencias.
 import { html, useState, useEffect, useMemo, useRef } from "./vendor/preact-htm.mjs";
-import { api, Icono, Markdown, hace, fLarga, corto, plural, colorDe } from "./comun.js";
+import { api, Icono, Markdown, hace, fLarga, corto, plural, colorDe, leerLS, ponerLS, uniq } from "./comun.js";
+import { BarraFiltros, nombreProp, pasa, propsDeRepos, useFacetas } from "./filtros.js";
 import { Diferencias, Cargando, Volver } from "./diffs.js";
 
 const ESTADO_PR = { abierta: "chip-pr", mergeada: "chip-merg", cerrada: "chip-borde" };
 const enc = encodeURIComponent;
 
-export function VistaRepos({ estado, ir }) {
-  const porRepo = {};
-  estado.ramas.forEach((r) => {
-    const x = (porRepo[r.repo] ||= { feats: 0, releases: 0, abiertas: 0 });
-    if (r.release) x.releases++;
-    else if (!r.esBase) { x.feats++; if (!r.mergeada) x.abiertas++; }
-  });
+const COLUMNAS = [["nombre", "Repositorio"], ["abiertas", "Ramas abiertas"], ["releases", "Releases"], ["dps", "DPs"], ["cambio", "Último cambio"]];
+const POR_PAGINA = 60;
+
+export function VistaRepos({ estado, f, setF, setFacetas, ir }) {
+  const [orden, setOrden] = useState(() => { try { return JSON.parse(leerLS("mp-orden-repos", "")) || ["cambio", -1]; } catch { return ["cambio", -1]; } });
+  const [soloActivos, setSoloActivos] = useState(false);
+  const [limite, setLimite] = useState(POR_PAGINA);
+  const props = useMemo(() => propsDeRepos(estado.repos), [estado]);
+  const items = useMemo(() => {
+    const por = {};
+    for (const r of estado.ramas) {
+      const x = (por[r.repo] ||= { feats: new Set(), personas: new Set(), abiertas: 0, releases: 0, dps: new Set(), ultima: "" });
+      for (const d of r.dps || []) x.dps.add(d.cod);
+      if (r.esBase) continue;
+      if (r.release) x.releases++;
+      else if (!r.mergeada) { x.abiertas++; if (r.feature) x.feats.add(r.feature); }
+      (r.commits || []).forEach((c) => x.personas.add(c.autor));
+      x.ultima = [x.ultima, r.cabeza?.fecha || ""].sort().pop();
+    }
+    return estado.repos.map((r) => {
+      const x = por[r.nombre] || { feats: new Set(), personas: new Set(), abiertas: 0, releases: 0, dps: new Set(), ultima: "" };
+      return {
+        o: r, repo: r.nombre, fecha: [r.empujado || "", x.ultima].sort().pop(), proyectos: [...x.feats], personas: [...x.personas],
+        abiertas: x.abiertas, releases: x.releases, dps: x.dps.size,
+        texto: [r.nombre, r.descripcion, ...Object.values(props[r.nombre] || {})].join(" "),
+      };
+    }).filter((x) => !soloActivos || x.abiertas);
+  }, [estado, props, soloActivos]);
+  const facetas = useFacetas(setFacetas, items, f, estado, ["props", "proyectos", "personas"]);
+  const visibles = useMemo(() => {
+    const [k, dir] = orden;
+    const val = (x) => (k === "nombre" ? corto(x.repo).toLowerCase() : k === "cambio" ? x.fecha || "" : x[k] || 0);
+    return items.filter((x) => pasa(x, f, props)).sort((a, b) => {
+      const va = val(a), vb = val(b);
+      return (va < vb ? -1 : va > vb ? 1 : 0) * dir || corto(a.repo).localeCompare(corto(b.repo));
+    });
+  }, [items, f, props, orden]);
+  useEffect(() => { setLimite(POR_PAGINA); }, [f, orden, soloActivos]);
+  const ordenar = (k) => {
+    const o = orden[0] === k ? [k, -orden[1]] : [k, k === "nombre" ? 1 : -1];
+    setOrden(o); ponerLS("mp-orden-repos", JSON.stringify(o));
+  };
+  const columnasProps = useMemo(() => (facetas || []).filter((fa) => fa.clave.startsWith("p:")).map((fa) => fa.clave.slice(2)), [facetas]);
+  const filtroRepos = estado.filtroRepos;
   return html`<div class="contenido">
-    <div class="titulo-vista"><h1>Repositorios</h1><p>${plural(estado.repos.length, "repositorio", "repositorios")} de GitHub BBVA</p></div>
-    <div class="rejilla-repos">${estado.repos.map((r) => {
-      const x = porRepo[r.nombre] || {};
-      return html`<button class="tarjeta-repo" key=${r.nombre} onClick=${() => ir({ vista: "repo", repo: r.nombre, sub: "codigo" })}>
-        <span class="t"><${Icono} n="repo" /> <b>${corto(r.nombre)}</b></span>
-        <span class="tenue mono">${r.nombre}</span>
-        <span class="cifras-repo">${plural(x.abiertas || 0, "rama abierta", "ramas abiertas")} · ${plural(x.releases || 0, "release", "releases")}
-          ${r.base ? html` · producción: <span class="mono">${r.base}</span>` : ""}</span>
-        ${r.empujado ? html`<span class="tenue">Último cambio ${hace(r.empujado)}</span>` : ""}
-        ${r.error ? html`<span class="chip chip-mal">${r.error.mensaje}</span>` : ""}
-      </button>`;
-    })}</div>
+    <div class="titulo-vista"><h1>Repositorios</h1><p>${visibles.length === items.length ? plural(items.length, "repositorio", "repositorios")
+      : `${visibles.length} de ${plural(items.length, "repositorio", "repositorios")}`}${filtroRepos ? html` · los que cumplen <span class="mono">${filtroRepos}</span>` : ""}</p></div>
+    <${BarraFiltros} f=${f} setF=${setF} facetas=${facetas} usuario=${estado.sesion?.bbva?.usuario} total=${visibles.length} placeholder="Nombre, descripción o propiedad">
+      <label class="interruptor"><input type="checkbox" checked=${soloActivos} onChange=${(e) => setSoloActivos(e.target.checked)} /> Solo con ramas abiertas</label>
+    </${BarraFiltros}>
+    ${visibles.length ? html`<div class="grupo"><div style="overflow-x:auto"><table class="tabla tabla-repos">
+      <thead><tr>
+        ${COLUMNAS.map(([k, t]) => html`<th scope="col" key=${k} class=${k === "nombre" ? "" : "c-num"} aria-sort=${orden[0] === k ? (orden[1] > 0 ? "ascending" : "descending") : undefined}>
+          <button class="ordenar" onClick=${() => ordenar(k)}>${t}${orden[0] === k ? html` <${Icono} n=${orden[1] > 0 ? "arriba" : "abajo"} />` : ""}</button></th>`)}
+        ${columnasProps.map((k) => html`<th scope="col" key=${"p" + k}>${nombreProp(k)}</th>`)}
+      </tr></thead>
+      <tbody>${visibles.slice(0, limite).map((x) => html`<tr class="fila" key=${x.repo} onClick=${() => ir({ vista: "repo", repo: x.repo, sub: "codigo" })}>
+        <td class="c-nombre-repo"><button class="lnk" onClick=${(e) => { e.stopPropagation(); ir({ vista: "repo", repo: x.repo, sub: "codigo" }); }}><b>${corto(x.repo)}</b></button>
+          ${x.o.error ? html` <span class="chip chip-mal" title=${x.o.error.mensaje}>error</span>` : ""}
+          ${x.o.descripcion ? html`<span class="desc-repo">${x.o.descripcion}</span>` : ""}
+          ${x.proyectos.length ? html`<span class="feats-repo">${x.proyectos.slice(0, 4).map((p) => html`<span class="punto" key=${p} style=${{ background: colorDe(p), borderRadius: "3px" }} title=${p} />`)}</span>` : ""}</td>
+        <td class="c-num">${x.abiertas ? html`<button class="lnk num" title="Ver sus ramas" onClick=${(e) => { e.stopPropagation(); setF({ ...f, repos: [x.repo] }); ir({ vista: "ramas" }); }}>${x.abiertas}</button>` : html`<span class="tenue">0</span>`}</td>
+        <td class="c-num num">${x.releases || html`<span class="tenue">0</span>`}</td>
+        <td class="c-num num">${x.dps || html`<span class="tenue">0</span>`}</td>
+        <td class="c-num tenue">${hace(x.fecha)}</td>
+        ${columnasProps.map((k) => html`<td key=${"p" + k}>${props[x.repo]?.[k] ? html`<span class=${"chip " + (k === "uuaa" ? "mono" : "")}>${props[x.repo][k]}</span>` : html`<span class="tenue">—</span>`}</td>`)}
+      </tr>`)}</tbody>
+    </table></div></div>` : ""}
+    ${visibles.length > limite && html`<button class="btn" onClick=${() => setLimite(limite + POR_PAGINA)}>Ver ${Math.min(POR_PAGINA, visibles.length - limite)} más (quedan ${visibles.length - limite})</button>`}
   </div>`;
 }
 

@@ -33,6 +33,12 @@ Si tienes varias cuentas en un mismo GitHub, pon tu usuario en *Ajustes → Sesi
 
 Si Git no tiene gestor de credenciales (`git config --get credential.helper` sale vacío), puedes poner un **token personal** en Ajustes. Para GitHub BBVA, de solo lectura con *Contents*, *Metadata*, *Pull requests*, *Actions* y *Checks*.
 
+## Qué repositorios mira
+
+Los de la organización **`free`** que cumplen **`props.uuaa:KYTL0000`**: el mismo filtro que en [la web de GHE](https://bbva.ghe.com/orgs/free/repositories?q=props.uuaa%3AKYTL0000). Va en *Ajustes → Conexión → Filtro de repositorios* y admite lo mismo que el buscador de repositorios de la organización.
+
+La app pide a GitHub las propiedades personalizadas de esos repos (UUAA y las demás que tengan) y las usa también para filtrar. Si el GitHub de BBVA no tuviera esa API, usa la búsqueda de repositorios con la misma consulta.
+
 ## Qué se ve
 
 | Pestaña | Para qué |
@@ -45,6 +51,14 @@ Si Git no tiene gestor de credenciales (`git config --get credential.helper` sal
 | **Copilot** | Asistente de consulta y de modificación (ver abajo). |
 | **Pase** | Propone los componentes de las ramas pendientes de producción con su DP. Revisas el .json y lo guardas o lo subes. |
 | **Ajustes** | Sesiones, conexión, patrones de ramas, releases y DPs, nombres de proyectos, reglas de componentes, `pases-datos` y Copilot. |
+
+### Filtros y navegación (pensado para 150+ repositorios)
+
+- **Filtros en el lateral** (Ramas, Actividad, Commits, DPs y Repos): proyecto, repositorio, persona y las propiedades de los repos (UUAA, lenguaje…). Cada opción dice cuántos resultados da con el resto de filtros; se pueden marcar varias y cada lista tiene su buscador.
+- **Arriba**: buscador (tecla `/`), periodo (7, 14 o 30 días), los filtros activos como chips que se quitan con un clic y **Vistas**: «Lo mío», «Esta semana» y las que guardes tú.
+- **Ramas** se agrupan por proyecto, repositorio o persona; cada grupo se pliega y enseña 8 ramas con «Ver más». **DPs**, por release, proyecto o repositorio. **Repos** es una tabla ordenable.
+- **Ir a…** (`Ctrl K`): escribe un trozo del nombre de un repositorio, rama, release, proyecto, DP o el SHA de un commit y ve directo.
+- Los filtros se recuerdan al cerrar la app.
 
 ### DPs y releases
 
@@ -117,4 +131,7 @@ python build/compilar.py                   # el .exe (en Windows, con pip instal
   - `dps.js`: DPs.
   - `repos.js`: repositorios y PRs.
   - `copilot.js`: asistentes.
+  - `filtros.js`: filtros comunes (facetas, chips, vistas guardadas).
+  - `paleta.js`: «Ir a…» (`Ctrl K`).
+- `mp/demo.py` simula unos 170 repositorios (157 con `uuaa=KYTL0000` y otros de otra UUAA que el filtro deja fuera).
 - Al cambiar algo, sube `VERSION` en `mp/__init__.py`. Al subir a `main`, el workflow publica el `.exe` nuevo en el mismo enlace.

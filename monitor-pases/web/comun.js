@@ -85,6 +85,9 @@ export const RUTAS = {
   usuario: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0",
   candado: "M6 11h12v10H6zM8 11V7a4 4 0 0 1 8 0v4",
   historial: "M3 12a9 9 0 1 0 3-6.7M3 4v5h5M12 7v5l3 2",
+  marcador: "M6 4h12v16l-6-4-6 4z",
+  filtro: "M4 5h16l-6 8v5l-4 2v-7z",
+  ir: "M5 12h14M13 6l6 6-6 6",
   carpetaAbierta: "M3 7h6l2 2h10l-2 10H3z",
 };
 export const Icono = ({ n, cls = "" }) => html`<svg class="icono ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d=${RUTAS[n]} /></svg>`;

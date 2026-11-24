@@ -2,6 +2,7 @@
 // detalle de un commit, una rama frente a producción y el visor de diffs.
 import { html, useState, useEffect, useMemo, useRef } from "./vendor/preact-htm.mjs";
 import { api, Icono, Rama, ChipDP, hace, fLarga, corto, plural, colorDe, leerLS, ponerLS, uniq } from "./comun.js";
+import { BarraFiltros, pasa, propsDeRepos, useFacetas } from "./filtros.js";
 
 const ESTADO_F = {
   added: ["A", "nuevo"], modified: ["M", "modificado"], removed: ["D", "borrado"], renamed: ["R", "renombrado"],
@@ -275,17 +276,20 @@ function diaDe(iso) {
   return t[0].toUpperCase() + t.slice(1);
 }
 
-export function VistaCommits({ estado, filtros, setFiltros, ir }) {
+export function VistaCommits({ estado, f, setF, setFacetas, ir }) {
   const [datos, setDatos] = useState(null);
   const [err, setErr] = useState(null);
   const [limite, setLimite] = useState(200);
   const [conProd, setConProd] = useState(true);
   useEffect(() => { api("commits").then(setDatos, (e) => setErr(e.message)); }, [estado.sincro?.fin]);
-  const q = filtros.q.trim().toLowerCase();
-  const lista = useMemo(() => (datos?.commits || []).filter((c) =>
-    (filtros.proyecto === null || (filtros.proyecto === "" ? !c.features.length && !c.produccion : c.features.includes(filtros.proyecto))) &&
-    (!filtros.repo || c.repo === filtros.repo) && (conProd || !c.produccion || c.features.length) &&
-    (!q || [c.mensaje, c.autor, c.sha, c.repo, ...c.ramas, ...c.dps].join(" ").toLowerCase().includes(q))), [datos, filtros, conProd, q]);
+  const items = useMemo(() => (datos?.commits || []).filter((c) => conProd || !c.produccion || c.features.length).map((c) => ({
+    o: c, repo: c.repo, fecha: c.fecha, proyectos: c.features.length ? c.features : [""], personas: [c.autor],
+    texto: [c.mensaje, c.autor, c.sha, c.repo, ...c.ramas, ...c.dps].join(" "),
+  })), [datos, conProd]);
+  const facetas = useFacetas(setFacetas, items, f, estado);
+  const props = useMemo(() => propsDeRepos(estado.repos), [estado]);
+  const lista = useMemo(() => items.filter((x) => pasa(x, f, props)).map((x) => x.o), [items, f, props]);
+  useEffect(() => { setLimite(200); }, [f]);
   if (!datos) return html`<${Cargando} err=${err} texto="Cargando los commits…" />`;
   const dias = [];
   lista.slice(0, limite).forEach((c) => {
@@ -296,12 +300,10 @@ export function VistaCommits({ estado, filtros, setFiltros, ir }) {
   const autores = uniq(lista.map((c) => c.autor)).length;
   return html`<div class="contenido">
     <div class="titulo-vista"><h1>Commits</h1><p>${plural(lista.length, "commit", "commits")} de ${plural(autores, "persona", "personas")} en los últimos ${estado.dias} días</p></div>
-    <div class="filtros">
-      <label class="buscar"><span class="sr">Buscar</span><${Icono} n="buscar" />
-        <input class="inp" type="search" placeholder="Mensaje, autor, SHA, rama o DP" value=${filtros.q} onInput=${(e) => setFiltros({ ...filtros, q: e.target.value })} /></label>
+    <${BarraFiltros} f=${f} setF=${setF} facetas=${facetas} usuario=${estado.sesion?.bbva?.usuario} total=${lista.length} placeholder="Mensaje, autor, SHA, rama o DP">
       <label class="interruptor"><input type="checkbox" checked=${conProd} onChange=${(e) => setConProd(e.target.checked)} /> Incluir los que solo están en producción</label>
-    </div>
-    ${!lista.length ? html`<div class="vacio-mini">Ningún commit con estos filtros.</div>` : ""}
+    </${BarraFiltros}>
+    ${!lista.length && !items.length ? html`<div class="vacio-mini">Ningún commit todavía.</div>` : ""}
     ${dias.map(({ d, cs }) => html`<section class="grupo" key=${d}>
       <div class="grupo-cab"><h2>${d}</h2><span class="resumen">${plural(cs.length, "commit", "commits")}</span></div>
       <div style="overflow-x:auto"><table class="tabla tabla-commits"><tbody>${cs.map((c) => html`<tr class="fila" key=${c.repo + c.sha} onClick=${() => ir({ vista: "commit", repo: c.repo, sha: c.sha })}>

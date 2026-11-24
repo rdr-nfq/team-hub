@@ -1,7 +1,10 @@
 {
  "bbva": {
   "host": "bbva.ghe.com",
-  "organizaciones": [],
+  "organizaciones": [
+   "free"
+  ],
+  "filtroRepos": "props.uuaa:KYTL0000",
   "patronRama": "CIBRDR-\\d+",
   "baseProduccion": "master",
   "patronDP": "DP-KYTL-[A-Z0-9_-]+",

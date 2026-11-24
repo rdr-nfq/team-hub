@@ -20,8 +20,9 @@ from .clasificar import buscar_dps, clave_version, componentes, feature_de_rama,
 from .config import escribir_json, leer_json
 from .ghe import Cliente, ErrorGHE, api_de_host
 
-POOL_REPOS = 3
-POOL_RAMAS = 3
+POOL_REPOS = 6
+POOL_RAMAS = 4
+POOL_DETALLE = 8
 RUNS_POR_RAMA = 10
 
 
@@ -123,8 +124,10 @@ class Monitor:
                 try:
                     info, ramas, uc, ur = self._repo(cli, cfg, r)
                 except ErrorGHE as e:
-                    info, ramas, uc, ur = ({"nombre": r["full_name"], "url": r.get("html_url", ""),
-                                            "error": e.como_dict()}, {}, set(), set())
+                    info, ramas, uc, ur = ({"nombre": r["full_name"], "url": r.get("html_url", ""), "error": e.como_dict(),
+                                            "propiedades": r.get("_propiedades") or {}, "lenguaje": r.get("language") or "",
+                                            "temas": r.get("topics") or [], "descripcion": (r.get("description") or "")[:200]},
+                                           {}, set(), set())
                     previas = {k: v for k, v in self.ramas.items() if v.get("repo") == r["full_name"]}
                     ramas = previas  # se conservan los datos anteriores del repo que falla
                     errores.append({"repo": r["full_name"], **e.como_dict()})
@@ -167,12 +170,67 @@ class Monitor:
             except Exception:
                 traceback.print_exc()
 
+    def _propiedades_org(self, cli, org, filtro):
+        """Propiedades personalizadas de los repos de la organización que cumplen
+        `filtro` (la misma búsqueda que en la web: props.uuaa:KYTL0000).
+        -> {repo: {propiedad: valor}}, o None si este GitHub no tiene esa API."""
+        try:
+            lista = cli.paginar("orgs/%s/properties/values" % _q(org), {"repository_query": filtro} if filtro else {},
+                                max_paginas=50)
+        except ErrorGHE as e:
+            if e.estado in (403, 404, 410, 422):
+                return None
+            raise
+        out = {}
+        for x in lista or []:
+            props = {}
+            for pr in x.get("properties") or []:
+                v = pr.get("value")
+                if isinstance(v, list):
+                    v = ", ".join(str(y) for y in v)
+                if v not in (None, "") and pr.get("property_name"):
+                    props[pr["property_name"]] = str(v)
+            if x.get("repository_full_name"):
+                out[x["repository_full_name"]] = props
+        return out
+
+    def _repos_con_filtro(self, cli, org, filtro):
+        """Repos de `org` que cumplen `filtro`, con sus propiedades."""
+        props = self._propiedades_org(cli, org, filtro)
+        if props is not None:
+            def detalle(full):
+                try:
+                    return cli.get("repos/" + full)[0]
+                except ErrorGHE as e:
+                    if e.estado in (403, 404):
+                        return None  # sin acceso a ese repo
+                    raise
+            with ThreadPoolExecutor(POOL_DETALLE) as ex:
+                lista = [r for r in ex.map(detalle, sorted(props)) if r]
+            for r in lista:
+                r["_propiedades"] = props.get(r["full_name"], {})
+            return lista
+        # GitHub sin la API de propiedades: la búsqueda de repositorios entiende la misma consulta.
+        try:
+            lista = cli.paginar("search/repositories", {"q": "org:%s %s" % (org, filtro)}, max_paginas=10, clave="items")
+        except ErrorGHE as e:
+            if e.estado == 422:
+                raise ErrorGHE("GitHub BBVA no entiende el filtro de repositorios «%s»." % filtro, e.estado, e.url,
+                               "Revísalo en Ajustes → Conexión: es lo mismo que se escribe en el buscador de repositorios de la organización.")
+            raise
+        return lista
+
     def _descubrir(self, cli, b):
         vistos = {}
         yo = None
+        filtro = str(b.get("filtroRepos") or "").strip()
         for org in b.get("organizaciones") or []:
             org = str(org).strip().strip("/")
             if not org:
+                continue
+            if filtro:
+                for r in self._repos_con_filtro(cli, org, filtro):
+                    vistos[r["full_name"]] = r
                 continue
             try:
                 lista = cli.paginar("orgs/%s/repos" % _q(org), {"type": "all"}, max_paginas=30)
@@ -209,7 +267,8 @@ class Monitor:
         desde = (dt.date.today() - dt.timedelta(days=dias)).isoformat()
         url_repo = r.get("html_url", "")
         info = {"nombre": full, "url": url_repo, "porDefecto": r.get("default_branch"), "empujado": r.get("pushed_at"),
-                "error": None}
+                "error": None, "propiedades": r.get("_propiedades") or {}, "lenguaje": r.get("language") or "",
+                "temas": r.get("topics") or [], "descripcion": (r.get("description") or "")[:200]}
 
         lista = cli.paginar("repos/%s/branches" % full, max_paginas=30)
         shas = {x["name"]: x["commit"]["sha"] for x in lista}

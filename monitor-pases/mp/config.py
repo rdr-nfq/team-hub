@@ -29,6 +29,7 @@ POR_DEFECTO = {
         "api": "",
         "token": "",
         "organizaciones": [],
+        "filtroRepos": "",
         "repos": [],
         "excluirRepos": [],
         "patronRama": r"CIBRDR-\d+",
@@ -109,7 +110,7 @@ def recurso(nombre):
 # Lo que se comparte con el equipo (config-equipo.json): todo menos tokens,
 # proxy, certificados y transporte, que son de cada equipo.
 CAMPOS_EQUIPO = {
-    "bbva": ("host", "organizaciones", "repos", "excluirRepos", "patronRama", "patronRelease", "soloRamasDeProyecto",
+    "bbva": ("host", "organizaciones", "filtroRepos", "repos", "excluirRepos", "patronRama", "patronRelease", "soloRamasDeProyecto",
              "baseProduccion", "basesRepo", "patronDP", "workflowsDP", "leerLogs", "refrescoMin", "diasActividad"),
     "nfq": ("host", "repo", "rama", "carpeta", "publicarDPs"),
 }

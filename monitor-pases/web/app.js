@@ -1,5 +1,5 @@
 // Monitor de pases · interfaz. Preact + htm vendorizados: nada se descarga de internet.
-import { html, render, useState, useEffect, useRef, useCallback } from "./vendor/preact-htm.mjs";
+import { html, render, useState, useEffect, useMemo, useRef, useCallback } from "./vendor/preact-htm.mjs";
 import {
   BotonTema, ChipDP, ESTADO_PR, EstadoRun, FUENTE, Icono, Marca, Rama, api, clonar, colorDe, corto, fCorta, fLarga, hace, leerLS, plural, ponerColores, ponerIr, ponerLS, proximoSabado, uniq,
 } from "./comun.js";
@@ -8,6 +8,8 @@ import { PantallaEntrada, FilaSesion } from "./entrada.js";
 import { VistaDPs, VistaDP } from "./dps.js";
 import { VistaRepos, VistaRepo, VistaPR } from "./repos.js";
 import { VistaCopilot } from "./copilot.js";
+import { BarraFiltros, LateralFiltros, guardarFiltros, leerFiltros, pasa, propsDeRepos, useFacetas } from "./filtros.js";
+import { Paleta } from "./paleta.js";
 
 /* ── Cabecera ── */
 function EstadoSincro({ s, cuota }) {
@@ -21,13 +23,13 @@ function EstadoSincro({ s, cuota }) {
   if (s.estado === "error") return html`<span class="sincro"><span class="chip chip-mal">No se pudo sincronizar</span></span>`;
   return html`<span class="sincro" title=${titulo}>
     ${s.estado === "con errores" ? html`<span class="chip chip-mal">${plural(s.errores.length, "repo con error", "repos con error")}</span>` : ""}
-    Actualizado <b>${hace(s.fin)}</b>
+    <span class="sincro-etq">Actualizado </span><b>${hace(s.fin)}</b>
   </span>`;
 }
 
 const VISTAS = ["ramas", "actividad", "commits", "dps", "repos", "copilot", "pase", "ajustes"];
 
-function Cabecera({ estado, vista, setVista, onSync, tema, cambiarTema }) {
+function Cabecera({ estado, vista, setVista, onSync, tema, cambiarTema, abrirPaleta }) {
   const vistas = [["ramas", "Ramas"], ["actividad", "Actividad"], ["commits", "Commits"], ["dps", "DPs"], ["repos", "Repos"],
     ["copilot", "Copilot"], ["pase", "Pase"], ["ajustes", "Ajustes"]];
   const ses = estado?.sesion || {};
@@ -38,6 +40,7 @@ function Cabecera({ estado, vista, setVista, onSync, tema, cambiarTema }) {
       ${vistas.map(([id, t]) => html`<button key=${id} aria-current=${vista === id ? "page" : undefined} onClick=${() => setVista(id)}>${t}</button>`)}
     </nav>
     <div class="cab-der">
+      <button class="btn-ir" onClick=${abrirPaleta} title="Ir a un repositorio, rama, proyecto, DP o commit"><${Icono} n="buscar" /> <span>Ir a…</span> <kbd>Ctrl K</kbd></button>
       <span aria-live="polite"><${EstadoSincro} s=${estado?.sincro} cuota=${estado?.cuota} /></span>
       <button class="chip-sesion" onClick=${() => setVista("ajustes")} title="Sesiones de GitHub">
         <${Icono} n="usuario" /> <span>${ses.bbva?.usuario || "sin BBVA"}${ses.nfq?.estado === "iniciada" ? "" : " · sin NFQ"}</span></button>
@@ -58,43 +61,24 @@ function Avisos({ estado, setVista }) {
   return null;
 }
 
-/* ── Lateral y filtros ── */
-function filtrar(ramas, f) {
-  const q = f.q.trim().toLowerCase();
-  return ramas.filter((r) => !r.esBase && (f.proyecto === null || (r.release ? (r.features || []).includes(f.proyecto) : (r.feature || "") === f.proyecto)) && (!f.repo || r.repo === f.repo) &&
-    (!f.ocultarMergeadas || !r.mergeada) && (!f.soloDP || r.dps.length) &&
-    (!q || [r.repo, r.rama, r.cabeza?.autor, r.cabeza?.mensaje, ...r.dps.map((d) => d.cod), ...(r.commits || []).map((c) => c.autor)].join(" ").toLowerCase().includes(q)));
+/* ── Filtros de ramas ── */
+// Cada rama como la entienden los filtros comunes (filtros.js).
+export function itemsRamas(estado, f) {
+  return estado.ramas.filter((r) => !r.esBase && (!f.ocultarMergeadas || !r.mergeada) && (!f.soloDP || r.dps.length) && (!f.conPR || r.pr))
+    .map((r) => ({
+      o: r, repo: r.repo, fecha: r.cabeza?.fecha,
+      proyectos: r.release ? (r.features?.length ? r.features : [""]) : [r.feature || ""],
+      personas: uniq([r.cabeza?.autor, ...(r.commits || []).map((c) => c.autor)].filter(Boolean)),
+      texto: [r.repo, r.rama, r.release, r.cabeza?.mensaje, r.pr?.titulo, ...r.dps.map((d) => d.cod), ...(r.features || []), ...(r.commits || []).map((c) => c.autor)].join(" "),
+    }));
 }
 
-function Lateral({ estado, filtros, setFiltros }) {
-  const ramas = estado.ramas.filter((r) => !r.esBase);
-  const porRepo = {};
-  ramas.forEach((r) => { porRepo[r.repo] = (porRepo[r.repo] || 0) + 1; });
-  const item = (activo, onClick, color, titulo, sub, n, mono, extra) => html`<li><button class="item-lat" aria-pressed=${activo} onClick=${onClick}>
-    <span class="punto" style=${{ background: color }} /><span class="t"><b class=${mono ? "mono" : ""}>${titulo}</b>${sub ? html`<span>${sub}</span>` : ""}</span><span class="n">${extra || n}</span></button></li>`;
-  return html`<nav class="lateral" aria-label="Filtrar por proyecto y repositorio">
-    <div class="lat-tit">Proyectos</div>
-    <ul class="lista-lat">
-      ${item(filtros.proyecto === null, () => setFiltros({ ...filtros, proyecto: null }), "var(--line-2)", "Todos los proyectos", "", ramas.length)}
-      ${estado.proyectos.map((p) => item(filtros.proyecto === p.feature, () => setFiltros({ ...filtros, proyecto: filtros.proyecto === p.feature ? null : p.feature }),
-        colorDe(p.feature), p.feature || "Sin proyecto", p.feature ? p.nombre || "Sin nombre" : "Ramas sin código de proyecto", p.ramas, !!p.feature))}
-    </ul>
-    <div class="lat-tit">Repositorios</div>
-    <ul class="lista-lat">
-      ${item(!filtros.repo, () => setFiltros({ ...filtros, repo: null }), "var(--line-2)", "Todos los repositorios", "", ramas.length)}
-      ${estado.repos.map((r) => item(filtros.repo === r.nombre, () => setFiltros({ ...filtros, repo: filtros.repo === r.nombre ? null : r.nombre }),
-        r.error ? "var(--mandarin)" : "var(--surface-2)", corto(r.nombre), r.error ? "Error: " + r.error.mensaje : r.base ? "Producción: " + r.base : "", porRepo[r.nombre] || 0))}
-    </ul>
-  </nav>`;
-}
-
-function BarraFiltros({ filtros, setFiltros }) {
-  return html`<div class="filtros">
-    <label class="buscar"><span class="sr">Buscar</span><${Icono} n="buscar" />
-      <input class="inp" type="search" placeholder="Rama, repo, autor, DP o commit" value=${filtros.q} onInput=${(e) => setFiltros({ ...filtros, q: e.target.value })} /></label>
-    <label class="interruptor"><input type="checkbox" checked=${filtros.ocultarMergeadas} onChange=${(e) => setFiltros({ ...filtros, ocultarMergeadas: e.target.checked })} /> Ocultar las ya mergeadas en producción</label>
-    <label class="interruptor"><input type="checkbox" checked=${filtros.soloDP} onChange=${(e) => setFiltros({ ...filtros, soloDP: e.target.checked })} /> Solo con DP</label>
-  </div>`;
+function InterruptoresRamas({ f, setF }) {
+  return html`<span class="interruptores">
+    <label class="interruptor"><input type="checkbox" checked=${f.ocultarMergeadas} onChange=${(e) => setF({ ...f, ocultarMergeadas: e.target.checked })} /> Ocultar las ya mergeadas</label>
+    <label class="interruptor"><input type="checkbox" checked=${f.soloDP} onChange=${(e) => setF({ ...f, soloDP: e.target.checked })} /> Con DP</label>
+    <label class="interruptor"><input type="checkbox" checked=${f.conPR} onChange=${(e) => setF({ ...f, conPR: e.target.checked })} /> Con PR</label>
+  </span>`;
 }
 
 /* ── Ramas ── */
@@ -132,31 +116,103 @@ function FilaRama({ r, abierta, setAbierta, ir }) {
   </tr>`;
 }
 
-function VistaRamas({ estado, filtros, setFiltros, abierta, setAbierta, preparar, setVista, ir }) {
+const POR_GRUPO = 8;
+const MAX_GRUPOS = 25;
+const AGRUPAR = [["proyecto", "Proyecto"], ["repo", "Repositorio"], ["persona", "Persona"]];
+
+function agrupar(visibles, modo, estado) {
+  const porFecha = (a, b) => (b.cabeza?.fecha || "").localeCompare(a.cabeza?.fecha || "");
+  const ramas = visibles.map((x) => x.o);
+  if (modo === "repo" || modo === "persona") {
+    const m = new Map();
+    for (const r of ramas) {
+      const k = modo === "repo" ? r.repo : r.cabeza?.autor || "";
+      if (!m.has(k)) m.set(k, []);
+      m.get(k).push(r);
+    }
+    return [...m.entries()].map(([k, rs]) => ({ k: modo + ":" + k, modo, valor: k, ramas: rs.sort(porFecha) }))
+      .sort((a, b) => (b.ramas[0].cabeza?.fecha || "").localeCompare(a.ramas[0].cabeza?.fecha || ""));
+  }
+  const grupos = estado.proyectos.map((p) => ({ k: "p:" + p.feature, modo, p, ramas: ramas.filter((r) => !r.release && (r.feature || "") === p.feature).sort(porFecha) }))
+    .filter((g) => g.ramas.length);
+  const releases = ramas.filter((r) => r.release).sort((a, b) => b.release.localeCompare(a.release, "es", { numeric: true }) || a.repo.localeCompare(b.repo));
+  if (releases.length) grupos.unshift({ k: "releases", modo, releases: true, ramas: releases });
+  return grupos;
+}
+
+function CabGrupo({ g, plegado, plegar, preparar, ir, setF, f }) {
+  const repos = uniq(g.ramas.map((r) => r.repo)).length;
+  let titulo, barra = "var(--line-2)", acciones = null;
+  if (g.releases) {
+    titulo = html`Releases <span class="tenue" style="font-weight:400">cada una es una subida</span>`;
+    barra = "var(--electric)";
+    acciones = html`<button class="btn btn-s" onClick=${() => ir({ vista: "dps" })}><${Icono} n="paquete" /> Ver los DPs</button>`;
+  } else if (g.p) {
+    titulo = g.p.feature ? html`<span class="mono">${g.p.feature}</span> ${g.p.nombre || html`<span class="tenue">Sin nombre</span>`}` : "Sin proyecto";
+    barra = colorDe(g.p.feature);
+    if (g.p.feature) acciones = html`<button class="btn btn-s" onClick=${() => preparar([g.p.feature])}>Preparar pase</button>`;
+  } else if (g.modo === "repo") {
+    titulo = html`<span class="mono">${corto(g.valor)}</span>`;
+    acciones = html`<button class="btn btn-s" onClick=${() => ir({ vista: "repo", repo: g.valor, sub: "codigo" })}><${Icono} n="repo" /> Código</button>
+      ${!f.repos.includes(g.valor) && html`<button class="btn btn-s" onClick=${() => setF({ ...f, repos: [...f.repos, g.valor] })} title="Ver solo este repositorio"><${Icono} n="filtro" /> Solo este</button>`}`;
+  } else {
+    titulo = g.valor ? html`<${Icono} n="usuario" /> ${g.valor}` : "Sin autor";
+  }
+  const id = "g-" + g.k.replace(/[^a-z0-9]/gi, "-");
+  return html`<div class="grupo-cab">
+    <span class="barra" style=${{ background: barra }} />
+    <button class="plegar-grupo" aria-expanded=${!plegado} aria-controls=${id + "-t"} onClick=${plegar} aria-label=${plegado ? "Desplegar" : "Plegar"}><${Icono} n=${plegado ? "plegado" : "desplegado"} /></button>
+    <h2 id=${id}>${titulo}</h2>
+    <span class="resumen">${plural(g.ramas.length, "rama", "ramas")}${g.modo !== "repo" ? ` · ${plural(repos, "repo", "repos")}` : ""}</span>
+    ${acciones && html`<div class="acc">${acciones}</div>`}
+  </div>`;
+}
+
+function TablaRamas({ ramas, abierta, setAbierta, ir, id }) {
+  return html`<div style="overflow-x:auto" id=${id}><table class="tabla">
+    <thead><tr><th scope="col">Repo</th><th scope="col">Rama y PR</th><th scope="col">Último commit</th><th scope="col" class="c-prod">Fuera de producción</th><th scope="col">Action y DP</th><th scope="col" class="c-n" title="Componentes">Comp.</th></tr></thead>
+    <tbody>${ramas.map((r) => html`<${FilaRama} key=${r.id} r=${r} abierta=${abierta} setAbierta=${setAbierta} ir=${ir} />`)}</tbody>
+  </table></div>`;
+}
+
+function VistaRamas({ estado, f, setF, setFacetas, abierta, setAbierta, preparar, setVista, ir }) {
+  const [modo, setModo] = useState(() => leerLS("mp-agrupar", "proyecto"));
+  const [plegados, setPlegados] = useState(() => new Set());
+  const [abiertos, setAbiertos] = useState(() => new Set());  // grupos con todas sus ramas a la vista
+  const [nGrupos, setNGrupos] = useState(MAX_GRUPOS);
+  const items = useMemo(() => itemsRamas(estado, f), [estado, f.ocultarMergeadas, f.soloDP, f.conPR]);
+  const facetas = useFacetas(setFacetas, items, f, estado);
+  const props = useMemo(() => propsDeRepos(estado.repos), [estado]);
+  const visibles = useMemo(() => items.filter((x) => pasa(x, f, props)), [items, f, props]);
+  const grupos = useMemo(() => agrupar(visibles, modo, estado), [visibles, modo, estado]);
+  useEffect(() => { setNGrupos(MAX_GRUPOS); }, [f, modo]);
   if (!estado.configurado && !estado.ramas.length) return html`<div class="contenido"><${Bienvenida} setVista=${setVista} demo=${estado.demo} /></div>`;
-  const visibles = filtrar(estado.ramas, filtros);
-  const grupos = estado.proyectos.map((p) => ({ p, ramas: visibles.filter((r) => (r.feature || "") === p.feature) })).filter((g) => g.ramas.length);
-  grupos.forEach((g) => g.ramas.sort((a, b) => (b.cabeza?.fecha || "").localeCompare(a.cabeza?.fecha || "")));
-  const releases = visibles.filter((r) => r.release).sort((a, b) => b.release.localeCompare(a.release, "es", { numeric: true }) || a.repo.localeCompare(b.repo));
-  if (releases.length) grupos.unshift({ p: { feature: "__releases", nombre: "" }, ramas: releases, releases: true });
+  const cambiarModo = (m) => { setModo(m); ponerLS("mp-agrupar", m); setPlegados(new Set()); setAbiertos(new Set()); };
+  const alternarSet = (set, setSet, k) => { const n = new Set(set); n.has(k) ? n.delete(k) : n.add(k); setSet(n); };
+  const todosPlegados = grupos.length > 0 && grupos.every((g) => plegados.has(g.k));
   return html`<div class="contenido">
-    <div class="titulo-vista"><h1>Ramas</h1><p>${plural(visibles.length, "rama", "ramas")} en ${plural(grupos.length, "proyecto", "proyectos")}</p></div>
-    <${BarraFiltros} filtros=${filtros} setFiltros=${setFiltros} />
-    ${!grupos.length ? html`<div class="vacio-mini">${estado.sincro?.estado === "nunca" ? "Todavía no se ha sincronizado. Pulsa Actualizar." : "Ninguna rama con estos filtros."}</div>` : ""}
-    ${grupos.map(({ p, ramas, releases: esRel }) => html`<section class="grupo" key=${p.feature} aria-labelledby=${"g-" + (p.feature || "sin")}>
-      <div class="grupo-cab">
-        <span class="barra" style=${{ background: esRel ? "var(--electric)" : colorDe(p.feature) }} />
-        <h2 id=${"g-" + (p.feature || "sin")}>${esRel ? html`Releases <span class="tenue" style="font-weight:400">cada una es una subida</span>`
-          : p.feature ? html`<span class="mono">${p.feature}</span> ${p.nombre || html`<span class="tenue">Sin nombre</span>`}` : "Sin proyecto"}</h2>
-        <span class="resumen">${plural(ramas.length, "rama", "ramas")} · ${plural(uniq(ramas.map((r) => r.repo)).length, "repo", "repos")}</span>
-        ${p.feature && !esRel && html`<div class="acc"><button class="btn btn-s" onClick=${() => preparar([p.feature])}>Preparar pase</button></div>`}
-        ${esRel && html`<div class="acc"><button class="btn btn-s" onClick=${() => ir({ vista: "dps" })}><${Icono} n="paquete" /> Ver los DPs</button></div>`}
-      </div>
-      <div style="overflow-x:auto"><table class="tabla">
-        <thead><tr><th scope="col">Repo</th><th scope="col">Rama y PR</th><th scope="col">Último commit</th><th scope="col" class="c-prod">Fuera de producción</th><th scope="col">Action y DP</th><th scope="col" class="c-n" title="Componentes">Comp.</th></tr></thead>
-        <tbody>${ramas.map((r) => html`<${FilaRama} key=${r.id} r=${r} abierta=${abierta} setAbierta=${setAbierta} ir=${ir} />`)}</tbody>
-      </table></div>
-    </section>`)}
+    <div class="titulo-vista"><h1>Ramas</h1><p>${plural(visibles.length, "rama", "ramas")} de ${plural(uniq(visibles.map((x) => x.repo)).length, "repositorio", "repositorios")}</p></div>
+    <${BarraFiltros} f=${f} setF=${setF} facetas=${facetas} usuario=${estado.sesion?.bbva?.usuario} total=${visibles.length} placeholder="Rama, repo, autor, DP, commit…">
+      <${InterruptoresRamas} f=${f} setF=${setF} />
+    </${BarraFiltros}>
+    <div class="barra-grupos">
+      <span class="etq-seg">Agrupar por</span>
+      <div class="segmento" role="group" aria-label="Agrupar por">${AGRUPAR.map(([m, t]) => html`<button key=${m} aria-pressed=${modo === m} onClick=${() => cambiarModo(m)}>${t}</button>`)}</div>
+      ${grupos.length > 1 && html`<button class="btn btn-t btn-s" onClick=${() => setPlegados(todosPlegados ? new Set() : new Set(grupos.map((g) => g.k)))}>${todosPlegados ? "Desplegar todo" : "Plegar todo"}</button>`}
+      <span class="tenue">${plural(grupos.length, "grupo", "grupos")}</span>
+    </div>
+    ${!grupos.length && !visibles.length && !items.length ? html`<div class="vacio-mini">${estado.sincro?.estado === "nunca" ? "Todavía no se ha sincronizado. Pulsa Actualizar." : "Ninguna rama con estos filtros."}</div>` : ""}
+    ${grupos.slice(0, nGrupos).map((g) => {
+      const plegado = plegados.has(g.k), todas = abiertos.has(g.k);
+      const id = "g-" + g.k.replace(/[^a-z0-9]/gi, "-") + "-t";
+      return html`<section class="grupo ${plegado ? "plegado" : ""}" key=${g.k} aria-labelledby=${"g-" + g.k.replace(/[^a-z0-9]/gi, "-")}>
+        <${CabGrupo} g=${g} plegado=${plegado} plegar=${() => alternarSet(plegados, setPlegados, g.k)} preparar=${preparar} ir=${ir} f=${f} setF=${setF} />
+        ${!plegado && html`<${TablaRamas} id=${id} ramas=${todas ? g.ramas : g.ramas.slice(0, POR_GRUPO)} abierta=${abierta} setAbierta=${setAbierta} ir=${ir} />
+          ${g.ramas.length > POR_GRUPO && html`<button class="ver-mas-grupo" onClick=${() => alternarSet(abiertos, setAbiertos, g.k)}>
+            ${todas ? "Ver menos" : `Ver ${plural(g.ramas.length - POR_GRUPO, "rama más", "ramas más")}`}</button>`}`}
+      </section>`;
+    })}
+    ${grupos.length > nGrupos && html`<button class="btn" onClick=${() => setNGrupos(nGrupos + MAX_GRUPOS)}>Ver ${Math.min(MAX_GRUPOS, grupos.length - nGrupos)} grupos más (quedan ${grupos.length - nGrupos})</button>`}
   </div>`;
 }
 
@@ -263,13 +319,22 @@ function Detalle({ id, onCerrar, aviso, recargar, ir }) {
 }
 
 /* ── Actividad ── */
-function VistaActividad({ estado, filtros, setFiltros, setAbierta, ir }) {
+const MAX_FILAS_ACT = 80;
+
+function VistaActividad({ estado, f, setF, setFacetas, setAbierta, ir }) {
   const [globo, setGlobo] = useState(null);
+  const [limite, setLimite] = useState(MAX_FILAS_ACT);
   const t1 = Date.now(), t0 = t1 - estado.dias * 864e5;
   const pos = (iso) => ((Date.parse(iso) - t0) / (t1 - t0)) * 100;
-  const visibles = filtrar(estado.ramas, filtros);
-  const grupos = estado.proyectos.map((p) => ({ p, ramas: visibles.filter((r) => (r.feature || "") === p.feature) })).filter((g) => g.ramas.length);
-  const bases = filtros.proyecto === null ? estado.ramas.filter((r) => r.esBase && (!filtros.repo || r.repo === filtros.repo)) : [];
+  const items = useMemo(() => itemsRamas(estado, f), [estado, f.ocultarMergeadas, f.soloDP, f.conPR]);
+  const facetas = useFacetas(setFacetas, items, f, estado);
+  const props = useMemo(() => propsDeRepos(estado.repos), [estado]);
+  const visibles = useMemo(() => items.filter((x) => pasa(x, f, props)).map((x) => x.o).filter((r) => !r.release), [items, f, props]);
+  let quedan = limite;
+  const grupos = estado.proyectos.map((p) => ({ p, ramas: visibles.filter((r) => (r.feature || "") === p.feature).sort((a, b) => (b.cabeza?.fecha || "").localeCompare(a.cabeza?.fecha || "")) }))
+    .filter((g) => g.ramas.length).map((g) => { const ramas = g.ramas.slice(0, Math.max(0, quedan)); quedan -= ramas.length; return { ...g, ramas }; }).filter((g) => g.ramas.length);
+  const sinFiltroDeRama = !f.proyectos.length && !f.personas.length && !f.q.trim();
+  const bases = sinFiltroDeRama ? estado.ramas.filter((r) => r.esBase && (!f.repos.length || f.repos.includes(r.repo)) && pasa({ repo: r.repo, proyectos: [""], personas: [], fecha: r.cabeza?.fecha, texto: "" }, f, props)).slice(0, 30) : [];
   const ticks = [];
   const d = new Date(t0); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + ((8 - d.getDay()) % 7));
   for (; d.getTime() < t1; d.setDate(d.getDate() + 7)) ticks.push(d.toISOString());
@@ -293,8 +358,10 @@ function VistaActividad({ estado, filtros, setFiltros, setAbierta, ir }) {
     ${pista(r, color)}
   </div>`;
   return html`<div class="contenido">
-    <div class="titulo-vista"><h1>Actividad</h1><p>Últimos ${estado.dias} días</p></div>
-    <${BarraFiltros} filtros=${filtros} setFiltros=${setFiltros} />
+    <div class="titulo-vista"><h1>Actividad</h1><p>${plural(visibles.length, "rama", "ramas")} · últimos ${estado.dias} días</p></div>
+    <${BarraFiltros} f=${f} setF=${setF} facetas=${facetas} usuario=${estado.sesion?.bbva?.usuario} total=${visibles.length} placeholder="Rama, repo, autor, DP, commit…">
+      <${InterruptoresRamas} f=${f} setF=${setF} />
+    </${BarraFiltros}>
     <p class="leyenda">
       <span><i class="punto" style="background:var(--serene);box-shadow:0 0 0 1px rgb(7 14 70 / .35)"></i>Commit (color del proyecto)</span>
       <span><i style="width:8px;height:8px;border-radius:2px;background:#3a9a35"></i>Action correcta</span>
@@ -313,6 +380,7 @@ function VistaActividad({ estado, filtros, setFiltros, setAbierta, ir }) {
       ${bases.length ? html`<div class="act-fila grupo-act"><div class="act-et"><b>Producción</b><span style="font-family:inherit">lo que entra en ${uniq(bases.map((r) => r.rama)).join(" / ")}</span></div><div /></div>${bases.map((r) => fila(r, "var(--gray-3)"))}` : ""}
       ${!grupos.length && !bases.length ? html`<div class="vacio-mini">Ninguna rama con estos filtros.</div>` : ""}
     </div>
+    ${visibles.length > limite && html`<button class="btn" style="margin-top:12px" onClick=${() => setLimite(limite + MAX_FILAS_ACT)}>Ver ${Math.min(MAX_FILAS_ACT, visibles.length - limite)} ramas más (quedan ${visibles.length - limite})</button>`}
     ${globo && html`<div class="globo" style=${{ left: globo.x + "px", top: globo.y + "px" }} role="tooltip"><b>${globo.titulo}</b>${globo.lineas.map((l) => html`<div>${l}</div>`)}</div>`}
   </div>`;
 }
@@ -595,7 +663,9 @@ function VistaAjustes({ estado, aviso, recargar }) {
         <label class="campo"><span>Servidor</span><input class="inp mono" value=${b.host} onInput=${(e) => set(["bbva", "host"], e.target.value)} placeholder="bbva.ghe.com" /></label>
         <label class="campo"><span>Token (solo si no puedes iniciar sesión con Git)</span><input class="inp mono" type="password" autocomplete="off" value=${b.token} onInput=${(e) => set(["bbva", "token"], e.target.value)} placeholder=${tokenPh(b)} />
           ${b.tokenConfigurado && (b.borrarToken ? html`<small>Se quitará al guardar.</small>` : html`<small><button class="btn btn-t btn-s" style="padding:0;height:auto" onClick=${() => set(["bbva", "borrarToken"], true)}>Quitar el token guardado</button></small>`)}</label>
-        <label class="campo"><span>Organizaciones o usuarios</span><${CampoLista} multilinea valor=${b.organizaciones} onCambio=${(v) => set(["bbva", "organizaciones"], v)} /><small>Uno por línea. Se leen todos sus repositorios.</small></label>
+        <label class="campo"><span>Organizaciones o usuarios</span><${CampoLista} multilinea valor=${b.organizaciones} onCambio=${(v) => set(["bbva", "organizaciones"], v)} /><small>Uno por línea. Se leen sus repositorios (los que cumplan el filtro de al lado).</small></label>
+        <label class="campo"><span>Filtro de repositorios</span><input class="inp mono" value=${b.filtroRepos} onInput=${(e) => set(["bbva", "filtroRepos"], e.target.value)} placeholder="props.uuaa:KYTL0000" />
+          <small>Lo mismo que escribes en el buscador de repositorios de la organización en GitHub. Vacío = todos.</small></label>
         <label class="campo"><span>Repositorios sueltos</span><${CampoLista} multilinea valor=${b.repos} onCambio=${(v) => set(["bbva", "repos"], v)} /><small>organización/repositorio, uno por línea.</small></label>
         <label class="campo ancho"><span>Repositorios que no se miran</span><${CampoLista} valor=${b.excluirRepos} onCambio=${(v) => set(["bbva", "excluirRepos"], v)} placeholder="*-archivo, pruebas-*" /><small>Admite comodines (*), separados por comas.</small></label>
       </div>
@@ -723,7 +793,10 @@ function App() {
   const [ruta, setRuta] = useState(leerHash);
   const pila = useRef([]);
   const conHistorial = useRef(false);
-  const [filtros, setFiltros] = useState({ proyecto: null, repo: null, q: "", ocultarMergeadas: true, soloDP: false });
+  const [filtros, setFiltrosBase] = useState(leerFiltros);
+  const setFiltros = useCallback((f) => { setFiltrosBase(f); guardarFiltros(f); }, []);
+  const [facetas, setFacetas] = useState(null);
+  const [paleta, setPaleta] = useState(false);
   const [abierta, setAbierta] = useState(null);
   const [tostadas, setTostadas] = useState([]);
   const [presel, setPresel] = useState(null);
@@ -780,22 +853,36 @@ function App() {
     setTema(t);
   };
   const preparar = (features) => { setPresel(features); setVista("pase"); };
+  // Atajos: Ctrl+K (o ⌘K) «Ir a…»; «/» al buscador de la vista.
+  useEffect(() => {
+    const t = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPaleta(true); return; }
+      const escribiendo = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
+      if (e.key === "/" && !escribiendo && !e.ctrlKey && !e.metaKey) {
+        const b = document.getElementById("buscar-filtros");
+        if (b) { e.preventDefault(); b.focus(); b.select(); }
+      }
+    };
+    addEventListener("keydown", t);
+    return () => removeEventListener("keydown", t);
+  }, []);
 
   if (!estado) return html`<p class="arranque" role=${errorCarga ? "alert" : "status"}>${errorCarga ? "No se puede hablar con la app: " + errorCarga : "Cargando el monitor…"}</p>`;
   if (!dentro) return html`<${PantallaEntrada} estado=${estado} tema=${tema} cambiarTema=${cambiarTema} entrar=${() => { setDentro(true); cargar(); }} />`;
-  const conLateral = ["ramas", "actividad", "commits", "dps"].includes(vista);
+  const conLateral = ["ramas", "actividad", "commits", "dps", "repos"].includes(vista);
+  const comun = { estado, f: filtros, setF: setFiltros, setFacetas, ir };
   return html`<div class="marco">
-    <${Cabecera} estado=${estado} vista=${VISTAS.includes(vista) ? vista : ruta.desde} setVista=${setVista} onSync=${sincronizar} tema=${tema} cambiarTema=${cambiarTema} />
+    <${Cabecera} estado=${estado} vista=${VISTAS.includes(vista) ? vista : ruta.desde} setVista=${setVista} onSync=${sincronizar} tema=${tema} cambiarTema=${cambiarTema} abrirPaleta=${() => setPaleta(true)} />
     <${Avisos} estado=${estado} setVista=${setVista} />
     <div class="cuerpo ${conLateral ? "" : "ancho"}">
-      ${conLateral && html`<${Lateral} estado=${estado} filtros=${filtros} setFiltros=${setFiltros} />`}
+      ${conLateral && html`<${LateralFiltros} facetas=${facetas} f=${filtros} setF=${setFiltros} />`}
       <main class="principal" id="principal">
-        ${vista === "ramas" && html`<${VistaRamas} estado=${estado} filtros=${filtros} setFiltros=${setFiltros} abierta=${abierta} setAbierta=${setAbierta} preparar=${preparar} setVista=${setVista} ir=${ir} />`}
-        ${vista === "actividad" && html`<${VistaActividad} estado=${estado} filtros=${filtros} setFiltros=${setFiltros} setAbierta=${setAbierta} ir=${ir} />`}
-        ${vista === "commits" && html`<${VistaCommits} estado=${estado} filtros=${filtros} setFiltros=${setFiltros} ir=${ir} />`}
-        ${vista === "dps" && html`<${VistaDPs} estado=${estado} filtros=${filtros} setFiltros=${setFiltros} ir=${ir} aviso=${aviso} />`}
+        ${vista === "ramas" && html`<${VistaRamas} ...${comun} abierta=${abierta} setAbierta=${setAbierta} preparar=${preparar} setVista=${setVista} />`}
+        ${vista === "actividad" && html`<${VistaActividad} ...${comun} setAbierta=${setAbierta} />`}
+        ${vista === "commits" && html`<${VistaCommits} ...${comun} />`}
+        ${vista === "dps" && html`<${VistaDPs} ...${comun} aviso=${aviso} />`}
         ${vista === "dp" && html`<${VistaDP} key=${ruta.repo + ruta.cod} repo=${ruta.repo} cod=${ruta.cod} volver=${volver} ir=${ir} estado=${estado} />`}
-        ${vista === "repos" && html`<${VistaRepos} estado=${estado} ir=${ir} />`}
+        ${vista === "repos" && html`<${VistaRepos} ...${comun} />`}
         ${vista === "repo" && html`<${VistaRepo} key=${ruta.repo} repo=${ruta.repo} sub=${ruta.sub} refName=${ruta.ref} ruta=${ruta.ruta} ir=${ir} volver=${volver} />`}
         ${vista === "pr" && html`<${VistaPR} key=${ruta.repo + ruta.n} repo=${ruta.repo} n=${ruta.n} volver=${volver} ir=${ir} estado=${estado} />`}
         ${vista === "copilot" && html`<${VistaCopilot} key=${JSON.stringify(ruta.contexto || {}) + (ruta.modo || "")} estado=${estado} contexto0=${ruta.contexto} modo0=${ruta.modo} ir=${ir} aviso=${aviso} />`}
@@ -805,6 +892,8 @@ function App() {
         ${vista === "ajustes" && html`<${VistaAjustes} estado=${estado} aviso=${aviso} recargar=${cargar} />`}
       </main>
     </div>
+    ${paleta && html`<${Paleta} estado=${estado} cerrar=${() => setPaleta(false)} ir=${ir} abrirRama=${(id) => setAbierta(id)}
+      filtrarProyecto=${(p) => { setFiltros({ ...filtros, proyectos: [p] }); if (!["ramas", "actividad", "commits", "dps"].includes(vista)) ir({ vista: "ramas" }); }} />`}
     ${abierta && html`<${Detalle} id=${abierta} onCerrar=${() => setAbierta(null)} aviso=${aviso} recargar=${cargar} ir=${ir} />`}
     <div class="tostadas" aria-live="polite">${tostadas.map((t) => html`<div class="tostada ${t.tipo === "mal" ? "mal" : ""}" key=${t.id} role=${t.tipo === "mal" ? "alert" : "status"}>
       <span>${t.texto}${t.enlace ? html` <a href=${t.enlace} target="_blank" rel="noopener noreferrer">Abrir</a>` : ""}</span></div>`)}</div>

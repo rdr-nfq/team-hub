@@ -1,7 +1,8 @@
 // Monitor de pases · DPs: cada release (release/x.y.z) es una subida y su
 // Action genera el DP. Qué componentes lleva cada DP y qué modificaciones.
 import { html, useState, useEffect, useMemo, useRef } from "./vendor/preact-htm.mjs";
-import { api, Icono, Rama, hace, fLarga, corto, plural, colorDe, uniq } from "./comun.js";
+import { api, Icono, Rama, hace, fLarga, corto, plural, colorDe, leerLS, ponerLS, uniq } from "./comun.js";
+import { BarraFiltros, pasa, propsDeRepos, useFacetas } from "./filtros.js";
 import { Diferencias, Cargando, Volver } from "./diffs.js";
 
 function ChipFeature({ f, alias }) {
@@ -22,29 +23,62 @@ function Componentes({ comps, max = 6 }) {
     ${comps.length > max ? html`<span class="tenue">+${comps.length - max}</span>` : ""}</span>`;
 }
 
-export function VistaDPs({ estado, filtros, setFiltros, ir, aviso }) {
+const AGRUPAR_DPS = [["release", "Release"], ["proyecto", "Proyecto"], ["repo", "Repositorio"]];
+const MAX_GRUPOS_DPS = 30;
+
+function agruparDPs(lista, modo, alias) {
+  const grupos = [], idx = {};
+  const meter = (k, base, d) => {
+    if (!(k in idx)) { idx[k] = grupos.length; grupos.push({ k, ...base, dps: [] }); }
+    grupos[idx[k]].dps.push(d);
+  };
+  for (const d of lista) {
+    if (modo === "proyecto") for (const f of d.features.length ? d.features : [""]) meter("p:" + f, { feature: f, nombre: alias[f] || "" }, d);
+    else if (modo === "repo") meter("r:" + d.repo, { repo: d.repo, porRepo: true }, d);
+    else meter(d.repo + "|" + d.rama, { repo: d.repo, rama: d.rama, release: d.release }, d);
+  }
+  if (modo === "proyecto") grupos.sort((a, b) => (a.feature === "") - (b.feature === "") || (b.dps[0].fecha || "").localeCompare(a.dps[0].fecha || ""));
+  return grupos;
+}
+
+function CabGrupoDP({ g, alias, ir }) {
+  if (g.feature !== undefined) return html`<div class="grupo-cab">
+    <span class="barra" style=${{ background: colorDe(g.feature) }} />
+    <h2>${g.feature ? html`<span class="mono">${g.feature}</span> ${g.nombre || html`<span class="tenue">Sin nombre</span>`}` : "Sin proyecto"}</h2>
+    <span class="resumen">${plural(g.dps.length, "DP", "DPs")} · ${plural(uniq(g.dps.map((d) => d.repo)).length, "repo", "repos")}</span></div>`;
+  if (g.porRepo) return html`<div class="grupo-cab">
+    <span class="ico-release" aria-hidden="true"><${Icono} n="repo" /></span>
+    <h2><span class="mono">${corto(g.repo)}</span></h2>
+    <span class="resumen">${plural(g.dps.length, "DP", "DPs")} · ${plural(uniq(g.dps.map((d) => d.rama)).length, "rama", "ramas")}</span>
+    <div class="acc"><button class="btn btn-s" onClick=${() => ir({ vista: "repo", repo: g.repo, sub: "codigo" })}><${Icono} n="repo" /> Código</button></div></div>`;
+  return html`<div class="grupo-cab">
+    <span class="ico-release" aria-hidden="true"><${Icono} n=${g.release ? "paquete" : "rama"} /></span>
+    <h2>${g.release ? html`Release <span class="mono">${g.release}</span>` : html`<span class="mono"><${Rama} nombre=${g.rama} /></span>`}
+      <span class="tenue" style="font-weight:400">${corto(g.repo)}</span></h2>
+    <span class="feats">${uniq(g.dps.flatMap((d) => d.features)).map((f) => html`<${ChipFeature} key=${f} f=${f} alias=${alias} />`)}</span>
+    <div class="acc"><button class="btn btn-s" onClick=${() => ir({ vista: "repo", repo: g.repo, sub: "codigo", ref: g.rama })}><${Icono} n="repo" /> Ver la rama</button></div></div>`;
+}
+
+export function VistaDPs({ estado, f, setF, setFacetas, ir, aviso }) {
   const [datos, setDatos] = useState(null);
   const [err, setErr] = useState(null);
   const [publicando, setPublicando] = useState(false);
   const [soloReleases, setSoloReleases] = useState(false);
+  const [modo, setModo] = useState(() => leerLS("mp-agrupar-dps", "release"));
+  const [nGrupos, setNGrupos] = useState(MAX_GRUPOS_DPS);
   const cargar = () => api("dps").then(setDatos, (e) => setErr(e.message));
   useEffect(() => { cargar(); }, [estado.sincro?.fin]);
   const alias = useMemo(() => Object.fromEntries(estado.proyectos.map((p) => [p.feature, p.nombre])), [estado]);
-  const q = filtros.q.trim().toLowerCase();
-  const lista = useMemo(() => (datos?.dps || []).filter((d) =>
-    (filtros.proyecto === null || (filtros.proyecto === "" ? !d.features.length : d.features.includes(filtros.proyecto))) &&
-    (!filtros.repo || d.repo === filtros.repo) && (!soloReleases || d.release) &&
-    (!q || [d.cod, d.rama, d.release, d.repo, ...d.features, ...d.componentes.map((c) => c.nombre)].join(" ").toLowerCase().includes(q))),
-  [datos, filtros, soloReleases, q]);
+  const items = useMemo(() => (datos?.dps || []).filter((d) => !soloReleases || d.release).map((d) => ({
+    o: d, repo: d.repo, fecha: d.fecha, proyectos: d.features.length ? d.features : [""], personas: [],
+    texto: [d.cod, d.rama, d.release, d.repo, ...d.features, ...d.componentes.map((c) => c.nombre)].join(" "),
+  })), [datos, soloReleases]);
+  const facetas = useFacetas(setFacetas, items, f, estado, ["proyectos", "repos", "props"]);
+  const props = useMemo(() => propsDeRepos(estado.repos), [estado]);
+  const lista = useMemo(() => items.filter((x) => pasa(x, f, props)).map((x) => x.o), [items, f, props]);
+  const grupos = useMemo(() => agruparDPs(lista, modo, alias), [lista, modo, alias]);
+  useEffect(() => { setNGrupos(MAX_GRUPOS_DPS); }, [f, modo]);
   if (!datos) return html`<${Cargando} err=${err} texto="Cargando los DPs…" />`;
-  // Agrupados por subida: repositorio + rama (la release).
-  const grupos = [];
-  const idx = {};
-  lista.forEach((d) => {
-    const k = d.repo + "|" + d.rama;
-    if (!(k in idx)) { idx[k] = grupos.length; grupos.push({ k, repo: d.repo, rama: d.rama, release: d.release, dps: [] }); }
-    grupos[idx[k]].dps.push(d);
-  });
   const publicar = async () => {
     setPublicando(true);
     try {
@@ -56,28 +90,25 @@ export function VistaDPs({ estado, filtros, setFiltros, ir, aviso }) {
   };
   const sinPublicar = lista.filter((d) => !d.publicado && d.conclusion === "success").length;
   return html`<div class="contenido">
-    <div class="titulo-vista"><h1>DPs</h1><p>${plural(lista.length, "DP", "DPs")} en ${plural(grupos.length, "subida", "subidas")}. Cada release es una subida.</p></div>
-    <div class="filtros">
-      <label class="buscar"><span class="sr">Buscar</span><${Icono} n="buscar" />
-        <input class="inp" type="search" placeholder="DP, release, feature o componente" value=${filtros.q} onInput=${(e) => setFiltros({ ...filtros, q: e.target.value })} /></label>
+    <div class="titulo-vista"><h1>DPs</h1><p>${plural(lista.length, "DP", "DPs")} de ${plural(uniq(lista.map((d) => d.repo)).length, "repositorio", "repositorios")}. Cada release es una subida.</p></div>
+    <${BarraFiltros} f=${f} setF=${setF} facetas=${facetas} total=${lista.length} placeholder="DP, release, feature o componente">
       <label class="interruptor"><input type="checkbox" checked=${soloReleases} onChange=${(e) => setSoloReleases(e.target.checked)} /> Solo los de releases</label>
+    </${BarraFiltros}>
+    <div class="barra-grupos">
+      <span class="etq-seg">Agrupar por</span>
+      <div class="segmento" role="group" aria-label="Agrupar por">${AGRUPAR_DPS.map(([m, t]) => html`<button key=${m} aria-pressed=${modo === m} onClick=${() => { setModo(m); ponerLS("mp-agrupar-dps", m); }}>${t}</button>`)}</div>
       <span class="publicar-dps">
         <span class="tenue">${datos.nfq?.sesion ? `Se publican en ${datos.nfq.repo}` : "Inicia sesión en GitHub NFQ para publicarlos"}</span>
         <button class="btn btn-s" disabled=${publicando || !datos.nfq?.sesion || !sinPublicar} onClick=${publicar}>
           <${Icono} n=${publicando ? "actualizar" : "subir"} cls=${publicando ? "gira" : ""} /> ${sinPublicar ? `Publicar ${sinPublicar}` : "Todo publicado"}</button>
       </span>
     </div>
-    ${!grupos.length ? html`<div class="vacio-mini">${(datos.dps || []).length ? "Ningún DP con estos filtros." : "Todavía no se ha detectado ningún DP en las Actions."}</div>` : ""}
-    ${grupos.map((g) => html`<section class="grupo" key=${g.k}>
-      <div class="grupo-cab">
-        <span class="ico-release" aria-hidden="true"><${Icono} n=${g.release ? "paquete" : "rama"} /></span>
-        <h2>${g.release ? html`Release <span class="mono">${g.release}</span>` : html`<span class="mono"><${Rama} nombre=${g.rama} /></span>`}
-          <span class="tenue" style="font-weight:400">${corto(g.repo)}</span></h2>
-        <span class="feats">${uniq(g.dps.flatMap((d) => d.features)).map((f) => html`<${ChipFeature} key=${f} f=${f} alias=${alias} />`)}</span>
-        <div class="acc"><button class="btn btn-s" onClick=${() => ir({ vista: "repo", repo: g.repo, sub: "codigo", ref: g.rama })}><${Icono} n="repo" /> Ver la rama</button></div>
-      </div>
+    ${!(datos.dps || []).length ? html`<div class="vacio-mini">Todavía no se ha detectado ningún DP en las Actions.</div>` : ""}
+    ${grupos.slice(0, nGrupos).map((g) => html`<section class="grupo" key=${g.k}>
+      <${CabGrupoDP} g=${g} alias=${alias} ir=${ir} />
       <ul class="lista-dps">${g.dps.map((d) => html`<li key=${d.cod}>
-        <button class="cod-dp" onClick=${() => ir({ vista: "dp", repo: d.repo, cod: d.cod })}>${d.cod}</button>
+        <span class="cod-dp-c"><button class="cod-dp" onClick=${() => ir({ vista: "dp", repo: d.repo, cod: d.cod })}>${d.cod}</button>
+          ${modo !== "release" ? html`<span class="donde-dp" title=${d.repo + " · " + d.rama}>${g.porRepo ? "" : corto(d.repo) + " · "}${d.release ? "release " + d.release : d.rama}</span>` : ""}</span>
         <span class="meta-dp"><span class=${d.conclusion === "success" ? "ico-ok" : "ico-mal"} title=${d.flujo || ""}><${Icono} n=${d.conclusion === "success" ? "ok" : "mal"} /></span>
           ${hace(d.fecha)} · <span class="mono">${(d.sha || "").slice(0, 7)}</span></span>
         <span class="comps-linea">${d.yaEnProduccion ? html`<span class="tenue">Ya estaba en producción al detectarlo</span>` : html`<b>${plural(d.componentes.length, "componente", "componentes")}</b>
@@ -86,6 +117,7 @@ export function VistaDPs({ estado, filtros, setFiltros, ir, aviso }) {
         <${EstadoPublicado} d=${d} nfq=${datos.nfq} />
       </li>`)}</ul>
     </section>`)}
+    ${grupos.length > nGrupos && html`<button class="btn" onClick=${() => setNGrupos(nGrupos + MAX_GRUPOS_DPS)}>Ver ${Math.min(MAX_GRUPOS_DPS, grupos.length - nGrupos)} grupos más (quedan ${grupos.length - nGrupos})</button>`}
   </div>`;
 }
 
@@ -96,6 +128,8 @@ export function VistaDP({ repo, cod, volver, ir, estado }) {
   const [errDif, setErrDif] = useState(null);
   const [foco, setFoco] = useState(null);
   const [verCommits, setVerCommits] = useState(false);
+  const [qComp, setQComp] = useState("");
+  const [tipoComp, setTipoComp] = useState(null);
   const refMods = useRef(null);
   useEffect(() => {
     api(`dp?repo=${encodeURIComponent(repo)}&cod=${encodeURIComponent(cod)}`).then(setD, (e) => setErr(e.message));
@@ -103,6 +137,12 @@ export function VistaDP({ repo, cod, volver, ir, estado }) {
   }, [repo, cod]);
   if (!d) return html`<div><div class="contenido" style="padding-bottom:0"><${Volver} volver=${volver} /></div><${Cargando} err=${err} texto="Cargando el DP…" /></div>`;
   const alias = Object.fromEntries(estado.proyectos.map((p) => [p.feature, p.nombre]));
+  const nTipo = {};
+  d.componentes.forEach((c) => { nTipo[c.tipo || ""] = (nTipo[c.tipo || ""] || 0) + 1; });
+  const tipos = Object.entries(nTipo).sort((a, b) => b[1] - a[1]);
+  const pq = qComp.trim().toLowerCase();
+  const comps = d.componentes.filter((c) => (tipoComp === null || (c.tipo || "") === tipoComp) &&
+    (!pq || [c.nombre, c.tipo, c.subida, ...c.ficheros].join(" ").toLowerCase().includes(pq)));
   const irFichero = (f) => { setFoco(f + "#" + Date.now()); refMods.current?.scrollIntoView({ block: "start" }); };
   return html`<div class="contenido">
     <${Volver} volver=${volver} />
@@ -127,13 +167,20 @@ export function VistaDP({ repo, cod, volver, ir, estado }) {
 
     <section class="caja" aria-labelledby="dp-comp" style="margin-bottom:16px">
       <h2 id="dp-comp">Componentes <span class="chip">${d.componentes.length}</span></h2>
-      ${d.componentes.length ? html`<div style="overflow-x:auto"><table class="tabla tabla-comp-dp">
+      ${tipos.length > 1 || d.componentes.length > 8 ? html`<div class="filtros filtros-comp">
+        ${d.componentes.length > 8 && html`<label class="buscar"><span class="sr">Buscar componente o fichero</span><${Icono} n="buscar" />
+          <input class="inp" type="search" placeholder="Componente o fichero" value=${qComp} onInput=${(e) => setQComp(e.target.value)} /></label>`}
+        ${tipos.length > 1 && html`<div class="segmento" role="group" aria-label="Tipo de componente">
+          <button aria-pressed=${tipoComp === null} onClick=${() => setTipoComp(null)}>Todos <span class="tenue">${d.componentes.length}</span></button>
+          ${tipos.map(([t, n]) => html`<button key=${t} aria-pressed=${tipoComp === t} onClick=${() => setTipoComp(tipoComp === t ? null : t)}>${t || "Sin regla"} <span class="tenue">${n}</span></button>`)}</div>`}
+      </div>` : ""}
+      ${comps.length ? html`<div style="overflow-x:auto"><table class="tabla tabla-comp-dp">
         <thead><tr><th scope="col">Componente</th><th scope="col">Tipo</th><th scope="col">Subida</th><th scope="col">Ficheros</th></tr></thead>
-        <tbody>${d.componentes.map((c) => html`<tr key=${c.clave}>
+        <tbody>${comps.map((c) => html`<tr key=${c.clave}>
           <td><b>${c.nombre}</b>${c.borrado ? html` <span class="chip chip-mal">se borra</span>` : ""}</td>
           <td>${c.tipo || html`<span class="chip chip-borde">sin regla</span>`}</td><td>${c.subida || "—"}</td>
           <td class="ficheros-comp">${c.ficheros.map((f) => html`<button class="lnk mono" key=${f} onClick=${() => irFichero(f)} title="Ver sus cambios">${f}</button>`)}</td>
-        </tr>`)}</tbody></table></div>` : html`<p class="suave" style="margin:0">Sin componentes.</p>`}
+        </tr>`)}</tbody></table></div>` : html`<p class="suave" style="margin:0">${d.componentes.length ? "Ningún componente con ese filtro." : "Sin componentes."}</p>`}
       ${d.ignorados ? html`<p class="nota">${plural(d.ignorados, "fichero ignorado", "ficheros ignorados")} por las reglas de Ajustes.</p>` : ""}
     </section>
 

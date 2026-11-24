@@ -122,7 +122,7 @@ class App:
             c = self.cfg.get()
             n = c["nfq"]
             return dict(self.mon.resumen(), version=VERSION, demo=self.demo, carpeta=str(self.cfg.dir), sesion=self.ses.publica(),
-                        dias=int(c["bbva"].get("diasActividad") or 45),
+                        dias=int(c["bbva"].get("diasActividad") or 45), filtroRepos=c["bbva"].get("filtroRepos") or "",
                         nfq={"repo": n.get("repo"), "rama": n.get("rama") or "main", "carpeta": n.get("carpeta") or "",
                              "listo": bool(n.get("repo") and n.get("token")) and not self.demo},
                         tipos=sorted({r.get("tipo") for r in c.get("reglas") or [] if r.get("tipo")}),

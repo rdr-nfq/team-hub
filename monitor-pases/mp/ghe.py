@@ -187,12 +187,14 @@ class Cliente:
         if estado == 304 and previo:
             with self._cerrojo:
                 self.ahorradas += 1
+            if len(previo) > 2 and previo[2] and not cab.get("link"):
+                cab = dict(cab, link=previo[2])  # un 304 puede venir sin Link: sin él, la paginación se cortaría
             return previo[1], cab
         if estado >= 300:
             raise self._error(estado, cab, cuerpo, u)
         datos = json.loads(cuerpo.decode("utf-8") or "null")
         if etag and cab.get("etag"):
-            self.etags[u] = [cab["etag"], datos]
+            self.etags[u] = [cab["etag"], datos, cab.get("link", "")]
         return datos, cab
 
     def paginar(self, ruta, params=None, max_paginas=10, clave=None):
