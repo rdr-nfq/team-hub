@@ -88,6 +88,13 @@ export const RUTAS = {
   carpetaAbierta: "M3 7h6l2 2h10l-2 10H3z",
 };
 export const Icono = ({ n, cls = "" }) => html`<svg class="icono ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d=${RUTAS[n]} /></svg>`;
+// Botón de tema: el mismo icono que la web del hub (círculo de contraste que gira al cambiar).
+export const BotonTema = ({ tema, cambiar }) => {
+  const texto = tema === "dark" ? "Cambiar a tema claro" : "Cambiar a tema oscuro";
+  return html`<button type="button" class="btn-tema" onClick=${cambiar} title=${texto} aria-label=${texto}>
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" class=${tema === "dark" ? "girado" : ""}>
+      <circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2" /><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor" /></svg></button>`;
+};
 export const Marca = () => html`<svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#001391"/><circle cx="10" cy="10" r="3.5" fill="#85C8FF"/><circle cx="10" cy="22" r="3.5" fill="#85C8FF"/><circle cx="22" cy="16" r="3.5" fill="#88E783"/><path d="M10 13.5v5M12.8 11.8 19 14.6" stroke="#F7F8F8" stroke-width="2" fill="none"/></svg>`;
 
 export const FUENTE = { resumen: "del resumen de la Action", "anotación": "de una anotación de la Action", log: "del log de la Action", pasos: "del nombre de un paso", manual: "puesto a mano" };

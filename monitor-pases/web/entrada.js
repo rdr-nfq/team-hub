@@ -1,7 +1,7 @@
 // Monitor de pases · inicio de sesión con GitHub BBVA y GitHub NFQ (a través
 // del gestor de credenciales de Git: la misma sesión que usa git pull).
 import { html, useState, useEffect } from "./vendor/preact-htm.mjs";
-import { api, Icono, Marca } from "./comun.js";
+import { api, BotonTema, Icono, Marca } from "./comun.js";
 
 const NOMBRE = { bbva: "GitHub BBVA", nfq: "GitHub NFQ" };
 const PARA = {
@@ -28,7 +28,7 @@ export function FilaSesion({ quien, s, host, onIniciar, onCerrar }) {
   </div>`;
 }
 
-export function PantallaEntrada({ estado, entrar }) {
+export function PantallaEntrada({ estado, entrar, tema, cambiarTema }) {
   const [ses, setSes] = useState(estado.sesion);
   const [hosts, setHosts] = useState({ bbva: "bbva.ghe.com", nfq: "github.com" });
   useEffect(() => { api("config").then((c) => setHosts({ bbva: c.bbva.host, nfq: c.nfq.host || "github.com" }), () => {}); }, []);
@@ -42,7 +42,8 @@ export function PantallaEntrada({ estado, entrar }) {
   const iniciar = (quien) => api("sesion/iniciar", { quien }).then(() => api("sesion").then(setSes), () => {});
   return html`<div class="entrada">
     <div class="caja-entrada">
-      <div class="marca grande"><${Marca} /> Monitor de pases ${estado.demo ? html`<small>Demo</small>` : ""}</div>
+      <div class="cab-entrada"><div class="marca grande"><${Marca} /> Monitor de pases ${estado.demo ? html`<small>Demo</small>` : ""}</div>
+        <${BotonTema} tema=${tema} cambiar=${cambiarTema} /></div>
       <h1>Inicia sesión</h1>
       <p class="suave">Con tus cuentas de GitHub de BBVA y de NFQ. Se abre la ventana de inicio de sesión de GitHub, como con Copilot;
         si ya la tienes iniciada en Git, entra directamente.</p>

@@ -603,3 +603,13 @@ pre.json { margin: 0; background: var(--surface-2); border-radius: var(--r); pad
 .subir-cop .campo { flex: 1; min-width: 280px; }
 .pestanas button { padding: 0 12px; }
 @media (max-width: 1380px) { .pestanas button { padding: 0 9px; } .cab { gap: 16px; } .chip-sesion { max-width: 140px; } }
+
+/* Botón de tema: como en la web del hub (círculo de contraste que gira 180° en oscuro). */
+.btn-tema { display: grid; place-items: center; width: 36px; height: 36px; flex: none; border-radius: 999px; padding: 0;
+  border: 1.5px solid var(--line-2); background: none; color: var(--ink); cursor: pointer; transition: border-color .2s; }
+.btn-tema:hover { border-color: var(--ink); }
+.btn-tema:focus-visible { outline: 2px solid var(--serene); outline-offset: 2px; }
+.btn-tema svg { transition: transform .3s; }
+.btn-tema svg.girado { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .btn-tema svg { transition: none; } }
+.cab-entrada { display: flex; align-items: center; justify-content: space-between; gap: 12px; }

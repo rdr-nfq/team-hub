@@ -1,7 +1,7 @@
 // Monitor de pases · interfaz. Preact + htm vendorizados: nada se descarga de internet.
 import { html, render, useState, useEffect, useRef, useCallback } from "./vendor/preact-htm.mjs";
 import {
-  ChipDP, ESTADO_PR, EstadoRun, FUENTE, Icono, Marca, Rama, api, clonar, colorDe, corto, fCorta, fLarga, hace, leerLS, plural, ponerColores, ponerIr, ponerLS, proximoSabado, uniq,
+  BotonTema, ChipDP, ESTADO_PR, EstadoRun, FUENTE, Icono, Marca, Rama, api, clonar, colorDe, corto, fCorta, fLarga, hace, leerLS, plural, ponerColores, ponerIr, ponerLS, proximoSabado, uniq,
 } from "./comun.js";
 import { VistaCommits, VistaCommit, VistaDiffRama } from "./diffs.js";
 import { PantallaEntrada, FilaSesion } from "./entrada.js";
@@ -42,7 +42,7 @@ function Cabecera({ estado, vista, setVista, onSync, tema, cambiarTema }) {
       <button class="chip-sesion" onClick=${() => setVista("ajustes")} title="Sesiones de GitHub">
         <${Icono} n="usuario" /> <span>${ses.bbva?.usuario || "sin BBVA"}${ses.nfq?.estado === "iniciada" ? "" : " · sin NFQ"}</span></button>
       <button class="btn btn-s" onClick=${onSync} disabled=${!estado?.configurado || enCurso}><${Icono} n="actualizar" cls=${enCurso ? "gira" : ""} /> Actualizar</button>
-      <button class="btn btn-t btn-s" onClick=${cambiarTema} aria-label=${tema === "dark" ? "Pasar a tema claro" : "Pasar a tema oscuro"} title="Cambiar tema"><${Icono} n=${tema === "dark" ? "sol" : "luna"} /></button>
+      <${BotonTema} tema=${tema} cambiar=${cambiarTema} />
     </div>
   </header>`;
 }
@@ -782,7 +782,7 @@ function App() {
   const preparar = (features) => { setPresel(features); setVista("pase"); };
 
   if (!estado) return html`<p class="arranque" role=${errorCarga ? "alert" : "status"}>${errorCarga ? "No se puede hablar con la app: " + errorCarga : "Cargando el monitor…"}</p>`;
-  if (!dentro) return html`<${PantallaEntrada} estado=${estado} entrar=${() => { setDentro(true); cargar(); }} />`;
+  if (!dentro) return html`<${PantallaEntrada} estado=${estado} tema=${tema} cambiarTema=${cambiarTema} entrar=${() => { setDentro(true); cargar(); }} />`;
   const conLateral = ["ramas", "actividad", "commits", "dps"].includes(vista);
   return html`<div class="marco">
     <${Cabecera} estado=${estado} vista=${VISTAS.includes(vista) ? vista : ruta.desde} setVista=${setVista} onSync=${sincronizar} tema=${tema} cambiarTema=${cambiarTema} />
