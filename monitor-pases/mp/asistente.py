@@ -211,7 +211,9 @@ class Asistente:
     def _anadir(self, t, texto):
         t["salida"] = (t["salida"] + texto)[-MAX_SALIDA:]
 
-    def _proceso(self, t, args, cwd, env, red=False):
+    def _proceso(self, t, args, cwd, env, red=False, terminar=True):
+        """Ejecuta y va guardando la salida. Con terminar=False, si sale bien la
+        tarea sigue «en curso»: quien llama la cierra cuando acaba lo suyo."""
         t["estado"] = "en curso"
         p = subprocess.Popen(args, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                              text=True, encoding="utf-8", errors="replace", creationflags=SIN_VENTANA)
@@ -225,7 +227,8 @@ class Asistente:
         if t.get("cancelada"):
             t["estado"] = "cancelada"
         elif p.returncode == 0:
-            t["estado"] = "terminada"
+            if terminar:
+                t["estado"] = "terminada"
         else:
             t["estado"] = "error"
             t["error"] = "Ha terminado con el código %s." % p.returncode
@@ -398,12 +401,17 @@ class Asistente:
             if not self._entrada():
                 raise RuntimeError("Copilot CLI no está instalado.")
             self._anadir(t, "Preguntando a Copilot…\n\n")
-            self._proceso(t, self._argumentos(t, self._prompt(t, fichero)), str(wt or t["_ctxdir"]), self._env())
-            if modo == "modificar" and wt and t["estado"] == "terminada":
+            self._proceso(t, self._argumentos(t, self._prompt(t, fichero)), str(wt or t["_ctxdir"]), self._env(), terminar=False)
+            if t["estado"] != "en curso":  # error o cancelada
+                if wt:
+                    self._quitar(t)
+                return
+            if modo == "modificar" and wt:
                 self._git(["add", "-A"], cwd=wt)
                 t["cambios"] = parsear_diff_git(self._git(["diff", "--cached", "--no-color", "-M"], cwd=wt))
             elif wt:
                 self._quitar(t)
+            t["estado"] = "terminada"  # ahora sí: con los cambios ya calculados
 
         return self._lanzar({"modo": modo, "contexto": contexto, "pregunta": pregunta}, trabajo)
 

@@ -158,7 +158,8 @@ class TestConGitHubSimulado(unittest.TestCase):
         self.assertNotIn("token", json.dumps(eq))
         self.assertIn("reglas", eq)
         # Lo propio se guarda como diferencia respecto a lo del equipo.
-        propia = json.load(open(os.path.join(self.dir, "config.json"), encoding="utf-8"))
+        with open(os.path.join(self.dir, "config.json"), encoding="utf-8") as f:
+            propia = json.load(f)
         self.assertNotIn("patronDP", propia.get("bbva", {}))
 
     def test_releases_y_dps(self):
