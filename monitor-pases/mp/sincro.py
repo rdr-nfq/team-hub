@@ -16,7 +16,7 @@ import urllib.parse
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 
-from .clasificar import buscar_dps, componentes, feature_de_rama
+from .clasificar import buscar_dps, clave_version, componentes, feature_de_rama, features_en, version_release
 from .config import escribir_json, leer_json
 from .ghe import Cliente, ErrorGHE, api_de_host
 
@@ -56,6 +56,7 @@ class Monitor:
         self.ramas = e.get("ramas", {})
         self.cache_compare = e.get("cacheCompare", {})
         self.cache_runs = e.get("cacheRuns", {})
+        self.dps_info = e.get("dpsInfo", {})  # "repo|DP" -> DP con sus ficheros, congelado al detectarlo
         self.manuales = e.get("dpsManuales", {})
         self.borradores = e.get("borradores", {})
         self.etags = e.get("etags", {})
@@ -66,13 +67,14 @@ class Monitor:
         self._cerrojo = threading.RLock()
         self._despertar = threading.Event()
         self._en_curso = False
+        self.despues_de_sincronizar = None  # p. ej. publicar los DPs nuevos en pases-datos
 
     # ── persistencia ────────────────────────────────────────────────────────
     def guardar(self):
         with self._cerrojo:
             escribir_json(self.ruta, {
                 "repos": self.repos, "ramas": self.ramas, "cacheCompare": self.cache_compare,
-                "cacheRuns": self.cache_runs, "dpsManuales": self.manuales, "borradores": self.borradores,
+                "cacheRuns": self.cache_runs, "dpsInfo": self.dps_info, "dpsManuales": self.manuales, "borradores": self.borradores,
                 "etags": self.etags, "sincro": self.sincro,
             })
 
@@ -138,6 +140,8 @@ class Monitor:
             with ThreadPoolExecutor(POOL_REPOS) as ex:
                 list(ex.map(un_repo, repos))
 
+            self._progreso(fase="Buscando DPs nuevos")
+            self._actualizar_dps(cli, cfg, nuevas_ramas)
             with self._cerrojo:
                 self.repos = nuevos_repos
                 self.ramas = nuevas_ramas
@@ -157,6 +161,11 @@ class Monitor:
         finally:
             self._en_curso = False
             self.guardar()
+        if self.despues_de_sincronizar:
+            try:
+                self.despues_de_sincronizar()
+            except Exception:
+                traceback.print_exc()
 
     def _descubrir(self, cli, b):
         vistos = {}
@@ -212,16 +221,20 @@ class Monitor:
 
         solo = b.get("soloRamasDeProyecto", True)
         patron = b.get("patronRama")
-        elegidas = [n for n in shas if n != base and (not solo or feature_de_rama(n, patron))]
+        p_rel = b.get("patronRelease")
+        elegidas = [n for n in shas if n != base and (not solo or feature_de_rama(n, patron) or version_release(n, p_rel))]
 
         # PRs recientes (una página): la más reciente por rama.
         pr_de = {}
+        pr_hacia = defaultdict(list)  # rama destino -> ramas que se han mezclado en ella por PR
         try:
             prs = cli.get("repos/%s/pulls" % full, {"state": "all", "per_page": 100, "sort": "updated", "direction": "desc"})[0]
         except ErrorGHE:
             prs = []
         for p in prs or []:
             ref = (p.get("head") or {}).get("ref")
+            if ref and p.get("merged_at"):
+                pr_hacia[(p.get("base") or {}).get("ref")].append(ref)
             if ref and ref not in pr_de:
                 estado = "mergeada" if p.get("merged_at") else ("abierta" if p.get("state") == "open" else "cerrada")
                 pr_de[ref] = {"numero": p.get("number"), "estado": estado, "url": p.get("html_url"),
@@ -261,8 +274,13 @@ class Monitor:
             }
 
         def una_rama(n):
-            return self._rama(cli, cfg, full, url_repo, n, shas[n], base, base_sha, pr_de.get(n),
-                              runs_de.get(n, []), usadas_compare, usadas_runs)
+            x = self._rama(cli, cfg, full, url_repo, n, shas[n], base, base_sha, pr_de.get(n),
+                           runs_de.get(n, []), usadas_compare, usadas_runs)
+            v = version_release(n, p_rel)
+            x["release"] = v
+            if v:  # una release es una subida: qué features lleva (ramas mezcladas y mensajes de commit)
+                x["features"] = features_en(pr_hacia.get(n, []) + [c.get("mensaje") for c in x["commits"]], patron)
+            return x
 
         with ThreadPoolExecutor(POOL_RAMAS) as ex:
             for x in ex.map(una_rama, elegidas):
@@ -379,6 +397,107 @@ class Monitor:
         except ErrorGHE as e:
             return {"dps": [], "fuente": "", "final": False, "error": str(e)}
 
+    # ── DPs ─────────────────────────────────────────────────────────────────
+    def _actualizar_dps(self, cli, cfg, ramas):
+        """Cada DP nuevo se guarda con lo que trae frente a producción en el
+        momento de detectarlo (después de mezclar la release ya no se vería)."""
+        b = cfg["bbva"]
+        releases = defaultdict(list)
+        for r in ramas.values():
+            if r.get("release"):
+                releases[r["repo"]].append(r)
+        nuevos, vistos = [], set()
+        for r in ramas.values():
+            for x in r.get("runs") or []:
+                for cod in x.get("dps") or []:
+                    k = "%s|%s" % (r["repo"], cod)
+                    if k not in self.dps_info and k not in vistos and x.get("sha"):
+                        vistos.add(k)
+                        nuevos.append((k, r, x, cod))
+
+        def calcular(t):
+            k, r, x, cod = t
+            info = {"cod": cod, "repo": r["repo"], "rama": r["rama"], "release": r.get("release") or "",
+                    "sha": x["sha"], "run": x.get("id"), "fecha": x.get("fecha"), "url": x.get("url"),
+                    "conclusion": x.get("conclusion"), "fuente": x.get("fuenteDP"), "flujo": x.get("nombre"),
+                    "detectado": _ahora(), "frente": r.get("base"), "frenteSha": r.get("baseSha"),
+                    "ficheros": [], "commits": [], "truncado": False}
+            try:
+                d = None
+                if r.get("baseSha"):
+                    d = cli.get("repos/%s/compare/%s...%s" % (r["repo"], r["baseSha"], x["sha"]), etag=False)[0]
+                if (not d or not d.get("ahead_by")) and r.get("release"):
+                    # Ya estaba en producción al detectarlo: frente a la release anterior.
+                    previas = sorted((o for o in releases[r["repo"]] if clave_version(o["release"]) < clave_version(r["release"])),
+                                     key=lambda o: clave_version(o["release"]))
+                    if previas:
+                        ant = previas[-1]
+                        d = cli.get("repos/%s/compare/%s...%s" % (r["repo"], ant["sha"], x["sha"]), etag=False)[0]
+                        info["frente"], info["frenteSha"] = ant["rama"], ant["sha"]
+                if d:
+                    info["ficheros"] = [{"ruta": f.get("filename"), "estado": f.get("status"), "mas": f.get("additions", 0),
+                                         "menos": f.get("deletions", 0), "antes": f.get("previous_filename")}
+                                        for f in d.get("files") or []]
+                    info["commits"] = [_commit_ligero(c) for c in d.get("commits") or []][-150:]
+                    info["truncado"] = len(info["ficheros"]) >= 300
+                info["yaEnProduccion"] = not info["ficheros"]
+            except ErrorGHE:
+                return None  # se reintenta en la próxima sincronización
+            return k, info
+
+        with ThreadPoolExecutor(POOL_RAMAS) as ex:
+            for res in ex.map(calcular, nuevos):
+                if res:
+                    with self._cerrojo:
+                        self.dps_info[res[0]] = res[1]
+        # Las features de una release pueden crecer mientras está abierta.
+        pat = b.get("patronRama")
+        with self._cerrojo:
+            for info in self.dps_info.values():
+                r = ramas.get("%s:%s" % (info["repo"], info["rama"]))
+                feats = []
+                if r is not None:
+                    feats = r.get("features") if r.get("release") else ([r["feature"]] if r.get("feature") else [])
+                if not feats:
+                    feats = features_en([c.get("mensaje") for c in info.get("commits") or []], pat)
+                info["features"] = feats or info.get("features") or []
+
+    def dps(self):
+        """Todos los DPs conocidos, con sus componentes según las reglas actuales."""
+        cfg = self.cfg.get()
+        reglas, subidas = cfg.get("reglas") or [], cfg.get("reposSubida") or {}
+        with self._cerrojo:
+            infos = [dict(v) for v in self.dps_info.values()]
+        out = []
+        for i in infos:
+            comps, _ = componentes(i.get("ficheros"), reglas, subidas.get(i["repo"], ""))
+            i["componentes"] = [{"nombre": c["nombre"], "tipo": c["tipo"], "subida": c["subida"], "borrado": c["borrado"],
+                                 "nFich": len(c["ficheros"])} for c in comps]
+            i["nFich"] = len(i.get("ficheros") or [])
+            i["mas"] = sum(f.get("mas") or 0 for f in i.get("ficheros") or [])
+            i["menos"] = sum(f.get("menos") or 0 for f in i.get("ficheros") or [])
+            i.pop("ficheros", None)
+            i.pop("commits", None)
+            out.append(i)
+        out.sort(key=lambda x: x.get("fecha") or "", reverse=True)
+        return out
+
+    def dp(self, repo, cod):
+        with self._cerrojo:
+            i = self.dps_info.get("%s|%s" % (repo, cod))
+            i = dict(i) if i else None
+        if not i:
+            return None
+        cfg = self.cfg.get()
+        comps, ign = componentes(i.get("ficheros"), cfg.get("reglas") or [], (cfg.get("reposSubida") or {}).get(repo, ""))
+        i["componentes"], i["ignorados"] = comps, ign
+        return i
+
+    def marcar_publicado(self, clave, info):
+        with self._cerrojo:
+            if clave in self.dps_info:
+                self.dps_info[clave]["publicado"] = info
+
     # ── vistas para la página ───────────────────────────────────────────────
     def dps_de_rama(self, r):
         out, vistos = [], set()
@@ -409,7 +528,7 @@ class Monitor:
             x["nComp"], x["nFich"] = len(comps), len(r.get("ficheros") or [])
             x["dps"] = self.dps_de_rama(r)
             ramas.append(x)
-            if r.get("esBase"):
+            if r.get("esBase") or r.get("release"):
                 continue
             f = r.get("feature") or ""
             p = proys.setdefault(f, {"feature": f, "nombre": alias.get(f, ""), "ramas": 0, "abiertas": 0, "repos": set(),

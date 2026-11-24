@@ -95,6 +95,33 @@ class Diffs:
         return dict(d, id=rid, repo=repo, rama=r["rama"], base=r.get("base"), baseSha=base_sha, sha=sha,
                     feature=r.get("feature"), url=r.get("comparar"))
 
+    def comparar(self, repo, base_sha, sha):
+        """Diferencias entre dos commits (con el contenido de cada cambio)."""
+        self._repo_conocido(repo)
+        if not (RE_SHA.match(base_sha or "") and RE_SHA.match(sha or "")):
+            raise ValueError("Referencias no válidas.")
+
+        def traer():
+            cli = cliente_bbva(self.cfg.get())
+            d = cli.get("repos/%s/compare/%s...%s" % (repo, base_sha, sha), etag=False)[0]
+            files = d.get("files") or []
+            return {"ahead": d.get("ahead_by", 0), "behind": d.get("behind_by", 0),
+                    "commits": [_commit_ligero(c) for c in d.get("commits") or []],
+                    "ficheros": _ficheros(files), "truncado": len(files) >= 300}
+
+        return dict(self._cache(("comparar", repo, base_sha, sha), traer), repo=repo, baseSha=base_sha, sha=sha)
+
+    def dp(self, repo, cod):
+        """Las modificaciones de un DP: lo que trae frente a producción (o a la
+        release anterior) en el commit del que se generó."""
+        info = self.mon.dp(repo, cod)
+        if not info:
+            raise KeyError("Ese DP no está entre los detectados.")
+        if not info.get("frenteSha"):
+            raise ValueError("No hay con qué comparar este DP.")
+        d = self.comparar(repo, info["frenteSha"], info["sha"])
+        return dict(d, cod=cod, frente=info.get("frente"), rama=info.get("rama"), release=info.get("release"))
+
     def fichero(self, repo, ref, ruta):
         self._repo_conocido(repo)
         if not RE_SHA.match(ref or ""):

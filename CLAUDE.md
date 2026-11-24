@@ -179,7 +179,7 @@ Todo el código Apps Script vive en **`apps-script/`** y es **un único proyecto
 
 ## 10. Monitor de pases (app de la VDI, se reparte como .exe)
 
-`monitor-pases/` es una app que se ejecuta **en la VDI de BBVA** (no en la web): lee los repositorios de GitHub BBVA (ramas, commits con sus diferencias, PRs, Actions y DPs) y genera el `.json` del pase, que se sube a un repositorio privado de NFQ. Detalles en `monitor-pases/README.md`.
+`monitor-pases/` es una app que se ejecuta **en la VDI de BBVA** (no en la web): navega los repositorios de GitHub BBVA como la web de GitHub (código, commits, diferencias, PRs), sigue los DPs de cada release (`release/x.y.z`), los publica en `rdr-nfq/pases-datos` (solo DPs, releases, features y componentes: nunca código), genera el `.json` del pase y tiene asistentes con Copilot CLI (consulta y modificación de features, con revisión antes del push). El inicio de sesión en GitHub BBVA y NFQ se pide a Git (Git Credential Manager). Detalles en `monitor-pases/README.md`.
 
 - Se reparte como **un único `MonitorPases.exe`** (PyInstaller): lo compila, prueba y publica `.github/workflows/monitor-pases.yml` en cada push a `main` que toque `monitor-pases/`, en la release `monitor-pases` (enlace fijo). Nada de `.bat` ni instalaciones.
 - Solo librería estándar de Python (3.8+); la interfaz (`web/`) lleva Preact + htm y las fuentes dentro: **nada se descarga de internet**.

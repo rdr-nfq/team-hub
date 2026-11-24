@@ -76,6 +76,16 @@ export const RUTAS = {
   plegado: "M9 6l6 6-6 6",
   desplegado: "M6 9l6 6 6-6",
   commit: "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 12h6M15 12h6",
+  rama: "M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9a9 9 0 0 1-9 9",
+  pr: "M6 3v12M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 3a3 3 0 1 0 0 6M18 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 15V8a2 2 0 0 0-2-2h-4M14 3l-3 3 3 3",
+  repo: "M5 4h11a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2zM5 18a2 2 0 0 1 2-2h11",
+  paquete: "M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 12l8-4.5M12 12v9M12 12L4 7.5",
+  chispa: "M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z",
+  enviar: "M5 12h14M13 6l6 6-6 6",
+  usuario: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0",
+  candado: "M6 11h12v10H6zM8 11V7a4 4 0 0 1 8 0v4",
+  historial: "M3 12a9 9 0 1 0 3-6.7M3 4v5h5M12 7v5l3 2",
+  carpetaAbierta: "M3 7h6l2 2h10l-2 10H3z",
 };
 export const Icono = ({ n, cls = "" }) => html`<svg class="icono ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d=${RUTAS[n]} /></svg>`;
 export const Marca = () => html`<svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#001391"/><circle cx="10" cy="10" r="3.5" fill="#85C8FF"/><circle cx="10" cy="22" r="3.5" fill="#85C8FF"/><circle cx="22" cy="16" r="3.5" fill="#88E783"/><path d="M10 13.5v5M12.8 11.8 19 14.6" stroke="#F7F8F8" stroke-width="2" fill="none"/></svg>`;
@@ -94,9 +104,75 @@ export function EstadoRun({ run, corto: c }) {
   </span>`;
 }
 
-export function ChipDP({ d }) {
+/* Navegación global: la pone App para que cualquier pieza (un chip de DP)
+   pueda llevar a otra pantalla. */
+let IR = () => {};
+export const ponerIr = (f) => { IR = f; };
+export const irA = (ruta) => IR(ruta);
+
+export function ChipDP({ d, repo }) {
   const titulo = d.fuente === "manual" ? "DP puesto a mano" : `DP ${FUENTE[d.fuente] || ""}${d.fecha ? " · " + fLarga(d.fecha) : ""}`;
-  return html`<span class="dp ${d.fuente === "manual" ? "dp-manual" : ""}" title=${titulo}>${d.cod}</span>`;
+  const cls = `dp ${d.fuente === "manual" ? "dp-manual" : ""}`;
+  if (!repo || d.fuente === "manual") return html`<span class=${cls} title=${titulo}>${d.cod}</span>`;
+  return html`<button class="${cls} dp-btn" title=${titulo + " · ver sus componentes y cambios"}
+    onClick=${(e) => { e.stopPropagation(); irA({ vista: "dp", repo, cod: d.cod }); }}>${d.cod}</button>`;
+}
+
+/* Markdown sencillo (PRs, comentarios, respuestas de Copilot) sin innerHTML:
+   párrafos, títulos, listas, citas, bloques de código, tablas, `código`,
+   **negrita**, *cursiva* y enlaces http(s). */
+function enLinea(t) {
+  const out = [];
+  const re = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*\s][^*]*\*|\[[^\]]+\]\(https?:[^)\s]+\))/g;
+  let i = 0, m;
+  while ((m = re.exec(t))) {
+    if (m.index > i) out.push(t.slice(i, m.index));
+    const x = m[0];
+    if (x[0] === "`") out.push(html`<code>${x.slice(1, -1)}</code>`);
+    else if (x.startsWith("**")) out.push(html`<b>${x.slice(2, -2)}</b>`);
+    else if (x[0] === "*") out.push(html`<i>${x.slice(1, -1)}</i>`);
+    else { const k = x.indexOf("]("); out.push(html`<a href=${x.slice(k + 2, -1)} target="_blank" rel="noopener noreferrer">${x.slice(1, k)}</a>`); }
+    i = m.index + x.length;
+  }
+  if (i < t.length) out.push(t.slice(i));
+  return out;
+}
+export function Markdown({ texto }) {
+  const lineas = String(texto || "").replace(/\r/g, "").split("\n");
+  const bloques = [];
+  for (let i = 0; i < lineas.length;) {
+    const l = lineas[i];
+    if (/^```/.test(l)) {
+      const cod = [];
+      for (i++; i < lineas.length && !/^```/.test(lineas[i]); i++) cod.push(lineas[i]);
+      i++;
+      bloques.push(html`<pre class="md-pre"><code>${cod.join("\n")}</code></pre>`);
+    } else if (/^#{1,6}\s/.test(l)) {
+      const n = l.match(/^#+/)[0].length;
+      bloques.push(html`<p class=${"md-h md-h" + Math.min(n, 3)}>${enLinea(l.replace(/^#+\s*/, ""))}</p>`); i++;
+    } else if (/^\s*([-*+]|\d+[.)])\s+/.test(l)) {
+      const ordenada = /^\s*\d/.test(l), items = [];
+      while (i < lineas.length && /^\s*([-*+]|\d+[.)])\s+/.test(lineas[i])) items.push(lineas[i++].replace(/^\s*([-*+]|\d+[.)])\s+/, ""));
+      bloques.push(ordenada ? html`<ol>${items.map((x) => html`<li>${enLinea(x)}</li>`)}</ol>` : html`<ul>${items.map((x) => html`<li>${enLinea(x)}</li>`)}</ul>`);
+    } else if (/^\|.*\|\s*$/.test(l)) {
+      const filas = [];
+      while (i < lineas.length && /^\|.*\|\s*$/.test(lineas[i])) filas.push(lineas[i++]);
+      const celdas = filas.filter((f) => !/^\|[\s:|-]+\|\s*$/.test(f)).map((f) => f.trim().slice(1, -1).split("|").map((c) => c.trim()));
+      bloques.push(html`<div class="md-tabla"><table>${celdas.map((c, k) => html`<tr>${c.map((x) => k === 0 ? html`<th>${enLinea(x)}</th>` : html`<td>${enLinea(x)}</td>`)}</tr>`)}</table></div>`);
+    } else if (/^>\s?/.test(l)) {
+      const cita = [];
+      while (i < lineas.length && /^>\s?/.test(lineas[i])) cita.push(lineas[i++].replace(/^>\s?/, ""));
+      bloques.push(html`<blockquote>${enLinea(cita.join(" "))}</blockquote>`);
+    } else if (!l.trim()) {
+      i++;
+    } else {
+      const par = [];
+      while (i < lineas.length && lineas[i].trim() && !/^(```|#{1,6}\s|\s*([-*+]|\d+[.)])\s|\||>)/.test(lineas[i])) par.push(lineas[i++]);
+      if (!par.length) par.push(lineas[i++]);
+      bloques.push(html`<p>${enLinea(par.join(" "))}</p>`);
+    }
+  }
+  return html`<div class="md">${bloques}</div>`;
 }
 
 export function Rama({ nombre }) {

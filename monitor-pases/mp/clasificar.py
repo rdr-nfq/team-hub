@@ -15,6 +15,29 @@ def feature_de_rama(rama, patron):
     return m.group(0).upper() if m else ""
 
 
+def version_release(rama, patron):
+    """«release/2.108.0» -> «2.108.0» ("" si la rama no es una release)."""
+    m = _re(patron).search(rama or "")
+    if not m:
+        return ""
+    return (m.groupdict().get("version") or m.group(0)).strip()
+
+
+def clave_version(v):
+    """Para ordenar versiones: «2.108.0» > «2.99.3»."""
+    return tuple(int(x) if x.isdigit() else 0 for x in re.split(r"[.\-]", v or ""))
+
+
+def features_en(textos, patron):
+    vistos = []
+    for t in textos:
+        for m in _re(patron).finditer(t or ""):
+            f = m.group(0).upper()
+            if f not in vistos:
+                vistos.append(f)
+    return vistos
+
+
 def buscar_dps(texto, patron):
     """Códigos DP en un texto, sin repetir y en orden de aparición."""
     vistos, out = set(), []

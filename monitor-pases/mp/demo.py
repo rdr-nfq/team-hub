@@ -180,6 +180,9 @@ def _sha(*partes):
 
 
 class Datos:
+    def _run(self, *a):
+        return _crear_run(self, *a)
+
     def __init__(self, semilla=7):
         rnd = random.Random(semilla)
         hoy = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
@@ -321,6 +324,35 @@ class Datos:
                             run["_jobs"].append(jid)
                         self.runs[rid] = run
                         runs.append(run)
+            # Releases: cada una es una subida y su Action genera el DP.
+            ramas_feat = [(n, b) for n, b in ramas.items() if n.startswith("feature/") and b["commits"]]
+            if fuente and ramas_feat:
+                ramas["release/2.107.0"] = {"sha": master_sha, "commits": [], "files": [], "behind": 0}  # ya en producción
+                runs.append(self._run(full, "release/2.107.0", master_sha, "Release 2.107.0", fuente, cuando(12), rnd, dp_n, run_id, job_id))
+                vers, rcommits, rfiles, padre = dict(base_vers), [], {}, master_sha
+                for i, (n, b) in enumerate(ramas_feat):
+                    sha_m = _sha(full, "release-2.108.0", i)
+                    vers.update(self.versiones.get((full, b["sha"])) or {})
+                    rcommits.append({"sha": sha_m, "fecha": cuando(max(0, 3 - i), 2), "autor": rnd.choice(AUTORES),
+                                     "mensaje": "Merge pull request #%d from %s/%s" % (pr_n[0], ORG, n), "files": b["files"], "padre": padre})
+                    prs.append({"number": pr_n[0], "title": "%s a la release 2.108.0" % n.split("/")[-1][:11], "state": "closed",
+                                "merged_at": cuando(max(0, 3 - i), 2), "draft": False, "html_url": "https://demo.invalid/%s/pull/%d" % (full, pr_n[0]),
+                                "head": {"ref": n}, "base": {"ref": "release/2.108.0"}, "updated_at": cuando(max(0, 3 - i), 2)})
+                    pr_n[0] += 1
+                    padre = sha_m
+                    self.versiones[(full, sha_m)] = dict(vers)
+                    for f in b["files"]:
+                        rfiles[f["filename"]] = f
+                ramas["release/2.108.0"] = {"sha": padre, "commits": rcommits, "files": list(rfiles.values()), "behind": 0}
+                prs.append({"number": pr_n[0], "title": "Release 2.108.0", "state": "open", "merged_at": None, "draft": False,
+                            "html_url": "https://demo.invalid/%s/pull/%d" % (full, pr_n[0]), "head": {"ref": "release/2.108.0"},
+                            "base": {"ref": "master"}, "updated_at": cuando(0, 3)})
+                pr_n[0] += 1
+                runs.append(self._run(full, "release/2.108.0", padre, "Release 2.108.0", fuente, cuando(0, 4), rnd, dp_n, run_id, job_id))
+            for k, pr in enumerate(prs):  # lo que falta para ver los PRs como en GitHub
+                pr.setdefault("user", {"login": AUTORES[(pr["number"] + k) % len(AUTORES)]})
+                pr.setdefault("created_at", pr["updated_at"])
+                pr.setdefault("body", "Cambios de %s.\n\n- Revisado en local\n- Pruebas unitarias en verde" % pr["head"]["ref"])
             # una rama sin proyecto
             hot = _editar(cfgv, "config/entornos.yml", rnd)
             fh = [_fichero_api("config/entornos.yml", cfgv, hot)]
@@ -330,6 +362,32 @@ class Datos:
             self.versiones[(full, _sha(full, "hotfix"))] = dict(base_vers, **{"config/entornos.yml": hot})
             self.repos[full] = {"nombre": repo, "full": full, "ramas": ramas, "prs": prs, "runs": runs,
                                 "base_commits": base_commits, "pushed_at": cuando(rnd.randint(0, 5))}
+
+
+def _crear_run(datos, full, rama, sha, titulo, fuente, fecha, rnd, dp_n, run_id, job_id):
+    run_id[0] += 1
+    dp_n[0] += rnd.randint(3, 40)
+    dp, rid = "DP-KYTL-%d" % dp_n[0], run_id[0]
+    run = {"id": rid, "name": "Release y DP", "display_title": titulo, "head_branch": rama, "head_sha": sha, "status": "completed",
+           "conclusion": "success", "run_attempt": 1, "event": "push", "path": ".github/workflows/release-dp.yml", "created_at": fecha,
+           "html_url": "https://demo.invalid/%s/actions/runs/%d" % (full, rid), "_repo": full, "_jobs": []}
+    for jn in ("compilar", "empaquetar"):
+        job_id[0] += 1
+        salida = {"title": None, "summary": None, "text": None, "annotations_count": 0}
+        anns, log = [], "##[group]Run %s\n" % jn
+        if jn == "empaquetar":
+            if fuente == "resumen":
+                salida.update(title="Paquete generado", summary="| DP | Estado |\n|---|---|\n| %s | OK |" % dp)
+            elif fuente == "anotacion":
+                anns, salida["annotations_count"] = [{"title": "DP", "message": "DP generado: %s" % dp}], 1
+            else:
+                log += "Identificador: %s\n" % dp
+        datos.jobs[job_id[0]] = {"id": job_id[0], "run_id": rid, "name": jn, "status": "completed", "conclusion": "success",
+                                 "steps": [{"name": "Checkout"}, {"name": jn.capitalize()}], "_repo": full, "_salida": salida,
+                                 "_anns": anns, "_log": log}
+        run["_jobs"].append(job_id[0])
+    datos.runs[rid] = run
+    return run
 
 
 def _commit_json(full, c):
@@ -444,15 +502,75 @@ class _H(BaseHTTPRequestHandler):
             trozo, extra = self._paginar(lista, q, p)
             return self._json(200, trozo, extra)
         if resto == "/pulls":
-            return self._json(200, r["prs"])
+            est = q.get("state", "open")
+            ps = [x for x in r["prs"] if est == "all" or x["state"] == est]
+            return self._json(200, sorted(ps, key=lambda x: x["updated_at"], reverse=True))
+        m = re.match(r"^/(?:pulls|issues)/(\d+)(/files|/commits|/reviews|/comments)?$", resto)
+        if m:
+            pr = next((x for x in r["prs"] if x["number"] == int(m.group(1))), None)
+            if not pr:
+                return self._json(404, {"message": "Not Found"})
+            cab = r["ramas"].get(pr["head"]["ref"]) or {"sha": "0" * 40, "commits": [], "files": []}
+            sub_ = m.group(2)
+            if sub_ is None:
+                j = dict(pr, head=dict(pr["head"], sha=cab["sha"]), base=dict(pr["base"], sha=r["ramas"]["master"]["sha"]),
+                         additions=sum(f["additions"] for f in cab["files"]), deletions=sum(f["deletions"] for f in cab["files"]),
+                         changed_files=len(cab["files"]), commits=len(cab["commits"]),
+                         merged_by={"login": "ana-ruiz"} if pr.get("merged_at") else None)
+                return self._json(200, j)
+            if sub_ == "/files":
+                trozo, extra = self._paginar(cab["files"], q, p)
+                return self._json(200, trozo, extra)
+            if sub_ == "/commits":
+                return self._json(200, [_commit_json(full, c) for c in cab["commits"]])
+            if sub_ == "/reviews":
+                return self._json(200, [{"user": {"login": "lgarrido"}, "state": "APPROVED", "body": "Revisado, adelante.",
+                                         "submitted_at": pr["updated_at"]}] if pr["number"] % 2 else [])
+            if "/issues/" in p:
+                return self._json(200, [{"user": {"login": "pnavarro"}, "created_at": pr["created_at"],
+                                         "body": "¿Esto entra en el pase del sábado?"},
+                                        {"user": pr["user"], "created_at": pr["updated_at"], "body": "Sí, con el DP de la release."}])
+            f0 = (cab["files"] or [{}])[0]
+            return self._json(200, [{"user": {"login": "jmartin"}, "created_at": pr["updated_at"], "path": f0.get("filename"), "line": 12,
+                                     "body": "Ojo con este cambio: revisa el redondeo.",
+                                     "diff_hunk": "\n".join((f0.get("patch") or "").split("\n")[:5])}] if f0 else [])
+        if resto == "/tags":
+            return self._json(200, [{"name": "v2.107.0", "commit": {"sha": r["ramas"]["master"]["sha"]}}])
+        m = re.match(r"^/git/trees/([0-9a-f]+)$", resto)
+        if m:
+            v = d.versiones.get((full, m.group(1))) or {}
+            dirs, arbol = set(), []
+            for ruta, lineas in sorted(v.items()):
+                partes = ruta.split("/")
+                for i in range(1, len(partes)):
+                    dirs.add("/".join(partes[:i]))
+                arbol.append({"path": ruta, "type": "blob", "size": len("\n".join(lineas)) + 1})
+            arbol += [{"path": x, "type": "tree"} for x in sorted(dirs)]
+            return self._json(200, {"sha": m.group(1), "tree": arbol, "truncated": False})
+        if resto.startswith("/commits/") and "vnd.github.sha" in (self.headers.get("Accept") or ""):
+            ref = urllib.parse.unquote(resto[len("/commits/"):])
+            sha = (r["ramas"].get(ref) or {}).get("sha") or ({"v2.107.0": r["ramas"]["master"]["sha"]}.get(ref)) or ref
+            texto = sha.encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Length", str(len(texto)))
+            self.end_headers()
+            self.wfile.write(texto)
+            return
         if resto == "/actions/runs":
             lista = [{k: v for k, v in x.items() if not k.startswith("_")} for x in r["runs"]]
             lista.sort(key=lambda x: x["created_at"], reverse=True)
             trozo, extra = self._paginar(lista, q, p)
             return self._json(200, {"total_count": len(lista), "workflow_runs": trozo}, extra)
         if resto == "/commits":
-            cs = r["base_commits"] if q.get("sha") == "master" else []
-            return self._json(200, [_commit_json(full, c) for c in reversed(cs)])
+            ref = q.get("sha", "master")
+            rama = r["ramas"].get(ref)
+            cs = r["base_commits"] + ([] if ref == "master" or not rama else rama["commits"])
+            if q.get("path"):
+                cs = [c for c in cs if any(f["filename"] == q["path"] for f in c.get("files") or [])]
+            cs = sorted(cs, key=lambda c: c["fecha"], reverse=True)
+            pp, pg = int(q.get("per_page", 30)), int(q.get("page", 1))
+            return self._json(200, [_commit_json(full, c) for c in cs[(pg - 1) * pp: pg * pp]])
         m = re.match(r"^/commits/([0-9a-f]+)$", resto)
         if m:
             for b in r["ramas"].values():
@@ -543,9 +661,9 @@ REGLAS_DEMO = [
 
 def config_demo(puerto_ghe):
     return {
-        "bbva": {"host": "demo.invalid", "api": "http://127.0.0.1:%d" % puerto_ghe, "token": TOKEN,
+        "bbva": {"host": "demo.invalid", "api": "http://127.0.0.1:%d" % puerto_ghe, "token": "",
                  "organizaciones": [ORG], "refrescoMin": 60, "proxy": "", "ca": ""},
-        "nfq": {"host": "github.com", "repo": "", "token": ""},
+        "nfq": {"host": "github.com", "repo": "rdr-nfq/pases-datos", "token": "", "publicarDPs": False},
         "proyectos": {k: v for k, (_, v) in PROYECTOS.items() if v},
         "reglas": REGLAS_DEMO,
     }

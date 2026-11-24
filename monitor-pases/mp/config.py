@@ -35,7 +35,9 @@ POR_DEFECTO = {
         "soloRamasDeProyecto": True,
         "baseProduccion": "master",
         "basesRepo": {},
+        "patronRelease": r"^release/v?(?P<version>\d+(?:\.\d+)+)",
         "patronDP": r"DP-KYTL-[A-Z0-9_-]+",
+        "usuario": "",
         "workflowsDP": [],
         "leerLogs": True,
         "refrescoMin": 10,
@@ -44,8 +46,9 @@ POR_DEFECTO = {
         "ca": "",
         "transporte": "python",
     },
-    "nfq": {"host": "github.com", "api": "", "repo": "", "rama": "main", "carpeta": "pases", "token": "", "proxy": "", "ca": "",
-            "transporte": "python"},
+    "nfq": {"host": "github.com", "api": "", "repo": "rdr-nfq/pases-datos", "rama": "main", "carpeta": "pases", "token": "",
+            "proxy": "", "ca": "", "transporte": "python", "usuario": "", "publicarDPs": True},
+    "copilot": {"entrada": "", "modelo": "", "opciones": "", "permitirComandos": False, "urlRepo": "https://{host}/{repo}.git"},
     "proyectos": {},
     "reglas": REGLAS_POR_DEFECTO,
     "reposSubida": {},
@@ -106,9 +109,9 @@ def recurso(nombre):
 # Lo que se comparte con el equipo (config-equipo.json): todo menos tokens,
 # proxy, certificados y transporte, que son de cada equipo.
 CAMPOS_EQUIPO = {
-    "bbva": ("host", "organizaciones", "repos", "excluirRepos", "patronRama", "soloRamasDeProyecto", "baseProduccion",
-             "basesRepo", "patronDP", "workflowsDP", "leerLogs", "refrescoMin", "diasActividad"),
-    "nfq": ("host", "repo", "rama", "carpeta"),
+    "bbva": ("host", "organizaciones", "repos", "excluirRepos", "patronRama", "patronRelease", "soloRamasDeProyecto",
+             "baseProduccion", "basesRepo", "patronDP", "workflowsDP", "leerLogs", "refrescoMin", "diasActividad"),
+    "nfq": ("host", "repo", "rama", "carpeta", "publicarDPs"),
 }
 
 
@@ -136,14 +139,23 @@ class Config:
         self.base = _mezclar(POR_DEFECTO, self.equipo)
         self.propia = leer_json(self.ruta, {}) or {}
         self.datos = _mezclar(self.base, self.propia)
+        self.sesiones = None  # lo pone la app (mp.sesion.Sesiones)
 
     def get(self):
+        """La config para trabajar: con el token de la sesión iniciada, si la hay."""
         with self._cerrojo:
-            return copy.deepcopy(self.datos)
+            d = copy.deepcopy(self.datos)
+        if self.sesiones:
+            for q in ("bbva", "nfq"):
+                t = self.sesiones.token(q)
+                if t:
+                    d[q]["token"] = t
+        return d
 
     def publica(self):
         """La config sin tokens: lo que ve la página."""
-        d = self.get()
+        with self._cerrojo:
+            d = copy.deepcopy(self.datos)
         for seccion, clave in SECRETOS:
             t = d[seccion].get(clave) or ""
             d[seccion][clave] = ""

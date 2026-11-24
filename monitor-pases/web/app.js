@@ -1,9 +1,13 @@
 // Monitor de pases · interfaz. Preact + htm vendorizados: nada se descarga de internet.
 import { html, render, useState, useEffect, useRef, useCallback } from "./vendor/preact-htm.mjs";
 import {
-  ChipDP, ESTADO_PR, EstadoRun, FUENTE, Icono, Marca, Rama, api, clonar, colorDe, corto, fCorta, fLarga, hace, leerLS, plural, ponerColores, ponerLS, proximoSabado, uniq,
+  ChipDP, ESTADO_PR, EstadoRun, FUENTE, Icono, Marca, Rama, api, clonar, colorDe, corto, fCorta, fLarga, hace, leerLS, plural, ponerColores, ponerIr, ponerLS, proximoSabado, uniq,
 } from "./comun.js";
 import { VistaCommits, VistaCommit, VistaDiffRama } from "./diffs.js";
+import { PantallaEntrada, FilaSesion } from "./entrada.js";
+import { VistaDPs, VistaDP } from "./dps.js";
+import { VistaRepos, VistaRepo, VistaPR } from "./repos.js";
+import { VistaCopilot } from "./copilot.js";
 
 /* ── Cabecera ── */
 function EstadoSincro({ s, cuota }) {
@@ -21,10 +25,12 @@ function EstadoSincro({ s, cuota }) {
   </span>`;
 }
 
-const VISTAS = ["ramas", "actividad", "commits", "pase", "ajustes"];
+const VISTAS = ["ramas", "actividad", "commits", "dps", "repos", "copilot", "pase", "ajustes"];
 
 function Cabecera({ estado, vista, setVista, onSync, tema, cambiarTema }) {
-  const vistas = [["ramas", "Ramas"], ["actividad", "Actividad"], ["commits", "Commits"], ["pase", "Pase"], ["ajustes", "Ajustes"]];
+  const vistas = [["ramas", "Ramas"], ["actividad", "Actividad"], ["commits", "Commits"], ["dps", "DPs"], ["repos", "Repos"],
+    ["copilot", "Copilot"], ["pase", "Pase"], ["ajustes", "Ajustes"]];
+  const ses = estado?.sesion || {};
   const enCurso = estado?.sincro?.enCurso;
   return html`<header class="cab">
     <div class="marca"><${Marca} /> Monitor de pases ${estado?.demo ? html`<small>Demo</small>` : html`<small>BBVA × NFQ</small>`}</div>
@@ -33,6 +39,8 @@ function Cabecera({ estado, vista, setVista, onSync, tema, cambiarTema }) {
     </nav>
     <div class="cab-der">
       <span aria-live="polite"><${EstadoSincro} s=${estado?.sincro} cuota=${estado?.cuota} /></span>
+      <button class="chip-sesion" onClick=${() => setVista("ajustes")} title="Sesiones de GitHub">
+        <${Icono} n="usuario" /> <span>${ses.bbva?.usuario || "sin BBVA"}${ses.nfq?.estado === "iniciada" ? "" : " · sin NFQ"}</span></button>
       <button class="btn btn-s" onClick=${onSync} disabled=${!estado?.configurado || enCurso}><${Icono} n="actualizar" cls=${enCurso ? "gira" : ""} /> Actualizar</button>
       <button class="btn btn-t btn-s" onClick=${cambiarTema} aria-label=${tema === "dark" ? "Pasar a tema claro" : "Pasar a tema oscuro"} title="Cambiar tema"><${Icono} n=${tema === "dark" ? "sol" : "luna"} /></button>
     </div>
@@ -53,7 +61,7 @@ function Avisos({ estado, setVista }) {
 /* ── Lateral y filtros ── */
 function filtrar(ramas, f) {
   const q = f.q.trim().toLowerCase();
-  return ramas.filter((r) => !r.esBase && (f.proyecto === null || (r.feature || "") === f.proyecto) && (!f.repo || r.repo === f.repo) &&
+  return ramas.filter((r) => !r.esBase && (f.proyecto === null || (r.release ? (r.features || []).includes(f.proyecto) : (r.feature || "") === f.proyecto)) && (!f.repo || r.repo === f.repo) &&
     (!f.ocultarMergeadas || !r.mergeada) && (!f.soloDP || r.dps.length) &&
     (!q || [r.repo, r.rama, r.cabeza?.autor, r.cabeza?.mensaje, ...r.dps.map((d) => d.cod), ...(r.commits || []).map((c) => c.autor)].join(" ").toLowerCase().includes(q)));
 }
@@ -110,13 +118,14 @@ function FilaRama({ r, abierta, setAbierta, ir }) {
   return html`<tr class="fila ${abierta === r.id ? "abierta" : ""} ${r.mergeada ? "merg" : ""}" onClick=${abrir}>
     <td class="c-repo">${corto(r.repo)}</td>
     <td class="c-rama"><button onClick=${(e) => { e.stopPropagation(); abrir(); }} aria-label=${`Ver ${r.rama} en ${corto(r.repo)}`}><${Rama} nombre=${r.rama} /></button>
+      ${r.release && r.features?.length ? html`<div class="pr">${r.features.map((f) => html`<span class="chip chip-acento" key=${f} style=${{ background: colorDe(f) }}>${f}</span>`)}</div>` : ""}
       ${r.pr ? html`<div class="pr"><a class="chip chip-pr" href=${r.pr.url} target="_blank" rel="noopener noreferrer" onClick=${(e) => e.stopPropagation()} title=${r.pr.titulo}>PR #${r.pr.numero} ${ESTADO_PR[r.pr.estado] || r.pr.estado}${r.pr.borrador ? " · borrador" : ""}</a></div>` : ""}</td>
     <td class="c-commit">${r.cabeza ? html`<button class="lnk msg" title=${"Ver el commit: " + r.cabeza.mensaje} onClick=${(e) => { e.stopPropagation(); ir({ vista: "commit", repo: r.repo, sha: r.cabeza.sha }); }}>${r.cabeza.mensaje}</button><span class="meta">${r.cabeza.autor} · ${hace(r.cabeza.fecha)}</span>` : html`<span class="tenue">—</span>`}</td>
     <td class="c-prod">${r.mergeada ? html`<span class="chip chip-merg">Ya en ${r.base}</span>` : r.ahead == null ? html`<span class="tenue">—</span>` :
       html`<span class="adel num" title=${`${plural(r.ahead, "commit", "commits")} que no están en ${r.base}`}>${plural(r.ahead, "commit", "commits")}</span>${r.behind ? html`<br /><span class="detras num" title=${`${r.base} tiene ${r.behind} commits que esta rama no tiene`}>${r.behind} por detrás</span>` : ""}`}</td>
     <td class="c-ci"><div class="ci">
       ${run ? html`<${EstadoRun} run=${run} corto />` : ""}
-      ${r.dps.length ? html`<${ChipDP} d=${r.dps[0]} />` : run ? html`<span class="tenue">Sin DP</span>` : html`<span class="tenue">Sin ejecuciones</span>`}
+      ${r.dps.length ? html`<${ChipDP} d=${r.dps[0]} repo=${r.repo} />` : run ? html`<span class="tenue">Sin DP</span>` : html`<span class="tenue">Sin ejecuciones</span>`}
       ${r.dps.length > 1 ? html`<span class="tenue" title=${r.dps.slice(1).map((d) => d.cod).join(", ")}>+${r.dps.length - 1}</span>` : ""}
     </div></td>
     <td class="c-n">${r.nComp}</td>
@@ -128,16 +137,20 @@ function VistaRamas({ estado, filtros, setFiltros, abierta, setAbierta, preparar
   const visibles = filtrar(estado.ramas, filtros);
   const grupos = estado.proyectos.map((p) => ({ p, ramas: visibles.filter((r) => (r.feature || "") === p.feature) })).filter((g) => g.ramas.length);
   grupos.forEach((g) => g.ramas.sort((a, b) => (b.cabeza?.fecha || "").localeCompare(a.cabeza?.fecha || "")));
+  const releases = visibles.filter((r) => r.release).sort((a, b) => b.release.localeCompare(a.release, "es", { numeric: true }) || a.repo.localeCompare(b.repo));
+  if (releases.length) grupos.unshift({ p: { feature: "__releases", nombre: "" }, ramas: releases, releases: true });
   return html`<div class="contenido">
     <div class="titulo-vista"><h1>Ramas</h1><p>${plural(visibles.length, "rama", "ramas")} en ${plural(grupos.length, "proyecto", "proyectos")}</p></div>
     <${BarraFiltros} filtros=${filtros} setFiltros=${setFiltros} />
     ${!grupos.length ? html`<div class="vacio-mini">${estado.sincro?.estado === "nunca" ? "Todavía no se ha sincronizado. Pulsa Actualizar." : "Ninguna rama con estos filtros."}</div>` : ""}
-    ${grupos.map(({ p, ramas }) => html`<section class="grupo" key=${p.feature} aria-labelledby=${"g-" + (p.feature || "sin")}>
+    ${grupos.map(({ p, ramas, releases: esRel }) => html`<section class="grupo" key=${p.feature} aria-labelledby=${"g-" + (p.feature || "sin")}>
       <div class="grupo-cab">
-        <span class="barra" style=${{ background: colorDe(p.feature) }} />
-        <h2 id=${"g-" + (p.feature || "sin")}>${p.feature ? html`<span class="mono">${p.feature}</span> ${p.nombre || html`<span class="tenue">Sin nombre</span>`}` : "Sin proyecto"}</h2>
+        <span class="barra" style=${{ background: esRel ? "var(--electric)" : colorDe(p.feature) }} />
+        <h2 id=${"g-" + (p.feature || "sin")}>${esRel ? html`Releases <span class="tenue" style="font-weight:400">cada una es una subida</span>`
+          : p.feature ? html`<span class="mono">${p.feature}</span> ${p.nombre || html`<span class="tenue">Sin nombre</span>`}` : "Sin proyecto"}</h2>
         <span class="resumen">${plural(ramas.length, "rama", "ramas")} · ${plural(uniq(ramas.map((r) => r.repo)).length, "repo", "repos")}</span>
-        ${p.feature && html`<div class="acc"><button class="btn btn-s" onClick=${() => preparar([p.feature])}>Preparar pase</button></div>`}
+        ${p.feature && !esRel && html`<div class="acc"><button class="btn btn-s" onClick=${() => preparar([p.feature])}>Preparar pase</button></div>`}
+        ${esRel && html`<div class="acc"><button class="btn btn-s" onClick=${() => ir({ vista: "dps" })}><${Icono} n="paquete" /> Ver los DPs</button></div>`}
       </div>
       <div style="overflow-x:auto"><table class="tabla">
         <thead><tr><th scope="col">Repo</th><th scope="col">Rama y PR</th><th scope="col">Último commit</th><th scope="col" class="c-prod">Fuera de producción</th><th scope="col">Action y DP</th><th scope="col" class="c-n" title="Componentes">Comp.</th></tr></thead>
@@ -182,6 +195,9 @@ function Detalle({ id, onCerrar, aviso, recargar, ir }) {
         ${d && html`<div class="repo">${d.repo}${d.feature ? html` · <span class="chip chip-acento" style=${{ background: colorDe(d.feature) }}>${d.feature}</span>` : ""}</div>`}
         ${d && html`<div class="enlaces">
           ${!d.esBase && d.baseSha && !d.mergeada && html`<button class="btn btn-s btn-pri" onClick=${() => ir({ vista: "diff", id })}>Ver las diferencias con ${d.base}</button>`}
+          <button class="btn btn-s" onClick=${() => ir({ vista: "repo", repo: d.repo, sub: "codigo", ref: d.rama })}><${Icono} n="repo" /> Código</button>
+          <button class="btn btn-s" onClick=${() => ir({ vista: "copilot", contexto: { tipo: "rama", id }, modo: "consultar" })}><${Icono} n="chispa" /> Preguntar a Copilot</button>
+          ${!d.esBase && html`<button class="btn btn-s" onClick=${() => ir({ vista: "copilot", contexto: { tipo: "rama", id }, modo: "modificar" })}><${Icono} n="chispa" /> Modificar con Copilot</button>`}
           <a class="btn btn-s" href=${d.url} target="_blank" rel="noopener noreferrer"><${Icono} n="externo" /> GitHub</a>
           ${d.pr && html`<a class="btn btn-s" href=${d.pr.url} target="_blank" rel="noopener noreferrer"><${Icono} n="externo" /> PR #${d.pr.numero}</a>`}
         </div>`}
@@ -201,7 +217,7 @@ function Detalle({ id, onCerrar, aviso, recargar, ir }) {
           <section class="seccion" aria-labelledby="s-dps">
             <h3 id="s-dps">DPs</h3>
             ${d.dps.length ? html`<ul class="lista">${d.dps.map((x) => html`<li key=${x.cod}>
-              <span class="l1"><${ChipDP} d=${x} />
+              <span class="l1"><${ChipDP} d=${x} repo=${d.repo} />
                 <button class="btn btn-t btn-s" onClick=${() => copiar(x.cod)} aria-label=${"Copiar " + x.cod}><${Icono} n="copiar" /></button>
                 ${x.fuente === "manual" && html`<button class="btn btn-t btn-s" onClick=${() => guardarDPs(d.manuales.filter((c) => c !== x.cod))}>Quitar</button>`}
               </span>
@@ -548,7 +564,10 @@ function VistaAjustes({ estado, aviso, recargar }) {
       aviso("Copiado. Pásalo para guardarlo en monitor-pases/config-equipo.json del repositorio.");
     } catch (e) { aviso("No se pudo copiar: " + e.message, "mal"); }
   };
-  const b = cfg.bbva, n = cfg.nfq;
+  const sesion = async (accion, quien) => {
+    try { await api("sesion/" + accion, { quien }); setTimeout(recargar, 300); setTimeout(recargar, 2500); } catch (e) { aviso(e.message, "mal"); }
+  };
+  const b = cfg.bbva, n = cfg.nfq, cp = cfg.copilot || {};
   const regla = (i, k, v) => set(["reglas", i, k], v);
   const mover = (i, d) => setCfg((c) => { const x = clonar(c); const [r] = x.reglas.splice(i, 1); x.reglas.splice(i + d, 0, r); return x; });
   const features = uniq([...estado.proyectos.map((p) => p.feature).filter(Boolean), ...Object.keys(cfg.proyectos || {})]).sort();
@@ -558,12 +577,23 @@ function VistaAjustes({ estado, aviso, recargar }) {
   return html`<div class="contenido"><div class="ajustes" key=${version}>
     <div class="titulo-vista"><h1>Ajustes</h1><p>Se guardan en <span class="mono">${estado.carpeta}</span>, fuera del repositorio.</p></div>
 
+    <section class="caja" aria-labelledby="aj-ses">
+      <h2 id="aj-ses">Sesiones</h2>
+      <p>Se piden a Git (Git Credential Manager): la misma sesión con la que haces git pull. Si tienes varias cuentas en un mismo GitHub, indica el usuario.</p>
+      <${FilaSesion} quien="bbva" s=${estado.sesion?.bbva} host=${b.host} onIniciar=${() => sesion("iniciar", "bbva")} onCerrar=${() => sesion("cerrar", "bbva")} />
+      <${FilaSesion} quien="nfq" s=${estado.sesion?.nfq} host=${n.host || "github.com"} onIniciar=${() => sesion("iniciar", "nfq")} onCerrar=${() => sesion("cerrar", "nfq")} />
+      <div class="rejilla" style="margin-top:12px">
+        <label class="campo"><span>Usuario de GitHub BBVA (opcional)</span><input class="inp mono" value=${b.usuario || ""} onInput=${(e) => set(["bbva", "usuario"], e.target.value)} /></label>
+        <label class="campo"><span>Usuario de GitHub NFQ (opcional)</span><input class="inp mono" value=${n.usuario || ""} onInput=${(e) => set(["nfq", "usuario"], e.target.value)} /></label>
+      </div>
+    </section>
+
     <section class="caja" aria-labelledby="aj-bbva">
       <h2 id="aj-bbva">Conexión con GitHub BBVA</h2>
       <p>Token personal de solo lectura (contenido, metadatos, pull requests, Actions y checks). No sale de esta VDI.</p>
       <div class="rejilla">
         <label class="campo"><span>Servidor</span><input class="inp mono" value=${b.host} onInput=${(e) => set(["bbva", "host"], e.target.value)} placeholder="bbva.ghe.com" /></label>
-        <label class="campo"><span>Token</span><input class="inp mono" type="password" autocomplete="off" value=${b.token} onInput=${(e) => set(["bbva", "token"], e.target.value)} placeholder=${tokenPh(b)} />
+        <label class="campo"><span>Token (solo si no puedes iniciar sesión con Git)</span><input class="inp mono" type="password" autocomplete="off" value=${b.token} onInput=${(e) => set(["bbva", "token"], e.target.value)} placeholder=${tokenPh(b)} />
           ${b.tokenConfigurado && (b.borrarToken ? html`<small>Se quitará al guardar.</small>` : html`<small><button class="btn btn-t btn-s" style="padding:0;height:auto" onClick=${() => set(["bbva", "borrarToken"], true)}>Quitar el token guardado</button></small>`)}</label>
         <label class="campo"><span>Organizaciones o usuarios</span><${CampoLista} multilinea valor=${b.organizaciones} onCambio=${(v) => set(["bbva", "organizaciones"], v)} /><small>Uno por línea. Se leen todos sus repositorios.</small></label>
         <label class="campo"><span>Repositorios sueltos</span><${CampoLista} multilinea valor=${b.repos} onCambio=${(v) => set(["bbva", "repos"], v)} /><small>organización/repositorio, uno por línea.</small></label>
@@ -586,6 +616,7 @@ function VistaAjustes({ estado, aviso, recargar }) {
       <div class="rejilla">
         <label class="campo"><span>Código de proyecto en la rama (expresión regular)</span><input class="inp mono" value=${b.patronRama} onInput=${(e) => set(["bbva", "patronRama"], e.target.value)} /><small>feature/CIBRDR-1234-algo → CIBRDR-1234</small></label>
         <label class="campo"><span>Rama de producción</span><input class="inp mono" value=${b.baseProduccion} onInput=${(e) => set(["bbva", "baseProduccion"], e.target.value)} /><small>Si un repo no la tiene: main y luego su rama por defecto.</small></label>
+        <label class="campo"><span>Ramas de release (expresión regular)</span><input class="inp mono" value=${b.patronRelease} onInput=${(e) => set(["bbva", "patronRelease"], e.target.value)} /><small>release/2.108.0 → versión 2.108.0. Cada release es una subida.</small></label>
         <label class="campo"><span>Código de DP (expresión regular)</span><input class="inp mono" value=${b.patronDP} onInput=${(e) => set(["bbva", "patronDP"], e.target.value)} /></label>
         <label class="campo"><span>Workflows que generan DPs</span><${CampoLista} valor=${b.workflowsDP} onCambio=${(v) => set(["bbva", "workflowsDP"], v)} placeholder="Vacío = todos" /><small>Parte del nombre o del fichero .yml, separados por comas.</small></label>
         <label class="campo"><span>Refrescar cada (minutos)</span><input class="inp" type="number" min="2" value=${b.refrescoMin} onInput=${(e) => set(["bbva", "refrescoMin"], Number(e.target.value) || 10)} /></label>
@@ -635,6 +666,19 @@ function VistaAjustes({ estado, aviso, recargar }) {
         <datalist id="dl-sub-aj">${(estado.subidas || []).map((s) => html`<option value=${s} />`)}</datalist></details>` : ""}
     </section>
 
+    <section class="caja" aria-labelledby="aj-cop">
+      <h2 id="aj-cop">Copilot CLI</h2>
+      <p>Lo usan los asistentes de la pestaña Copilot. Se instala y se inicia sesión desde esa pestaña.</p>
+      <div class="rejilla">
+        <label class="campo"><span>Modelo (opcional)</span><input class="inp mono" value=${cp.modelo || ""} onInput=${(e) => set(["copilot", "modelo"], e.target.value)} placeholder="el que tenga Copilot por defecto" /></label>
+        <label class="campo"><span>Opciones extra de copilot</span><input class="inp mono" value=${cp.opciones || ""} onInput=${(e) => set(["copilot", "opciones"], e.target.value)} placeholder="--log-level debug" /></label>
+        <label class="campo ancho"><span>Variables de entorno para npm y Copilot (una por línea)</span>
+          <textarea class="inp" rows="3" value=${cp.entorno || ""} onInput=${(e) => set(["copilot", "entorno"], e.target.value)} placeholder=${"HTTPS_PROXY=http://proxy:8080\nHTTP_PROXY=http://proxy:8080\nNODE_EXTRA_CA_CERTS=C:\\certs\\empresa.pem"} /></label>
+        <label class="interruptor ancho"><input type="checkbox" checked=${!!cp.permitirComandos} onChange=${(e) => set(["copilot", "permitirComandos"], e.target.checked)} />
+          Al modificar, dejar que Copilot ejecute comandos (compilar, probar). Nunca puede hacer commit ni push.</label>
+      </div>
+    </section>
+
     <section class="caja" aria-labelledby="aj-equipo">
       <h2 id="aj-equipo">Ajustes del equipo</h2>
       <p>La organización, los patrones, los nombres de los proyectos y las reglas que vienen dentro del ejecutable salen de <span class="mono">monitor-pases/config-equipo.json</span>, en el repositorio. Cada persona solo pone su token. Lo que cambies aquí vale solo para ti${cfg.hayEquipo ? "" : " (este ejecutable no trae ajustes del equipo)"}.</p>
@@ -642,11 +686,12 @@ function VistaAjustes({ estado, aviso, recargar }) {
     </section>
 
     <section class="caja" aria-labelledby="aj-nfq">
-      <h2 id="aj-nfq">GitHub NFQ (adonde se sube el .json)</h2>
-      <p>Un repositorio <b>privado</b> de tu cuenta de NFQ. El token necesita poder escribir contenido solo en ese repositorio.</p>
+      <h2 id="aj-nfq">GitHub NFQ (pases-datos)</h2>
+      <p>Adonde se publican los DPs (dps/…) y los pases (pases/…). Solo DPs, releases, features y componentes: nada de código.</p>
+      <label class="interruptor" style="margin-bottom:12px"><input type="checkbox" checked=${n.publicarDPs !== false} onChange=${(e) => set(["nfq", "publicarDPs"], e.target.checked)} /> Publicar los DPs nuevos automáticamente</label>
       <div class="rejilla">
         <label class="campo"><span>Repositorio</span><input class="inp mono" value=${n.repo} onInput=${(e) => set(["nfq", "repo"], e.target.value)} placeholder="rdr-nfq/pases-datos" /></label>
-        <label class="campo"><span>Token</span><input class="inp mono" type="password" autocomplete="off" value=${n.token} onInput=${(e) => set(["nfq", "token"], e.target.value)} placeholder=${tokenPh(n)} />
+        <label class="campo"><span>Token (solo si no puedes iniciar sesión con Git)</span><input class="inp mono" type="password" autocomplete="off" value=${n.token} onInput=${(e) => set(["nfq", "token"], e.target.value)} placeholder=${tokenPh(n)} />
           ${n.tokenConfigurado && (n.borrarToken ? html`<small>Se quitará al guardar.</small>` : html`<small><button class="btn btn-t btn-s" style="padding:0;height:auto" onClick=${() => set(["nfq", "borrarToken"], true)}>Quitar el token guardado</button></small>`)}</label>
         <label class="campo"><span>Rama</span><input class="inp mono" value=${n.rama} onInput=${(e) => set(["nfq", "rama"], e.target.value)} /></label>
         <label class="campo"><span>Carpeta</span><input class="inp mono" value=${n.carpeta} onInput=${(e) => set(["nfq", "carpeta"], e.target.value)} placeholder="pases" /></label>
@@ -683,6 +728,7 @@ function App() {
   const [tostadas, setTostadas] = useState([]);
   const [presel, setPresel] = useState(null);
   const [, setTic] = useState(0);
+  const [dentro, setDentro] = useState(false);
   const [tema, setTema] = useState(() => document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
 
   // Navegación: commits y diferencias son pantallas dentro de la pestaña de
@@ -704,6 +750,7 @@ function App() {
   }, []);
   const vista = ruta.vista;
   const setVista = (v) => ir({ vista: v });
+  ponerIr(ir);
   const aviso = useCallback((texto, tipo = "ok", enlace) => {
     const id = Math.random();
     setTostadas((t) => [...t.slice(-3), { id, texto, tipo, enlace }]);
@@ -735,7 +782,8 @@ function App() {
   const preparar = (features) => { setPresel(features); setVista("pase"); };
 
   if (!estado) return html`<p class="arranque" role=${errorCarga ? "alert" : "status"}>${errorCarga ? "No se puede hablar con la app: " + errorCarga : "Cargando el monitor…"}</p>`;
-  const conLateral = ["ramas", "actividad", "commits"].includes(vista);
+  if (!dentro) return html`<${PantallaEntrada} estado=${estado} entrar=${() => { setDentro(true); cargar(); }} />`;
+  const conLateral = ["ramas", "actividad", "commits", "dps"].includes(vista);
   return html`<div class="marco">
     <${Cabecera} estado=${estado} vista=${VISTAS.includes(vista) ? vista : ruta.desde} setVista=${setVista} onSync=${sincronizar} tema=${tema} cambiarTema=${cambiarTema} />
     <${Avisos} estado=${estado} setVista=${setVista} />
@@ -745,6 +793,12 @@ function App() {
         ${vista === "ramas" && html`<${VistaRamas} estado=${estado} filtros=${filtros} setFiltros=${setFiltros} abierta=${abierta} setAbierta=${setAbierta} preparar=${preparar} setVista=${setVista} ir=${ir} />`}
         ${vista === "actividad" && html`<${VistaActividad} estado=${estado} filtros=${filtros} setFiltros=${setFiltros} setAbierta=${setAbierta} ir=${ir} />`}
         ${vista === "commits" && html`<${VistaCommits} estado=${estado} filtros=${filtros} setFiltros=${setFiltros} ir=${ir} />`}
+        ${vista === "dps" && html`<${VistaDPs} estado=${estado} filtros=${filtros} setFiltros=${setFiltros} ir=${ir} aviso=${aviso} />`}
+        ${vista === "dp" && html`<${VistaDP} key=${ruta.repo + ruta.cod} repo=${ruta.repo} cod=${ruta.cod} volver=${volver} ir=${ir} estado=${estado} />`}
+        ${vista === "repos" && html`<${VistaRepos} estado=${estado} ir=${ir} />`}
+        ${vista === "repo" && html`<${VistaRepo} key=${ruta.repo} repo=${ruta.repo} sub=${ruta.sub} refName=${ruta.ref} ruta=${ruta.ruta} ir=${ir} volver=${volver} />`}
+        ${vista === "pr" && html`<${VistaPR} key=${ruta.repo + ruta.n} repo=${ruta.repo} n=${ruta.n} volver=${volver} ir=${ir} estado=${estado} />`}
+        ${vista === "copilot" && html`<${VistaCopilot} key=${JSON.stringify(ruta.contexto || {}) + (ruta.modo || "")} estado=${estado} contexto0=${ruta.contexto} modo0=${ruta.modo} ir=${ir} aviso=${aviso} />`}
         ${vista === "commit" && html`<${VistaCommit} key=${ruta.repo + ruta.sha} repo=${ruta.repo} sha=${ruta.sha} volver=${volver} ir=${ir} aviso=${aviso} />`}
         ${vista === "diff" && html`<${VistaDiffRama} key=${ruta.id} id=${ruta.id} foco=${ruta.foco} volver=${volver} ir=${ir} />`}
         ${vista === "pase" && html`<${VistaPase} estado=${estado} aviso=${aviso} preseleccion=${presel} limpiarPreseleccion=${() => setPresel(null)} />`}

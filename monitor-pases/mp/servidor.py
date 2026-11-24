@@ -20,8 +20,12 @@ from . import VERSION
 from . import pase as P
 from .clasificar import clasificar
 from .config import recurso
+from .asistente import Asistente
 from .diffs import Diffs
 from .ghe import ErrorGHE, api_de_host
+from .navegar import Navegar
+from .publicar import publicar_dps
+from .sesion import Sesiones
 from .sincro import cliente_bbva
 
 WEB = recurso("web").resolve()
@@ -47,10 +51,27 @@ def pistas_git(host):
 
 
 class App:
-    def __init__(self, config, monitor, puerto, demo=False):
+    def __init__(self, config, monitor, puerto, demo=False, sesiones=None):
         self.cfg, self.mon, self.puerto, self.demo = config, monitor, puerto, demo
         self.clave = secrets.token_urlsafe(24)
+        self.ses = sesiones or config.sesiones or Sesiones(config, demo)
+        config.sesiones = self.ses
         self.diffs = Diffs(config, monitor)
+        self.nav = Navegar(config, monitor, self.diffs)
+        self.copilot = Asistente(config, monitor, self.ses, demo)
+        monitor.despues_de_sincronizar = self.publicar
+
+    def publicar(self, forzar=False):
+        if self.demo:
+            return {"publicados": 0, "motivo": "En la demo no se publica nada."}
+        usuario = (self.ses.publica().get("nfq") or {}).get("usuario") or ""
+        return publicar_dps(self.mon, self.cfg, usuario, forzar=forzar)
+
+    def tras_iniciar(self, quien):
+        if quien == "bbva":
+            self.mon.pedir_sincro()
+        else:
+            threading.Thread(target=self.publicar, daemon=True).start()
 
     # ── acciones ────────────────────────────────────────────────────────────
     def probar(self, destino):
@@ -100,7 +121,7 @@ class App:
         if metodo == "GET" and ruta == "/api/estado":
             c = self.cfg.get()
             n = c["nfq"]
-            return dict(self.mon.resumen(), version=VERSION, demo=self.demo, carpeta=str(self.cfg.dir),
+            return dict(self.mon.resumen(), version=VERSION, demo=self.demo, carpeta=str(self.cfg.dir), sesion=self.ses.publica(),
                         dias=int(c["bbva"].get("diasActividad") or 45),
                         nfq={"repo": n.get("repo"), "rama": n.get("rama") or "main", "carpeta": n.get("carpeta") or "",
                              "listo": bool(n.get("repo") and n.get("token")) and not self.demo},
@@ -112,6 +133,60 @@ class App:
             if d is None:
                 raise KeyError("Esa rama ya no está en la última sincronización.")
             return d
+        # Sesiones (Git Credential Manager)
+        if metodo == "GET" and ruta == "/api/sesion":
+            return self.ses.publica()
+        if metodo == "POST" and ruta == "/api/sesion/iniciar":
+            self.ses.iniciar_en_segundo_plano(cuerpo.get("quien"), True, self.tras_iniciar)
+            return {"ok": True}
+        if metodo == "POST" and ruta == "/api/sesion/cerrar":
+            self.ses.cerrar(cuerpo.get("quien"), bool(cuerpo.get("olvidar")))
+            return self.ses.publica()
+        # DPs
+        if metodo == "GET" and ruta == "/api/dps":
+            return {"dps": self.mon.dps(), "nfq": {"repo": self.cfg.get()["nfq"].get("repo"),
+                                                   "sesion": (self.ses.publica().get("nfq") or {}).get("estado") == "iniciada"}}
+        if metodo == "GET" and ruta == "/api/dp":
+            d = self.mon.dp(q.get("repo", ""), q.get("cod", ""))
+            if d is None:
+                raise KeyError("Ese DP no está entre los detectados.")
+            return d
+        if metodo == "GET" and ruta == "/api/dp/diff":
+            return self.diffs.dp(q.get("repo", ""), q.get("cod", ""))
+        if metodo == "POST" and ruta == "/api/dps/publicar":
+            return self.publicar(forzar=True)
+        # Repositorios (como la web de GitHub)
+        if metodo == "GET" and ruta == "/api/repo/refs":
+            return self.nav.refs(q.get("repo", ""))
+        if metodo == "GET" and ruta == "/api/repo/arbol":
+            return self.nav.arbol(q.get("repo", ""), q.get("ref", ""))
+        if metodo == "GET" and ruta == "/api/repo/historial":
+            return self.nav.historial(q.get("repo", ""), q.get("ref", ""), q.get("ruta", ""), q.get("pagina", 1))
+        if metodo == "GET" and ruta == "/api/repo/prs":
+            return self.nav.prs(q.get("repo", ""), q.get("estado", "open"))
+        if metodo == "GET" and ruta == "/api/repo/pr":
+            return self.nav.pr(q.get("repo", ""), q.get("n", 0))
+        if metodo == "GET" and ruta == "/api/repo/comparar":
+            return self.nav.comparar(q.get("repo", ""), q.get("base", ""), q.get("head", ""))
+        # Copilot CLI
+        if metodo == "GET" and ruta == "/api/copilot/estado":
+            return self.copilot.estado()
+        if metodo == "POST" and ruta == "/api/copilot/instalar":
+            return {"id": self.copilot.instalar()}
+        if metodo == "POST" and ruta == "/api/copilot/sesion":
+            return self.copilot.abrir_sesion_copilot()
+        if metodo == "POST" and ruta == "/api/copilot/preguntar":
+            return {"id": self.copilot.preguntar(cuerpo.get("contexto"), cuerpo.get("pregunta"), cuerpo.get("modo"))}
+        if metodo == "GET" and ruta == "/api/copilot/tareas":
+            return {"tareas": self.copilot.lista()}
+        if metodo == "GET" and ruta == "/api/copilot/tarea":
+            return self.copilot.tarea(q.get("id", ""))
+        if metodo == "POST" and ruta == "/api/copilot/cancelar":
+            return self.copilot.cancelar(cuerpo.get("id"))
+        if metodo == "POST" and ruta == "/api/copilot/aplicar":
+            return self.copilot.aplicar(cuerpo.get("id"), cuerpo.get("mensaje"))
+        if metodo == "POST" and ruta == "/api/copilot/descartar":
+            return self.copilot.descartar(cuerpo.get("id"))
         if metodo == "GET" and ruta == "/api/commits":
             return self.mon.commits()
         if metodo == "GET" and ruta == "/api/commit":
@@ -242,7 +317,7 @@ class App:
                     return self._enviar(200, app.rutas(metodo, u.path, q, cuerpo))
                 except ErrorGHE as e:
                     return self._enviar(502, {"error": str(e), "pista": e.pista, "estado": e.estado})
-                except (ValueError, KeyError) as e:
+                except (ValueError, KeyError, RuntimeError) as e:
                     return self._enviar(400, {"error": str(e).strip("'\"")})
                 except LookupError as e:
                     return self._enviar(404, {"error": str(e)})

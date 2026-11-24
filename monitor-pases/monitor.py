@@ -74,17 +74,23 @@ def main():
         time.sleep(2)
         return
 
+    from mp.sesion import Sesiones
+    ses = Sesiones(cfg, demo=a.demo)
+    cfg.sesiones = ses
     mon = Monitor(cfg)
     srv = None
     for p in range(puerto, puerto + 15):
         try:
-            app = App(cfg, mon, p, demo=a.demo)
+            app = App(cfg, mon, p, demo=a.demo, sesiones=ses)
             srv = app.servir()
             break
         except OSError:
             continue
     if not srv:
         raise SystemExit("No hay ningún puerto libre entre %d y %d." % (puerto, puerto + 14))
+    # Sesión guardada en Git (si la hay): sin abrir ventanas. Si no, la página pide iniciarla.
+    for quien in ("bbva", "nfq"):
+        ses.iniciar_en_segundo_plano(quien, interactiva=False, despues=app.tras_iniciar)
     mon.arrancar()
     url = "http://127.0.0.1:%d/" % app.puerto
     print("Monitor de pases %s%s" % (VERSION, " · DEMO con datos inventados" if a.demo else ""))

@@ -67,6 +67,7 @@ class TestConGitHubSimulado(unittest.TestCase):
         cls.srv_ghe, puerto, cls.datos = demo.arrancar(pedidas=cls.pedidas)
         cfg = Config()
         c = demo.config_demo(puerto)
+        c["bbva"]["token"] = "demo"
         c["nfq"] = {"api": "http://127.0.0.1:%d" % puerto, "repo": "rdr-nfq/pases-datos", "token": "demo", "rama": "main", "carpeta": "pases"}
         cfg.actualizar(c)
         cls.cfg, cls.mon = cfg, Monitor(cfg)
@@ -91,7 +92,7 @@ class TestConGitHubSimulado(unittest.TestCase):
         r = self.mon.resumen()
         feats = {p["feature"] for p in r["proyectos"]}
         self.assertTrue({"CIBRDR-2311", "CIBRDR-2405", "CIBRDR-2442", "CIBRDR-2470", "CIBRDR-2488"} <= feats)
-        merg = [x for x in r["ramas"] if x["mergeada"]]
+        merg = [x for x in r["ramas"] if x["mergeada"] and not x.get("release")]
         self.assertEqual([x["id"] for x in merg], ["equipo-demo/rdr-cadenas:feature/CIBRDR-2405-informe-regulatorio"])
 
     def test_dps_de_las_tres_fuentes(self):
@@ -107,7 +108,8 @@ class TestConGitHubSimulado(unittest.TestCase):
         antes = len(self.pedidas)
         self.mon.sincronizar()
         self.assertEqual(self.mon.sincro["estado"], "ok")
-        self.assertEqual(self.mon.sincro["ahorradas"], len(self.pedidas) - antes)  # todo 304
+        a_bbva = [p for m, p, h in self.pedidas[antes:] if "/contents/" not in p]  # sin la publicación en pases-datos
+        self.assertEqual(self.mon.sincro["ahorradas"], len(a_bbva))  # todo 304
 
     def test_propuesta_guardar_y_subir(self):
         prop = self.app.rutas("POST", "/api/propuesta", {}, {"features": ["CIBRDR-2311"]})["proyectos"][0]
@@ -158,6 +160,49 @@ class TestConGitHubSimulado(unittest.TestCase):
         # Lo propio se guarda como diferencia respecto a lo del equipo.
         propia = json.load(open(os.path.join(self.dir, "config.json"), encoding="utf-8"))
         self.assertNotIn("patronDP", propia.get("bbva", {}))
+
+    def test_releases_y_dps(self):
+        dps = self.app.rutas("GET", "/api/dps", {}, {})["dps"]
+        rel = [d for d in dps if d["release"] == "2.108.0"]
+        self.assertTrue(rel)
+        for d in rel:
+            self.assertTrue(d["features"] and d["componentes"])
+            self.assertFalse(d.get("yaEnProduccion"))
+        viejos = [d for d in dps if d["release"] == "2.107.0"]
+        self.assertTrue(viejos and all(d["yaEnProduccion"] for d in viejos))
+        dd = self.app.rutas("GET", "/api/dp/diff", {"repo": rel[0]["repo"], "cod": rel[0]["cod"]}, {})
+        self.assertEqual(len(dd["ficheros"]), rel[0]["nFich"])
+        self.assertTrue(all(f["patch"] for f in dd["ficheros"] if f["estado"] != "removed"))
+
+    def test_publicacion_en_pases_datos(self):
+        self.app.publicar(forzar=True)
+        subidos = {r: json.loads(v["texto"]) for (repo, r), v in self.datos.contenidos.items() if r.startswith("dps/")}
+        self.assertTrue(subidos)
+        doc = next(iter(subidos.values()))
+        self.assertEqual(doc["formato"], "monitor-pases/dp-1")
+        self.assertEqual(set(doc["componentes"][0]) if doc["componentes"] else {"nom", "tipo", "subida"}, {"nom", "tipo", "subida"})
+        texto = json.dumps(list(subidos.values()))
+        self.assertNotIn("src/main/java", texto)  # ni rutas ni código
+        self.assertNotIn("patch", texto)
+        n = len(subidos)
+        self.assertEqual(self.app.publicar(forzar=True)["publicados"], 0)  # ya estaban
+        self.assertEqual(len([r for (_, r) in self.datos.contenidos if r.startswith("dps/")]), n)
+
+    def test_navegar_como_github(self):
+        repo = "equipo-demo/rdr-javas"
+        refs = self.app.rutas("GET", "/api/repo/refs", {"repo": repo}, {})
+        self.assertIn("release/2.108.0", [r["nombre"] for r in refs["ramas"]])
+        arb = self.app.rutas("GET", "/api/repo/arbol", {"repo": repo, "ref": "release/2.108.0"}, {})
+        fichero = next(e["p"] for e in arb["entradas"] if e["t"] == "f" and e["p"].endswith(".java"))
+        f = self.app.rutas("GET", "/api/fichero", {"repo": repo, "ref": arb["sha"], "ruta": fichero}, {})
+        self.assertTrue(f["texto"].startswith("package "))
+        h = self.app.rutas("GET", "/api/repo/historial", {"repo": repo, "ref": "release/2.108.0", "ruta": fichero}, {})
+        self.assertTrue(h["commits"])
+        prs = self.app.rutas("GET", "/api/repo/prs", {"repo": repo, "estado": "all"}, {})["prs"]
+        pr = self.app.rutas("GET", "/api/repo/pr", {"repo": repo, "n": prs[0]["numero"]}, {})
+        self.assertTrue(pr["ficheros"] and pr["hilo"])
+        cmp_ = self.app.rutas("GET", "/api/repo/comparar", {"repo": repo, "base": "master", "head": "release/2.108.0"}, {})
+        self.assertTrue(cmp_["ficheros"])
 
     def test_tokens_no_llegan_a_la_pagina(self):
         txt = json.dumps(self.app.rutas("GET", "/api/config", {}, {}))

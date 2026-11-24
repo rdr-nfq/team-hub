@@ -1,7 +1,7 @@
 // Monitor de pases · commits y diferencias: la lista de todos los commits, el
 // detalle de un commit, una rama frente a producción y el visor de diffs.
 import { html, useState, useEffect, useMemo, useRef } from "./vendor/preact-htm.mjs";
-import { api, Icono, Rama, hace, fLarga, corto, plural, colorDe, leerLS, ponerLS, uniq } from "./comun.js";
+import { api, Icono, Rama, ChipDP, hace, fLarga, corto, plural, colorDe, leerLS, ponerLS, uniq } from "./comun.js";
 
 const ESTADO_F = {
   added: ["A", "nuevo"], modified: ["M", "modificado"], removed: ["D", "borrado"], renamed: ["R", "renombrado"],
@@ -107,14 +107,14 @@ function DiffFichero({ f, idx, modo, abierto, alternar, verFichero }) {
       <span class="ef ef-${f.estado}" title=${texto}>${letra}</span>
       <span class="df-ruta mono">${f.antes && f.antes !== f.ruta ? html`<span class="tenue">${f.antes} → </span>` : ""}<span class="tenue">${dir}</span><b>${nombre}</b></span>
       <span class="df-cifras num"><span class="c-mas">+${f.mas}</span> <span class="c-menos">−${f.menos}</span></span>
-      <button class="btn btn-s" onClick=${() => verFichero(f)}><${Icono} n="fichero" /> Ver fichero</button>
+      ${verFichero ? html`<button class="btn btn-s" onClick=${() => verFichero(f)}><${Icono} n="fichero" /> Ver fichero</button>` : ""}
     </header>
     ${cuerpo}
   </section>`;
 }
 
 /* ── Fichero completo ── */
-function VerFichero({ repo, sha, ruta, titulo, onCerrar }) {
+export function VerFichero({ repo, sha, ruta, titulo, onCerrar }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState(null);
   const ref0 = useRef(null);
@@ -144,7 +144,7 @@ function VerFichero({ repo, sha, ruta, titulo, onCerrar }) {
 }
 
 /* ── Visor de diferencias (lista de ficheros + diffs) ── */
-function Diferencias({ ficheros, repo, despues, antes, foco }) {
+export function Diferencias({ ficheros, repo, despues, antes, foco }) {
   const [modo, setModoRaw] = useState(() => leerLS("mp-diff-modo", "unificado"));
   const [filtro, setFiltro] = useState("");
   const [plegados, setPlegados] = useState(() => new Set());
@@ -187,18 +187,18 @@ function Diferencias({ ficheros, repo, despues, antes, foco }) {
       <div class="dif-ficheros">
         ${!ficheros.length ? html`<div class="vacio-mini">No hay ficheros cambiados.</div>` : ""}
         ${visibles.map(({ f, i }) => html`<${DiffFichero} key=${i} f=${f} idx=${i} modo=${modo} abierto=${!plegados.has(i)} alternar=${() => alternar(i)}
-          verFichero=${(x) => setVer(x.estado === "removed" ? { ruta: x.antes || x.ruta, sha: antes, titulo: "Antes del cambio (ya no existe)" } : { ruta: x.ruta, sha: despues, titulo: "Después del cambio" })} />`)}
+          verFichero=${despues || antes ? (x) => setVer(x.estado === "removed" ? { ruta: x.antes || x.ruta, sha: antes, titulo: "Antes del cambio (ya no existe)" } : { ruta: x.ruta, sha: despues, titulo: "Después del cambio" }) : null} />`)}
       </div>
     </div>
     ${ver && ver.sha && html`<${VerFichero} repo=${repo} sha=${ver.sha} ruta=${ver.ruta} titulo=${ver.titulo} onCerrar=${() => setVer(null)} />`}
   </div>`;
 }
 
-function Cargando({ err, texto = "Cargando…" }) {
+export function Cargando({ err, texto = "Cargando…" }) {
   return err ? html`<div class="contenido"><p class="nota" role="alert">${err}</p></div>` : html`<div class="contenido"><p class="suave">${texto}</p></div>`;
 }
 
-function Volver({ volver }) {
+export function Volver({ volver }) {
   return html`<button class="btn btn-t btn-s volver" onClick=${volver}><${Icono} n="atras" /> Volver</button>`;
 }
 
@@ -231,7 +231,7 @@ export function VistaCommit({ repo, sha, volver, ir, aviso }) {
       ${info ? html`<div class="meta-commit">
         ${info.ramas.map((r) => html`<span class="chip" key=${r}><${Rama} nombre=${r} /></span>`)}
         ${info.produccion ? html`<span class="chip chip-merg">En producción</span>` : ""}
-        ${info.dps.map((c) => html`<span class="dp" key=${c}>${c}</span>`)}
+        ${info.dps.map((c) => html`<${ChipDP} key=${c} d=${{ cod: c }} repo=${repo} />`)}
       </div>` : ""}
     </header>
     <${Diferencias} ficheros=${d.ficheros} repo=${repo} despues=${d.sha} antes=${d.padres[0]} />
@@ -314,7 +314,7 @@ export function VistaCommits({ estado, filtros, setFiltros, ir }) {
         <td class="c-autor">${c.autor}</td>
         <td class="c-ci"><div class="ci">${c.actions[0] ? html`<span class=${c.actions[0].conclusion === "success" ? "ico-ok" : c.actions[0].estado !== "completed" ? "ico-curso" : "ico-mal"}
             title=${c.actions[0].nombre}><${Icono} n=${c.actions[0].conclusion === "success" ? "ok" : c.actions[0].estado !== "completed" ? "curso" : "mal"} /></span>` : ""}
-          ${c.dps.map((x) => html`<span class="dp" key=${x}>${x}</span>`)}</div></td>
+          ${c.dps.map((x) => html`<${ChipDP} key=${x} d=${{ cod: x }} repo=${c.repo} />`)}</div></td>
         <td class="c-sha mono tenue">${c.sha.slice(0, 7)}</td>
       </tr>`)}</tbody></table></div>
     </section>`)}
