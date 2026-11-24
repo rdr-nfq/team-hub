@@ -60,7 +60,7 @@ jobs:
             $r = Invoke-WebRequest "http://127.0.0.1:8775/$f" -UseBasicParsing
             if ($r.StatusCode -ne 200) { throw "Falta $f en el .exe" }
           }
-          Stop-Process -Id $p.Id -Force
+          Get-Process MonitorPases -ErrorAction SilentlyContinue | Stop-Process -Force  # el .exe de un solo fichero son dos procesos
           if ($html -notmatch "Monitor de pases") { throw "La página no es la del monitor" }
           $mb = [math]::Round((Get-Item dist/MonitorPases.exe).Length / 1MB, 1)
           "MonitorPases.exe $env:VERSION ($mb MB) arranca y sirve la app." | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
