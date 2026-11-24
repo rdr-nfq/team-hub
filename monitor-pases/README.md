@@ -96,6 +96,8 @@ GitHub da a cada persona un número de llamadas por hora (normalmente 5.000).
 - **La primera sincronización es la cara.** Por cada repositorio pide sus ramas, PRs, ejecuciones de Actions y los commits de producción. Por cada rama de proyecto y cada release, lo que trae frente a producción. Y de cada ejecución correcta, su resumen, para encontrar el DP.
   - Con 150+ repositorios puede no caber en una hora. La app **para antes de gastarla entera**: deja 300 llamadas para que puedas seguir navegando. **Sigue sola cuando GitHub la recupera**, desde donde se quedó. Lo ya leído no se vuelve a pedir.
   - Los repositorios con cambios más recientes van primero.
+  - Una **barra de progreso** enseña cuántos repositorios hay ya. Cada repositorio aparece en cuanto está leído, así que se puede usar la app mientras tanto. Si se acaba la cuota, la barra se para y dice a qué hora sigue: es una pausa normal, no un error.
+- **Al abrir la app** se ve al momento lo último guardado (en `%USERPROFILE%\.monitor-pases\estado.json`), y se actualiza en segundo plano: solo una línea fina bajo la cabecera indica que está sincronizando. Si se cerró en pausa por la cuota, espera a que vuelva.
 - **Después, cada 10 minutos** (*Ajustes → Refrescar cada*), vuelve a preguntar. Lo que no ha cambiado contesta «sin cambios» (304) y **no gasta cuota**. Solo cuesta lo nuevo: ramas o commits nuevos y ejecuciones nuevas.
 - **Para gastar menos:**
   - De cada repositorio solo se siguen las **3 últimas releases**: las anteriores ya están en producción (*Ajustes → Releases que se siguen por repositorio*).

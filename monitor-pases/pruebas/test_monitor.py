@@ -137,6 +137,8 @@ class TestConGitHubSimulado(unittest.TestCase):
             self.assertGreaterEqual(self.datos.cuota, 0)
             self.assertLessEqual(self.datos.cuota, RESERVA_CUOTA + 10)  # para en la reserva, no la gasta
             hechos = s["repos"][0]
+            self.assertTrue(mon.resumen()["sincro"]["primeraCarga"])
+            self.assertTrue(any(r["repo"] in {k for k, v in mon.repos.items() if not v.get("pendiente")} for r in mon.ramas.values()))
             self.assertEqual(len(mon.repos), total)  # los pendientes se ven igual (marcados como pendientes)
             self.assertEqual(sum(1 for r in mon.repos.values() if r.get("pendiente")), total - hechos)
             # Al volver la cuota sigue y termina; lo ya leído no se vuelve a pagar.
@@ -146,6 +148,7 @@ class TestConGitHubSimulado(unittest.TestCase):
             self.assertEqual(mon.sincro["estado"], "ok")
             self.assertEqual(mon.sincro["repos"], [total, total])
             self.assertFalse(any(r.get("pendiente") for r in mon.repos.values()))
+            self.assertFalse(mon.resumen()["sincro"]["primeraCarga"])
             segunda = caras(n0)
             # Desde cero (otra carpeta) cuesta lo mismo que las dos juntas: nada se ha pagado dos veces.
             dir2 = tempfile.mkdtemp(prefix="mp-cuota2-")

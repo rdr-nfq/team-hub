@@ -744,4 +744,27 @@ kbd { font: 700 11px/1 var(--f-body); padding: 2px 5px; border-radius: 4px; bord
 .cerrar-lat { width: 100%; justify-content: center; margin-bottom: 12px; }
 @media (max-width: 760px) { .ver-filtros .principal::after { content: ""; position: fixed; inset: 0; background: var(--overlay); z-index: 24; } }
 .aviso .tenue { color: var(--electric); opacity: 0.85; margin-top: 2px; }
-.aviso-cuota { background: var(--canary); }
+
+/* ── Primera carga ── */
+.contenido-pc { padding: 20px 24px 0; max-width: 1480px; }
+.primera-carga { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 14px 16px; }
+.pc-cab { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; align-items: baseline; margin-bottom: 10px; }
+.pc-cab > b { font: 600 16px/1.3 var(--f-head); }
+.pc-cab .num { color: var(--ink-2); font-size: 13px; }
+.pc-barra { position: relative; height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.pc-barra > span { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--brand); transition: width 0.6s ease; }
+.pc-barra.viva > span { background-image: linear-gradient(90deg, transparent 0, rgb(255 255 255 / 0.35) 50%, transparent 100%);
+  background-size: 200px 100%; background-repeat: no-repeat; background-color: var(--brand); animation: pc-brillo 1.6s linear infinite; }
+.pc-barra.indet > span { animation: pc-indet 1.4s ease-in-out infinite; }
+@keyframes pc-brillo { from { background-position: -200px 0; } to { background-position: calc(100% + 200px) 0; } }
+@keyframes pc-indet { from { left: -30%; } to { left: 100%; } }
+.en-pausa .pc-barra > span { background-color: var(--ink-3); }
+.pc-nota { display: flex; gap: 8px; align-items: flex-start; margin: 10px 0 0; font-size: 13px; color: var(--ink-2); }
+.pc-nota .icono { margin-top: 1px; color: var(--ink-2); }
+.barra-sincro { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; pointer-events: none; }
+.barra-sincro > span { display: block; height: 100%; background: var(--brand); transition: width 0.6s ease; }
+.cab { position: relative; }
+.sincro-pausa { display: inline-flex; align-items: center; gap: 6px; }
+.sincro-pausa .icono { color: var(--ink-3); }
+@media (prefers-reduced-motion: reduce) { .pc-barra > span, .barra-sincro > span { transition: none; } .pc-barra.viva > span, .pc-barra.indet > span { animation: none; } }
+@media (max-width: 760px) { .contenido-pc { padding: 16px 16px 0; } }

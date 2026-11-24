@@ -86,6 +86,7 @@ export const RUTAS = {
   candado: "M6 11h12v10H6zM8 11V7a4 4 0 0 1 8 0v4",
   historial: "M3 12a9 9 0 1 0 3-6.7M3 4v5h5M12 7v5l3 2",
   marcador: "M6 4h12v16l-6-4-6 4z",
+  reloj: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7.5V12l3 2",
   filtro: "M4 5h16l-6 8v5l-4 2v-7z",
   ir: "M5 12h14M13 6l6 6-6 6",
   carpetaAbierta: "M3 7h6l2 2h10l-2 10H3z",

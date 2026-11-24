@@ -69,6 +69,7 @@ class Monitor:
         self.borradores = e.get("borradores", {})
         self.etags = e.get("etags", {})
         self.sincro = e.get("sincro") or {"estado": "nunca"}
+        self.ultima_completa = e.get("ultimaCompleta")  # None: la primera carga todavía no ha terminado
         if self.sincro.get("estado") == "en curso":  # la app se cerró a medias
             self.sincro["estado"] = "interrumpida"
         self.cuota = {}
@@ -83,7 +84,7 @@ class Monitor:
             escribir_json(self.ruta, {
                 "repos": self.repos, "ramas": self.ramas, "cacheCompare": self.cache_compare,
                 "cacheRuns": self.cache_runs, "dpsInfo": self.dps_info, "dpsManuales": self.manuales, "borradores": self.borradores,
-                "etags": self.etags, "sincro": self.sincro,
+                "etags": self.etags, "sincro": self.sincro, "ultimaCompleta": self.ultima_completa,
             })
 
     # ── bucle en segundo plano ──────────────────────────────────────────────
@@ -91,6 +92,10 @@ class Monitor:
         threading.Thread(target=self._bucle, name="sincro", daemon=True).start()
 
     def _bucle(self):
+        # Si se cerró en pausa por la cuota, al abrir espera a que vuelva (salvo que se pulse Actualizar).
+        if self.sincro.get("estado") == "pausada" and (self.sincro.get("reanudaEpoch") or 0) > time.time():
+            self._despertar.wait(self.sincro["reanudaEpoch"] - time.time() + 30)
+            self._despertar.clear()
         while True:
             if self.cfg.configurado():
                 try:
@@ -170,14 +175,17 @@ class Monitor:
                     hechos[0] += 1
                     self.sincro["repos"] = [len(al_dia), len(repos)]
                     self.cuota = cli.estado_cuota()
+                    if full in al_dia:  # se ve en cuanto está leído, sin esperar al resto
+                        self.repos[full] = info
+                        self.ramas = {k: v for k, v in self.ramas.items() if v.get("repo") != full}
+                        self.ramas.update(ramas)
 
             with ThreadPoolExecutor(POOL_REPOS) as ex:
                 list(ex.map(un_repo, repos))
 
-            if not parar.is_set():
-                self._progreso(fase="Buscando DPs nuevos")
-                self._actualizar_dps(cli, cfg, nuevas_ramas)
             completa = not parar.is_set()
+            self._progreso(fase="Buscando DPs nuevos")
+            self._actualizar_dps(cli, cfg, nuevas_ramas if completa else {k: v for k, v in nuevas_ramas.items() if v.get("repo") in al_dia})
             with self._cerrojo:
                 self.repos = nuevos_repos
                 self.ramas = nuevas_ramas
@@ -186,6 +194,7 @@ class Monitor:
                 self.cache_runs = {k: v for k, v in self.cache_runs.items() if k in usadas_runs or _repo_de_clave(k) not in al_dia}
                 if completa:
                     self.etags = {k: v for k, v in cli.etags.items() if k in cli.usadas}
+                    self.ultima_completa = _ahora()
                 else:
                     self.etags = cli.etags
                 self.cuota = cli.estado_cuota()
@@ -678,7 +687,7 @@ class Monitor:
         with self._cerrojo:
             ramas_src = list(self.ramas.values())
             repos = list(self.repos.values())
-            sincro = dict(self.sincro, enCurso=self._en_curso)
+            sincro = dict(self.sincro, enCurso=self._en_curso, primeraCarga=not self.ultima_completa)
             cuota = dict(self.cuota)
         ramas, proys = [], {}
         for r in ramas_src:

@@ -21,7 +21,8 @@ function EstadoSincro({ s, cuota }) {
   const titulo = `${s.llamadas ?? 0} llamadas a GitHub (${s.ahorradas ?? 0} sin coste de cuota) en ${s.segundos ?? "?"} s` +
     (cuota?.restante != null ? ` · quedan ${cuota.restante} llamadas de cuota` : "");
   if (s.estado === "error") return html`<span class="sincro"><span class="chip chip-mal">No se pudo sincronizar</span></span>`;
-  if (s.estado === "pausada") return html`<span class="sincro" title=${titulo}><span class="chip chip-borde">En pausa hasta las ${hora(s.reanuda)}</span></span>`;
+  if (s.estado === "pausada") return html`<span class="sincro sincro-pausa" title="GitHub permite un número de consultas por hora. La app sigue sola cuando se renuevan.">
+    <${Icono} n="reloj" /> Sigue a las <b>${hora(s.reanuda)}</b></span>`;
   return html`<span class="sincro" title=${titulo}>
     ${s.estado === "con errores" ? html`<span class="chip chip-mal">${plural(s.errores.length, "repo con error", "repos con error")}</span>` : ""}
     <span class="sincro-etq">Actualizado </span><b>${hace(s.fin)}</b>
@@ -37,7 +38,10 @@ function Cabecera({ estado, vista, setVista, onSync, tema, cambiarTema, abrirPal
     ["copilot", "Copilot"], ["pase", "Pase"], ["ajustes", "Ajustes"]];
   const ses = estado?.sesion || {};
   const enCurso = estado?.sincro?.enCurso;
+  const sc = estado?.sincro || {};
+  const pctSincro = sc.enCurso && sc.repos?.[1] ? Math.round((100 * sc.repos[0]) / sc.repos[1]) : null;
   return html`<header class="cab">
+    ${pctSincro != null && !sc.primeraCarga ? html`<span class="barra-sincro" aria-hidden="true"><span style=${{ width: pctSincro + "%" }} /></span>` : ""}
     <div class="marca"><${Marca} /> Monitor de pases ${estado?.demo ? html`<small>Demo</small>` : html`<small>BBVA × NFQ</small>`}</div>
     <nav class="pestanas" aria-label="Secciones">
       ${vistas.map(([id, t]) => html`<button key=${id} aria-current=${vista === id ? "page" : undefined} onClick=${() => setVista(id)}>${t}</button>`)}
@@ -56,17 +60,36 @@ function Cabecera({ estado, vista, setVista, onSync, tema, cambiarTema, abrirPal
 function Avisos({ estado, setVista }) {
   const s = estado?.sincro;
   if (!s) return null;
-  if (s.estado === "pausada")
-    return html`<div class="aviso aviso-cuota" role="status"><div>
-      <b>Sincronización en pausa por la cuota de GitHub BBVA</b> (cada persona tiene un número de llamadas por hora).
-      ${s.repos?.[1] ? html` Ya están al día <b class="num">${s.repos[0]} de ${s.repos[1]}</b> repositorios;` : ""} sigue sola a las <b>${hora(s.reanuda)}</b> desde donde se quedó.
-      <div class="tenue">La primera carga es la que más gasta: después, lo que no ha cambiado no consume cuota. Mientras, los repositorios pendientes se ven con los datos que hubiera.</div></div></div>`;
   if (s.estado === "error" && s.error)
     return html`<div class="aviso" role="alert"><div><b>${s.error.mensaje}</b>${s.error.pista ? html` ${s.error.pista}` : ""}</div><button class="btn" onClick=${() => setVista("ajustes")}>Ir a Ajustes</button></div>`;
   if (s.estado === "con errores" && s.errores?.length)
     return html`<div class="aviso" role="status"><div>${s.errores.slice(0, 3).map((e) => html`<div><b>${corto(e.repo)}:</b> ${e.mensaje}${e.pista ? " " + e.pista : ""}</div>`)}
       ${s.errores.length > 3 ? html`<div>…y ${s.errores.length - 3} más.</div>` : ""}<div class="tenue">De esos repos se muestran los datos de la sincronización anterior.</div></div></div>`;
   return null;
+}
+
+/* ── Primera carga: progreso de la descarga inicial ── */
+function PrimeraCarga({ s }) {
+  const [hechos, total] = s.repos || [0, 0];
+  const pct = total ? Math.min(100, Math.round((100 * hechos) / total)) : 0;
+  const pausada = s.estado === "pausada";
+  const activa = s.enCurso || s.estado === "en curso";
+  const buscando = activa && !total;
+  let nota;
+  if (pausada) nota = html`<${Icono} n="reloj" /> <span>Una pausa normal: GitHub deja hacer un número de consultas por hora y las de esta hora ya están usadas.
+    Sigue sola a las <b>${hora(s.reanuda)}</b>, desde donde se ha quedado. Mientras, puedes usar la app con lo que ya está descargado.</span>`;
+  else if (activa) nota = html`<span>Solo pasa la primera vez: se descargan las ramas, releases y DPs de cada repositorio. Puedes usar la app mientras; los repositorios van apareciendo según se leen.</span>`;
+  else nota = html`<span>Se pondrá en marcha en un momento.</span>`;
+  return html`<section class="primera-carga ${pausada ? "en-pausa" : ""}" aria-labelledby="pc-t">
+    <div class="pc-cab">
+      <b id="pc-t">${pausada ? "Primera carga en pausa" : "Primera carga de los repositorios"}</b>
+      <span class="num">${total ? html`<b>${hechos}</b> de ${total} repositorios · ${pct} %` : buscando ? "Buscando los repositorios…" : ""}</span>
+    </div>
+    <div class="pc-barra ${buscando ? "indet" : ""} ${activa && !pausada ? "viva" : ""}" role="progressbar" aria-labelledby="pc-t"
+      aria-valuemin="0" aria-valuemax=${total || 100} aria-valuenow=${buscando ? undefined : hechos}
+      aria-valuetext=${total ? `${hechos} de ${total} repositorios` : "Buscando los repositorios"}><span style=${{ width: (buscando ? 30 : pct) + "%" }} /></div>
+    <p class="pc-nota">${nota}</p>
+  </section>`;
 }
 
 /* ── Filtros de ramas ── */
@@ -209,7 +232,7 @@ function VistaRamas({ estado, f, setF, setFacetas, abierta, setAbierta, preparar
       ${grupos.length > 1 && html`<button class="btn btn-t btn-s" onClick=${() => setPlegados(todosPlegados ? new Set() : new Set(grupos.map((g) => g.k)))}>${todosPlegados ? "Desplegar todo" : "Plegar todo"}</button>`}
       <span class="tenue">${plural(grupos.length, "grupo", "grupos")}</span>
     </div>
-    ${!grupos.length && !visibles.length && !items.length ? html`<div class="vacio-mini">${estado.sincro?.estado === "nunca" ? "Todavía no se ha sincronizado. Pulsa Actualizar." : "Ninguna rama con estos filtros."}</div>` : ""}
+    ${!grupos.length && !visibles.length && !items.length ? html`<div class="vacio-mini">${estado.sincro?.primeraCarga ? "Las ramas irán apareciendo según se descarguen los repositorios." : estado.sincro?.estado === "nunca" ? "Todavía no se ha sincronizado. Pulsa Actualizar." : "Ninguna rama con estos filtros."}</div>` : ""}
     ${grupos.slice(0, nGrupos).map((g) => {
       const plegado = plegados.has(g.k), todas = abiertos.has(g.k);
       const id = "g-" + g.k.replace(/[^a-z0-9]/gi, "-") + "-t";
@@ -887,6 +910,7 @@ function App() {
     <div class="cuerpo ${conLateral ? "" : "ancho"}">
       ${conLateral && html`<${LateralFiltros} facetas=${facetas} f=${filtros} setF=${setFiltros} />`}
       <main class="principal" id="principal">
+        ${estado.sincro?.primeraCarga && estado.configurado && ["ramas", "actividad", "commits", "dps", "repos"].includes(vista) && html`<div class="contenido-pc"><${PrimeraCarga} s=${estado.sincro} /></div>`}
         ${vista === "ramas" && html`<${VistaRamas} ...${comun} abierta=${abierta} setAbierta=${setAbierta} preparar=${preparar} setVista=${setVista} />`}
         ${vista === "actividad" && html`<${VistaActividad} ...${comun} setAbierta=${setAbierta} />`}
         ${vista === "commits" && html`<${VistaCommits} ...${comun} />`}
