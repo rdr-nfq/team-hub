@@ -103,6 +103,8 @@ GitHub da a cada persona un número de llamadas por hora (normalmente 5.000).
   - De cada repositorio solo se siguen las **3 últimas releases**: las anteriores ya están en producción (*Ajustes → Releases que se siguen por repositorio*).
   - Solo se buscan DPs en las **ejecuciones correctas**: las 10 últimas de cada release y las 2 últimas de cada feature.
   - Los logs solo se leen en las releases, y solo si el DP no aparece en el resumen.
+- **Solo cuenta la cuota general.** La búsqueda (con la que se encuentran los repos si el token no puede leer las propiedades de la organización) tiene su propia cuota de 30 por minuto. Si se acaba, la app espera unos segundos y sigue.
+- **`sincro.log`**, en la carpeta de datos, apunta una línea por sincronización: cómo se encontraron los repos, cuántos quedaron al día, llamadas, cuota que queda y, si paró, en qué tipo de llamada. Sin nombres de repositorios ni código.
 - **Commits, diferencias, árboles, ficheros y PRs:** se piden al abrirlos. Lo que identifica un SHA se guarda en disco y no se vuelve a pedir.
 
 ## Seguridad

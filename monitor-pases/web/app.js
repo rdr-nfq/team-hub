@@ -810,7 +810,8 @@ function VistaAjustes({ estado, aviso, recargar }) {
       <div class="prueba"><button class="btn" onClick=${() => probar("nfq")} disabled=${estado.demo}>Probar conexión</button><${Resultado} r=${res.nfq} /></div>
     </section>
 
-    <p class="tenue" style="margin:0;font-size:12px">Monitor de pases ${estado.version}</p>
+    <p class="tenue" style="margin:0;font-size:12px">Monitor de pases ${estado.version} · Registro de sincronizaciones (sin nombres ni código, por si hay que revisar algo):
+      <span class="mono">${estado.carpeta}${estado.carpeta?.includes("\\") ? "\\" : "/"}sincro.log</span></p>
 
     ${sucio && html`<div class="barra-guardar" role="status"><span>Hay cambios sin guardar.</span>
       <button class="btn" onClick=${guardar}>Guardar</button>

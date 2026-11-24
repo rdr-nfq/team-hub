@@ -9,6 +9,7 @@ ejecución, así que una sincronización sin cambios casi no gasta cuota.
 
 import datetime as dt
 import fnmatch
+import re
 import threading
 import time
 import traceback
@@ -50,6 +51,14 @@ def cliente_bbva(cfg, reserva=0):
                    transporte=b.get("transporte"), reserva=reserva)
 
 
+def _forma(url):
+    """La forma de una llamada sin servidor ni nombres: /repos/…/actions/runs/N/jobs."""
+    p = urllib.parse.urlparse(url or "").path
+    p = re.sub(r"/repos/[^/]+/[^/]+", "/repos/…", p)
+    p = re.sub(r"/(orgs|users)/[^/]+", r"/\1/…", p)
+    return re.sub(r"/[0-9a-f]{7,40}(\.\.\.[0-9a-f]{7,40})?(?=/|$)", "/SHA", re.sub(r"/\d+(?=/|$)", "/N", p)) or "?"
+
+
 def _repo_de_clave(k):
     """Repositorio de una clave de caché («repo|base|sha» o «repo#run#intento»)."""
     return k.replace("#", "|").split("|")[0]
@@ -77,6 +86,18 @@ class Monitor:
         self._despertar = threading.Event()
         self._en_curso = False
         self.despues_de_sincronizar = None  # p. ej. publicar los DPs nuevos en pases-datos
+
+    def _anotar(self, texto):
+        """Una línea en sincro.log (carpeta de datos), para ver qué ha pasado sin depurar.
+        Solo cifras y tipos de llamada: ni nombres de repositorios ni código."""
+        try:
+            ruta = self.cfg.dir / "sincro.log"
+            if ruta.exists() and ruta.stat().st_size > 200_000:
+                ruta.replace(ruta.with_name("sincro.log.1"))
+            with open(ruta, "a", encoding="utf-8") as f:
+                f.write("%s %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), texto))
+        except OSError:
+            pass
 
     # ── persistencia ────────────────────────────────────────────────────────
     def guardar(self):
@@ -128,7 +149,9 @@ class Monitor:
         cli = cliente_bbva(cfg, RESERVA_CUOTA)
         cli.etags = self.etags
         try:
+            self._via = "organización"
             repos = self._descubrir(cli, b)
+            self._anotar("inicio: %d repositorios (vía %s); cuota restante %s" % (len(repos), self._via, cli.restante))
             # Los que tienen cambios más recientes, primero: si se acaba la cuota, lo que queda es lo que menos se mueve.
             repos.sort(key=lambda r: r.get("pushed_at") or "", reverse=True)
             self._progreso(fase="Leyendo ramas y ejecuciones", repos=[0, len(repos)])
@@ -160,7 +183,8 @@ class Monitor:
                             al_dia.add(full)
                     except ErrorCuota as e:
                         parar.set()
-                        cuota[0] = e
+                        if cuota[0] is None:
+                            cuota[0] = e
                         info, ramas = anteriores(r)
                         uc = ur = set()
                     except ErrorGHE as e:
@@ -204,12 +228,13 @@ class Monitor:
                                "llamadas": cli.llamadas, "ahorradas": cli.ahorradas}
                 if not completa:
                     reinicio = cuota[0].reinicio or int(time.time()) + 3600
+                    self.sincro["pausaPor"] = _forma(cuota[0].url)
                     self.sincro.update(estado="pausada", reanudaEpoch=reinicio,
                                        reanuda=dt.datetime.fromtimestamp(reinicio, dt.timezone.utc).isoformat().replace("+00:00", "Z"))
         except ErrorCuota as e:  # ni siquiera se ha podido ver la lista de repositorios
             with self._cerrojo:
                 reinicio = e.reinicio or int(time.time()) + 3600
-                self.sincro = {"estado": "pausada", "fin": _ahora(), "segundos": round(time.time() - inicio, 1),
+                self.sincro = {"estado": "pausada", "fin": _ahora(), "segundos": round(time.time() - inicio, 1), "pausaPor": _forma(e.url),
                                "repos": [0, len(self.repos)], "errores": [], "reanudaEpoch": reinicio,
                                "reanuda": dt.datetime.fromtimestamp(reinicio, dt.timezone.utc).isoformat().replace("+00:00", "Z")}
                 self.cuota = cli.estado_cuota()
@@ -221,6 +246,13 @@ class Monitor:
         finally:
             self._en_curso = False
             self.guardar()
+            sc = self.sincro
+            self._anotar("fin: %s; al día %s; %s llamadas (%s sin coste); cuota restante %s%s%s%s" % (
+                sc.get("estado"), "/".join(str(x) for x in sc.get("repos") or []), cli.llamadas, cli.ahorradas, cli.restante,
+                "; sigue a las " + time.strftime("%H:%M", time.localtime(sc["reanudaEpoch"])) if sc.get("reanudaEpoch") else "",
+                "; paró en " + sc["pausaPor"] if sc.get("pausaPor") else "",
+                "; error: " + (sc.get("error") or {}).get("mensaje", "") if sc.get("estado") == "error" else
+                "; %d repos con error" % len(sc.get("errores") or []) if sc.get("errores") else ""))
         if self.despues_de_sincronizar:
             try:
                 self.despues_de_sincronizar()
@@ -256,6 +288,7 @@ class Monitor:
     def _repos_con_filtro(self, cli, org, filtro):
         """Repos de `org` que cumplen `filtro`, con sus propiedades."""
         props = self._propiedades_org(cli, org, filtro)
+        self._via = "propiedades" if props is not None else "búsqueda"
         if props is not None:
             def detalle(full):
                 try:

@@ -145,7 +145,9 @@ class Cliente:
             cab = {k.lower(): v for k, v in (cab.items() if cab else [])}
         with self._cerrojo:
             self.llamadas += 1
-            if "x-ratelimit-remaining" in cab:
+            # Solo la cuota general («core»): la búsqueda y otras tienen la suya (la de búsqueda, 30 por minuto)
+            # y confundirlas pararía la sincronización sin motivo.
+            if "x-ratelimit-remaining" in cab and cab.get("x-ratelimit-resource", "core") == "core":
                 try:
                     self.restante = int(cab["x-ratelimit-remaining"])
                     self.reinicio = int(cab.get("x-ratelimit-reset") or 0)
@@ -196,6 +198,11 @@ class Cliente:
         if previo:
             extra["If-None-Match"] = previo[0]
         estado, cab, cuerpo = self._peticion("GET", u, cabeceras=extra)
+        if estado in (403, 429) and cab.get("x-ratelimit-resource") == "search" and cab.get("x-ratelimit-remaining") == "0":
+            # Cuota de búsqueda (por minuto): se espera lo que falte y se repite, sin parar la sincronización.
+            espera = min(65, max(1, int(cab.get("x-ratelimit-reset") or 0) - time.time() + 1))
+            time.sleep(espera)
+            estado, cab, cuerpo = self._peticion("GET", u, cabeceras=extra)
         if estado == 304 and previo:
             with self._cerrojo:
                 self.ahorradas += 1

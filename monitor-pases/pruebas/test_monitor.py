@@ -114,6 +114,27 @@ class TestConGitHubSimulado(unittest.TestCase):
         self.assertEqual({r["full_name"] for r in vistos}, del_equipo)
         self.assertTrue(any("/search/repositories" in p for m, p, h in self.pedidas))
 
+    def test_sincroniza_entera_aunque_busque_los_repos_con_la_busqueda(self):
+        # Sin la API de propiedades (p. ej. el token no tiene read:org) los repos se buscan con la búsqueda,
+        # que tiene su propia cuota de 30 por minuto: no es la cuota general y no debe pausar la sincronización.
+        from mp.config import Config
+        from mp.sincro import Monitor
+        dir_ = tempfile.mkdtemp(prefix="mp-busqueda-")
+        antes_env = os.environ["MONITOR_PASES_DIR"]
+        os.environ["MONITOR_PASES_DIR"] = dir_
+        self.datos.sin_propiedades = True
+        try:
+            cfg = Config()
+            cfg.actualizar(self.cfg.get())
+            mon = Monitor(cfg)
+            mon.sincronizar()
+            self.assertEqual(mon.sincro["estado"], "ok", mon.sincro)
+            self.assertEqual(mon.sincro["repos"][0], len(self.mon.repos))
+        finally:
+            self.datos.sin_propiedades = False
+            os.environ["MONITOR_PASES_DIR"] = antes_env
+            shutil.rmtree(dir_, ignore_errors=True)
+
     def test_cuota_pausa_y_sigue_donde_lo_dejo(self):
         from mp.config import Config
         from mp.sincro import Monitor, RESERVA_CUOTA

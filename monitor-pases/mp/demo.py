@@ -497,8 +497,11 @@ class _H(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(cuerpo)))
         self.send_header("ETag", etag)
-        self.send_header("X-RateLimit-Remaining", str(self.datos.cuota if self.datos.cuota is not None else 4321))
-        self.send_header("X-RateLimit-Reset", str(int(time.time()) + 3600) if self.datos.cuota is not None else "1999999999")
+        cab = {"X-RateLimit-Resource": "core",
+               "X-RateLimit-Remaining": str(self.datos.cuota if self.datos.cuota is not None else 4321),
+               "X-RateLimit-Reset": str(int(time.time()) + 3600) if self.datos.cuota is not None else "1999999999"}
+        cab.update(extra or {})
+        extra = {k: v for k, v in cab.items()}
         for k, v in (extra or {}).items():
             self.send_header(k, v)
         self.end_headers()
@@ -564,6 +567,8 @@ class _H(BaseHTTPRequestHandler):
         if p == "/search/repositories":
             lista = [_repo_json(r) for r in d.repos.values() if _cumple(r, q.get("q"))]
             trozo, extra = self._paginar(lista, q, p)
+            # La búsqueda tiene su propia cuota (30 por minuto), como en GitHub.
+            extra.update({"X-RateLimit-Resource": "search", "X-RateLimit-Remaining": "29", "X-RateLimit-Reset": str(int(time.time()) + 60)})
             return self._json(200, {"total_count": len(lista), "incomplete_results": False, "items": trozo}, extra)
         m = re.match(r"^/repos/([^/]+/[^/]+)(/.*)?$", p)
         if not m:
