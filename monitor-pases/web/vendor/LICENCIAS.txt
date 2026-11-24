@@ -1,0 +1,8 @@
+Ficheros de terceros incluidos para que la app no descargue nada de internet:
+
+- preact-htm.mjs: "htm/preact/standalone" de htm 3.1.1 (Apache-2.0,
+  https://github.com/developit/htm), que incluye Preact 10 (MIT,
+  https://github.com/preactjs/preact).
+- ../fonts/lato-*.woff2: Lato (SIL Open Font License 1.1), subconjunto latino.
+- ../fonts/source-serif-4.woff2: Source Serif 4 (SIL Open Font License 1.1),
+  subconjunto latino.

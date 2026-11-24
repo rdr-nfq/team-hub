@@ -174,3 +174,14 @@ Todo el código Apps Script vive en **`apps-script/`** y es **un único proyecto
 - Antes de subir: `git fetch origin main`. Si `main` ha avanzado (p. ej. los commits "Equipo: actualización desde la web" que hace `/equipo-gestion`), se integra con merge o rebase de los commits propios — nunca `push --force` a `main`.
 - Si el commit añade dependencias, `package.json` y `package-lock.json` deben ir juntos y cuadrar (el deploy de GitHub Pages compila en cada push a `main`).
 - Tras subir, si el deploy falla, revisar el log de Actions: un fallo de `next/font` descargando Google Fonts suele ser puntual de Google y se arregla relanzando el job.
+
+---
+
+## 10. Monitor de pases (app local de la VDI)
+
+`monitor-pases/` es una app que se ejecuta **en la VDI de BBVA** (no en la web): lee los repositorios de GitHub BBVA (ramas, commits, PRs, Actions y DPs) y genera el `.json` del pase, que se sube a un repositorio privado de NFQ. Detalles en `monitor-pases/README.md`.
+
+- Solo librería estándar de Python (3.8+); la interfaz (`web/`) lleva Preact + htm y las fuentes dentro: **nada se descarga de internet**.
+- Tokens y datos viven fuera del repositorio (`%USERPROFILE%\.monitor-pases`). Nunca añadir datos reales de BBVA al repositorio; la demo usa datos inventados (`mp/demo.py`).
+- Antes de subir: `cd monitor-pases && python -m unittest discover -s pruebas` (usa un GitHub simulado).
+- Los campos de componente del `.json` (`nom`, `tipo`, `subida`, `cod`, `resp`, `us`, `com`) son los de la hoja de pases de la web (`agregarComponentes`).

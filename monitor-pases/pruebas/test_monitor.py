@@ -1,0 +1,152 @@
+"""Pruebas del monitor contra el GitHub simulado.
+
+    python -m unittest discover -s pruebas      (desde monitor-pases/)
+"""
+
+import json
+import os
+import shutil
+import sys
+import tempfile
+import unittest
+import urllib.error
+import urllib.request
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from mp import clasificar as C  # noqa: E402
+from mp import pase as P  # noqa: E402
+
+
+class TestReglas(unittest.TestCase):
+    def test_feature_de_rama(self):
+        self.assertEqual(C.feature_de_rama("feature/cibrdr-2311-algo", r"CIBRDR-\d+"), "CIBRDR-2311")
+        self.assertEqual(C.feature_de_rama("hotfix/otra", r"CIBRDR-\d+"), "")
+        self.assertEqual(C.feature_de_rama("x", "(roto"), "")  # expresión no válida: no revienta
+
+    def test_buscar_dps(self):
+        t = "Identificador: DP-KYTL-123\n| DP-KYTL-123 | ok |\nDP-KYTL-9_A."
+        self.assertEqual(C.buscar_dps(t, r"DP-KYTL-[A-Z0-9_-]+"), ["DP-KYTL-123", "DP-KYTL-9_A"])
+
+    def test_componentes(self):
+        reglas = [{"patron": r"^\.github/", "ignorar": True},
+                  {"patron": r"(?P<nombre>[^/]+)\.java$", "tipo": "Java", "subida": "Java"},
+                  {"patron": r"^workstation/(?P<nombre>[^/]+)/", "tipo": "Workstation"}]
+        fich = [{"ruta": "src/a/Uno.java"}, {"ruta": "workstation/alta/a.xml"}, {"ruta": "workstation/alta/b.js", "estado": "removed"},
+                {"ruta": ".github/workflows/x.yml"}, {"ruta": "otra/cosa.txt"}]
+        comps, ign = C.componentes(fich, reglas, subida_repo="Estáticos")
+        self.assertEqual(ign, 1)
+        self.assertEqual([(c["nombre"], c["tipo"], c["subida"], len(c["ficheros"])) for c in comps],
+                         [("Uno", "Java", "Java", 1), ("alta", "Workstation", "Estáticos", 2), ("cosa.txt", "", "Estáticos", 1)])
+        self.assertFalse(comps[1]["borrado"])
+
+    def test_limpiar_solo_campos_permitidos(self):
+        sucio = {"pase": "2026-11-28", "proyectos": [{"nombre": "P", "feature": "CIBRDR-1", "secreto": "x",
+                 "componentes": [{"nom": "A", "ficheros": ["ruta/secreta.java"], "token": "t", "cod": "DP-KYTL-1"}, {"nom": ""}],
+                 "dps": [{"cod": "DP-KYTL-1", "url": "https://interna", "run": 5}, {"cod": "DP-KYTL-1"}]}]}
+        limpio = P.limpiar(sucio)
+        self.assertEqual(set(limpio["proyectos"][0]), {"nombre", "feature", "componentes", "dps"})
+        self.assertEqual(set(limpio["proyectos"][0]["componentes"][0]), set(P.CAMPOS_COMP))
+        self.assertEqual(len(limpio["proyectos"][0]["componentes"]), 1)
+        self.assertEqual(limpio["proyectos"][0]["dps"], [{"cod": "DP-KYTL-1", "repo": "", "rama": "", "run": 5, "fecha": ""}])
+        self.assertNotIn("ruta/secreta", json.dumps(limpio))
+        with self.assertRaises(ValueError):
+            P.limpiar({"pase": "28/11/2026", "proyectos": []})
+
+
+class TestConGitHubSimulado(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.dir = tempfile.mkdtemp(prefix="mp-test-")
+        os.environ["MONITOR_PASES_DIR"] = cls.dir
+        from mp import demo
+        from mp.config import Config
+        from mp.servidor import App
+        from mp.sincro import Monitor
+        cls.pedidas = []
+        cls.srv_ghe, puerto, cls.datos = demo.arrancar(pedidas=cls.pedidas)
+        cfg = Config()
+        c = demo.config_demo(puerto)
+        c["nfq"] = {"api": "http://127.0.0.1:%d" % puerto, "repo": "rdr-nfq/pases-datos", "token": "demo", "rama": "main", "carpeta": "pases"}
+        cfg.actualizar(c)
+        cls.cfg, cls.mon = cfg, Monitor(cfg)
+        cls.mon.sincronizar()
+        cls.app = App(cfg, cls.mon, 0)
+        cls.app.puerto = 0
+        cls.http = App(cfg, cls.mon, 0)
+        cls.srv = cls.http.servir()
+        cls.http.puerto = cls.srv.server_address[1]
+        cls.srv.RequestHandlerClass = cls.http.manejador()  # con el puerto real para la comprobación de Host
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.shutdown()
+        cls.srv_ghe.shutdown()
+        shutil.rmtree(cls.dir, ignore_errors=True)
+
+    def test_sincronizacion(self):
+        s = self.mon.sincro
+        self.assertEqual(s["estado"], "ok")
+        r = self.mon.resumen()
+        feats = {p["feature"] for p in r["proyectos"]}
+        self.assertTrue({"CIBRDR-2311", "CIBRDR-2405", "CIBRDR-2442", "CIBRDR-2470", "CIBRDR-2488"} <= feats)
+        merg = [x for x in r["ramas"] if x["mergeada"]]
+        self.assertEqual([x["id"] for x in merg], ["equipo-demo/rdr-cadenas:feature/CIBRDR-2405-informe-regulatorio"])
+
+    def test_dps_de_las_tres_fuentes(self):
+        fuentes = {d["fuente"] for x in self.mon.resumen()["ramas"] for d in x["dps"]}
+        self.assertEqual(fuentes, {"resumen", "anotación", "log"})
+
+    def test_token_no_va_al_almacen_de_logs(self):
+        blobs = [h for m, p, h in self.pedidas if p.startswith("/blob/")]
+        self.assertTrue(blobs)
+        self.assertFalse([h for h in blobs if h.get("Authorization")])
+
+    def test_segunda_sincronizacion_usa_etag(self):
+        antes = len(self.pedidas)
+        self.mon.sincronizar()
+        self.assertEqual(self.mon.sincro["estado"], "ok")
+        self.assertEqual(self.mon.sincro["ahorradas"], len(self.pedidas) - antes)  # todo 304
+
+    def test_propuesta_guardar_y_subir(self):
+        prop = self.app.rutas("POST", "/api/propuesta", {}, {"features": ["CIBRDR-2311"]})["proyectos"][0]
+        self.assertTrue(prop["componentes"])
+        java = [c for c in prop["componentes"] if c["tipo"] == "Java"]
+        self.assertTrue(java and all(c["cod"].startswith("DP-KYTL-") for c in java))
+        g = self.app.rutas("POST", "/api/pase/guardar", {}, {"pase": {"pase": "2026-12-05", "proyectos": [prop]}})
+        self.assertTrue(os.path.exists(g["ruta"]))
+        r1 = self.app.rutas("POST", "/api/pase/subir", {}, {"fecha": "2026-12-05"})
+        r2 = self.app.rutas("POST", "/api/pase/subir", {}, {"fecha": "2026-12-05"})  # actualiza (con sha)
+        self.assertIn("pases/pase-2026-12-05.json", r2["fichero"])
+        subido = json.loads(self.datos.contenidos[("rdr-nfq/pases-datos", "pases/pase-2026-12-05.json")]["texto"])
+        self.assertEqual(subido["formato"], "monitor-pases/1")
+        self.assertNotIn("ficheros", json.dumps(subido))
+        self.assertTrue(r1["commit"])
+
+    def test_tokens_no_llegan_a_la_pagina(self):
+        txt = json.dumps(self.app.rutas("GET", "/api/config", {}, {}))
+        self.assertNotIn('"token": "demo"', txt)
+        self.assertIn('"tokenConfigurado": true', txt)
+
+    def _pedir(self, ruta, cabeceras):
+        req = urllib.request.Request("http://127.0.0.1:%d%s" % (self.http.puerto, ruta), headers=cabeceras)
+        try:
+            with urllib.request.urlopen(req, timeout=5) as r:
+                return r.status, r.read()
+        except urllib.error.HTTPError as e:
+            return e.code, e.read()
+
+    def test_seguridad_http(self):
+        host = "127.0.0.1:%d" % self.http.puerto
+        self.assertEqual(self._pedir("/api/estado", {"Host": host})[0], 403)  # sin clave
+        self.assertEqual(self._pedir("/api/estado", {"Host": host, "X-Monitor-Clave": self.http.clave})[0], 200)
+        self.assertEqual(self._pedir("/api/estado", {"Host": "malo.example:80", "X-Monitor-Clave": self.http.clave})[0], 403)
+        self.assertEqual(self._pedir("/api/estado", {"Host": host, "X-Monitor-Clave": self.http.clave, "Origin": "https://malo.example"})[0], 403)
+        estado, cuerpo = self._pedir("/", {"Host": host})
+        self.assertEqual(estado, 200)
+        self.assertIn(self.http.clave.encode(), cuerpo)
+        self.assertEqual(self._pedir("/../mp/config.py", {"Host": host})[0], 404)
+
+
+if __name__ == "__main__":
+    unittest.main()
