@@ -222,6 +222,16 @@ class Cliente:
             raise self._error(estado, cab, cuerpo, u)
         return cuerpo.decode("utf-8", "replace")
 
+    def crudo(self, ruta, params=None, accept="application/vnd.github.raw", limite=MAX_LOG):
+        """Bytes de un recurso (p. ej. un fichero en un commit) sin pasar por JSON."""
+        u = self.url(ruta, params)
+        estado, cab, cuerpo = self._peticion("GET", u, cabeceras={"Accept": accept}, seguir=False, limite=limite + 1)
+        if estado in (301, 302, 303, 307, 308) and cab.get("location"):
+            estado, cab, cuerpo = self._peticion("GET", cab["location"], auth=False, limite=limite + 1, cabeceras={"Accept": "*/*"})
+        if estado >= 300:
+            raise self._error(estado, cab, cuerpo, u)
+        return cuerpo
+
     def escribir(self, metodo, ruta, cuerpo):
         u = self.url(ruta)
         estado, cab, datos = self._peticion(metodo, u, cuerpo=cuerpo)

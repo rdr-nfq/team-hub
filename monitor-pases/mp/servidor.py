@@ -15,15 +15,16 @@ import sys
 import threading
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 
 from . import VERSION
 from . import pase as P
 from .clasificar import clasificar
+from .config import recurso
+from .diffs import Diffs
 from .ghe import ErrorGHE, api_de_host
 from .sincro import cliente_bbva
 
-WEB = Path(__file__).resolve().parent.parent / "web"
+WEB = recurso("web").resolve()
 MAX_CUERPO = 4 * 1024 * 1024
 mimetypes.add_type("text/javascript", ".mjs")
 mimetypes.add_type("text/javascript", ".js")
@@ -49,6 +50,7 @@ class App:
     def __init__(self, config, monitor, puerto, demo=False):
         self.cfg, self.mon, self.puerto, self.demo = config, monitor, puerto, demo
         self.clave = secrets.token_urlsafe(24)
+        self.diffs = Diffs(config, monitor)
 
     # ── acciones ────────────────────────────────────────────────────────────
     def probar(self, destino):
@@ -110,8 +112,22 @@ class App:
             if d is None:
                 raise KeyError("Esa rama ya no está en la última sincronización.")
             return d
+        if metodo == "GET" and ruta == "/api/commits":
+            return self.mon.commits()
+        if metodo == "GET" and ruta == "/api/commit":
+            return self.diffs.commit(q.get("repo", ""), q.get("sha", ""))
+        if metodo == "GET" and ruta == "/api/diff-rama":
+            return self.diffs.rama(q.get("id", ""))
+        if metodo == "GET" and ruta == "/api/fichero":
+            return self.diffs.fichero(q.get("repo", ""), q.get("ref", ""), q.get("ruta", ""))
         if metodo == "GET" and ruta == "/api/config":
             return self.cfg.publica()
+        if metodo == "GET" and ruta == "/api/config/equipo":
+            return {"equipo": self.cfg.para_equipo()}
+        if metodo == "POST" and ruta == "/api/config/restablecer":
+            if cuerpo.get("clave") not in ("reglas", "proyectos", "reposSubida"):
+                raise ValueError("Eso no se puede restablecer.")
+            return self.cfg.restablecer(cuerpo["clave"])
         if metodo == "POST" and ruta == "/api/config":
             antes = self.cfg.get()
             nueva = self.cfg.actualizar(cuerpo.get("cambios") or {})
@@ -236,6 +252,8 @@ class App:
             def do_GET(self):
                 if not self._host_ok():
                     return self._enviar(403, {"error": "Host no permitido."})
+                if self.path == "/ping":  # para saber si la app ya está abierta (sin datos)
+                    return self._enviar(200, {"app": "monitor-pases", "version": VERSION})
                 if self.path.startswith("/api/"):
                     return self._api("GET")
                 return self._estatico()

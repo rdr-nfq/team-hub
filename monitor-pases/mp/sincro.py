@@ -253,7 +253,7 @@ class Monitor:
             commits = [_commit_ligero(c) for c in cs or []][::-1]
             rid = "%s:%s" % (full, base)
             salida[rid] = {
-                "id": rid, "repo": full, "rama": base, "feature": "", "esBase": True, "sha": base_sha, "base": base,
+                "id": rid, "repo": full, "rama": base, "feature": "", "esBase": True, "sha": base_sha, "base": base, "baseSha": base_sha,
                 "ahead": 0, "behind": 0, "mergeada": False, "commits": commits,
                 "cabeza": commits[-1] if commits else None, "ficheros": [], "truncado": False, "pr": None,
                 "runs": self._runs(cli, cfg, full, base, runs_de.get(base, []), usadas_runs),
@@ -273,7 +273,7 @@ class Monitor:
         b = cfg["bbva"]
         rid = "%s:%s" % (full, n)
         out = {"id": rid, "repo": full, "rama": n, "feature": feature_de_rama(n, b.get("patronRama")), "esBase": False,
-               "sha": sha, "base": base, "pr": pr, "error": None,
+               "sha": sha, "base": base, "baseSha": base_sha, "pr": pr, "error": None,
                "url": "%s/tree/%s" % (url_repo, urllib.parse.quote(n)),
                "comparar": "%s/compare/%s...%s" % (url_repo, urllib.parse.quote(base or ""), urllib.parse.quote(n)) if base else ""}
         clave = "%s|%s|%s" % (full, base_sha, sha)
@@ -450,6 +450,38 @@ class Monitor:
                 self.manuales.pop(rid, None)
         self.guardar()
         return limpios
+
+    def commits(self):
+        """Todos los commits que conoce el monitor (los que traen las ramas y los
+        recientes de producción), sin repetir, con sus ramas y DPs."""
+        cfg = self.cfg.get()
+        alias = cfg.get("proyectos") or {}
+        with self._cerrojo:
+            ramas = list(self.ramas.values())
+        por_sha = {}
+        runs_de = {}
+        for r in ramas:
+            for x in r.get("runs") or []:
+                if x.get("sha"):
+                    runs_de.setdefault((r["repo"], x["sha"]), []).append(x)
+        for r in ramas:
+            for c in r.get("commits") or []:
+                k = (r["repo"], c["sha"])
+                e = por_sha.get(k)
+                if not e:
+                    runs = runs_de.get(k, [])
+                    e = por_sha[k] = dict(c, repo=r["repo"], ramas=[], features=[], produccion=False,
+                                          dps=sorted({d for x in runs for d in x.get("dps") or []}),
+                                          actions=[{"conclusion": x.get("conclusion"), "estado": x.get("estado"), "nombre": x.get("nombre"),
+                                                    "url": x.get("url")} for x in runs[:3]])
+                if r.get("esBase"):
+                    e["produccion"] = True
+                if r["rama"] not in e["ramas"]:
+                    e["ramas"].append(r["rama"])
+                if r.get("feature") and r["feature"] not in e["features"]:
+                    e["features"].append(r["feature"])
+        out = sorted(por_sha.values(), key=lambda c: c.get("fecha") or "", reverse=True)
+        return {"commits": out, "proyectos": alias}
 
     def rutas_de_muestra(self, limite=400):
         """Ficheros cambiados reales (para probar las reglas en Ajustes)."""

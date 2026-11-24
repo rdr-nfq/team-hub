@@ -1,97 +1,9 @@
 // Monitor de pases · interfaz. Preact + htm vendorizados: nada se descarga de internet.
-import { html, render, useState, useEffect, useMemo, useRef, useCallback } from "./vendor/preact-htm.mjs";
-
-const CLAVE = document.querySelector('meta[name="clave"]')?.content || "";
-const PALETA = ["#85C8FF", "#9694FF", "#FFB56B", "#88E783", "#8BE1E9", "#FFE761"];
-
-async function apiReal(ruta, cuerpo) {
-  const r = await fetch("/api/" + ruta, {
-    method: cuerpo === undefined ? "GET" : "POST",
-    headers: { "X-Monitor-Clave": CLAVE, "Content-Type": "application/json" },
-    body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo),
-  });
-  const d = await r.json().catch(() => ({ error: "La app no ha contestado bien (¿se ha cerrado la ventana del monitor?)." }));
-  if (!r.ok) {
-    const e = new Error(d.error || "Error " + r.status);
-    e.pista = d.pista;
-    throw e;
-  }
-  return d;
-}
-const api = window.MP_API || apiReal;
-
-/* ── Utilidades ── */
-const rtf = new Intl.RelativeTimeFormat("es", { numeric: "auto" });
-const fCorta = (iso) => (iso ? new Date(iso).toLocaleDateString("es-ES", { day: "numeric", month: "short" }) : "");
-const fLarga = (iso) => (iso ? new Date(iso).toLocaleString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "");
-function hace(iso) {
-  if (!iso) return "";
-  const s = (Date.parse(iso) - Date.now()) / 1000, a = Math.abs(s);
-  if (a < 60) return "ahora mismo";
-  if (a < 3600) return rtf.format(Math.round(s / 60), "minute");
-  if (a < 86400) return rtf.format(Math.round(s / 3600), "hour");
-  if (a < 86400 * 21) return rtf.format(Math.round(s / 86400), "day");
-  return "el " + fCorta(iso);
-}
-const corto = (repo) => String(repo || "").split("/").pop();
-const plural = (n, a, b) => `${n} ${n === 1 ? a : b}`;
-const uniq = (xs) => [...new Set(xs)];
-const clonar = (x) => JSON.parse(JSON.stringify(x));
-let COLORES = {};
-const colorDe = (f) => (f ? COLORES[f] || PALETA[0] : "var(--line-2)");
-function proximoSabado() {
-  const d = new Date();
-  d.setDate(d.getDate() + ((6 - d.getDay() + 7) % 7 || 7));
-  return d.toISOString().slice(0, 10);
-}
-const leerLS = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
-const ponerLS = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
-
-const RUTAS = {
-  actualizar: "M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7",
-  buscar: "M11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14zM20 20l-4.2-4.2",
-  externo: "M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5",
-  cerrar: "M6 6l12 12M18 6 6 18",
-  ok: "M5 12.5l4.5 4.5L19 7.5",
-  mal: "M7 7l10 10M17 7 7 17",
-  curso: "M12 7v5l3 2",
-  sol: "M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
-  luna: "M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z",
-  subir: "M12 16V4M7 9l5-5 5 5M5 20h14",
-  guardar: "M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6",
-  carpeta: "M3 6h6l2 2h10v11H3z",
-  copiar: "M9 9h11v11H9zM5 15H4V4h11v1",
-  arriba: "M12 19V5M6 11l6-6 6 6",
-  abajo: "M12 5v14M6 13l6 6 6-6",
-  mas: "M12 5v14M5 12h14",
-  papelera: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13",
-};
-const Icono = ({ n, cls = "" }) => html`<svg class="icono ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d=${RUTAS[n]} /></svg>`;
-const Marca = () => html`<svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#001391"/><circle cx="10" cy="10" r="3.5" fill="#85C8FF"/><circle cx="10" cy="22" r="3.5" fill="#85C8FF"/><circle cx="22" cy="16" r="3.5" fill="#88E783"/><path d="M10 13.5v5M12.8 11.8 19 14.6" stroke="#F7F8F8" stroke-width="2" fill="none"/></svg>`;
-
-const FUENTE = { resumen: "del resumen de la Action", "anotación": "de una anotación de la Action", log: "del log de la Action", pasos: "del nombre de un paso", manual: "puesto a mano" };
-const ESTADO_PR = { abierta: "abierta", mergeada: "mergeada", cerrada: "cerrada" };
-
-function EstadoRun({ run, corto: c }) {
-  const ok = run.conclusion === "success";
-  const curso = run.estado !== "completed";
-  const cls = curso ? "ico-curso" : ok ? "ico-ok" : "ico-mal";
-  const txt = curso ? "en curso" : ok ? "correcta" : run.conclusion === "cancelled" ? "cancelada" : "fallida";
-  return html`<span class="estado-ci" title=${`${run.nombre} · ${txt} · ${fLarga(run.fecha)}`}>
-    <span class=${cls}><${Icono} n=${curso ? "curso" : ok ? "ok" : "mal"} /></span>
-    ${c ? html`<span class="sr">Última ejecución ${txt}</span>` : html`<span>${run.nombre} · ${txt}</span>`}
-  </span>`;
-}
-
-function ChipDP({ d }) {
-  const titulo = d.fuente === "manual" ? "DP puesto a mano" : `DP ${FUENTE[d.fuente] || ""}${d.fecha ? " · " + fLarga(d.fecha) : ""}`;
-  return html`<span class="dp ${d.fuente === "manual" ? "dp-manual" : ""}" title=${titulo}>${d.cod}</span>`;
-}
-
-function Rama({ nombre }) {
-  const m = /^([^/]+\/)(.*)$/.exec(nombre || "");
-  return m ? html`<span class="pre">${m[1]}</span>${m[2]}` : nombre;
-}
+import { html, render, useState, useEffect, useRef, useCallback } from "./vendor/preact-htm.mjs";
+import {
+  ChipDP, ESTADO_PR, EstadoRun, FUENTE, Icono, Marca, Rama, api, clonar, colorDe, corto, fCorta, fLarga, hace, leerLS, plural, ponerColores, ponerLS, proximoSabado, uniq,
+} from "./comun.js";
+import { VistaCommits, VistaCommit, VistaDiffRama } from "./diffs.js";
 
 /* ── Cabecera ── */
 function EstadoSincro({ s, cuota }) {
@@ -109,8 +21,10 @@ function EstadoSincro({ s, cuota }) {
   </span>`;
 }
 
+const VISTAS = ["ramas", "actividad", "commits", "pase", "ajustes"];
+
 function Cabecera({ estado, vista, setVista, onSync, tema, cambiarTema }) {
-  const vistas = [["ramas", "Ramas"], ["actividad", "Actividad"], ["pase", "Pase"], ["ajustes", "Ajustes"]];
+  const vistas = [["ramas", "Ramas"], ["actividad", "Actividad"], ["commits", "Commits"], ["pase", "Pase"], ["ajustes", "Ajustes"]];
   const enCurso = estado?.sincro?.enCurso;
   return html`<header class="cab">
     <div class="marca"><${Marca} /> Monitor de pases ${estado?.demo ? html`<small>Demo</small>` : html`<small>BBVA × NFQ</small>`}</div>
@@ -190,14 +104,14 @@ function Bienvenida({ setVista, demo }) {
   </div>`;
 }
 
-function FilaRama({ r, abierta, setAbierta }) {
+function FilaRama({ r, abierta, setAbierta, ir }) {
   const run = r.runs?.[0];
   const abrir = () => setAbierta(r.id);
   return html`<tr class="fila ${abierta === r.id ? "abierta" : ""} ${r.mergeada ? "merg" : ""}" onClick=${abrir}>
     <td class="c-repo">${corto(r.repo)}</td>
     <td class="c-rama"><button onClick=${(e) => { e.stopPropagation(); abrir(); }} aria-label=${`Ver ${r.rama} en ${corto(r.repo)}`}><${Rama} nombre=${r.rama} /></button>
       ${r.pr ? html`<div class="pr"><a class="chip chip-pr" href=${r.pr.url} target="_blank" rel="noopener noreferrer" onClick=${(e) => e.stopPropagation()} title=${r.pr.titulo}>PR #${r.pr.numero} ${ESTADO_PR[r.pr.estado] || r.pr.estado}${r.pr.borrador ? " · borrador" : ""}</a></div>` : ""}</td>
-    <td class="c-commit">${r.cabeza ? html`<span class="msg" title=${r.cabeza.mensaje}>${r.cabeza.mensaje}</span><span class="meta">${r.cabeza.autor} · ${hace(r.cabeza.fecha)}</span>` : html`<span class="tenue">—</span>`}</td>
+    <td class="c-commit">${r.cabeza ? html`<button class="lnk msg" title=${"Ver el commit: " + r.cabeza.mensaje} onClick=${(e) => { e.stopPropagation(); ir({ vista: "commit", repo: r.repo, sha: r.cabeza.sha }); }}>${r.cabeza.mensaje}</button><span class="meta">${r.cabeza.autor} · ${hace(r.cabeza.fecha)}</span>` : html`<span class="tenue">—</span>`}</td>
     <td class="c-prod">${r.mergeada ? html`<span class="chip chip-merg">Ya en ${r.base}</span>` : r.ahead == null ? html`<span class="tenue">—</span>` :
       html`<span class="adel num" title=${`${plural(r.ahead, "commit", "commits")} que no están en ${r.base}`}>${plural(r.ahead, "commit", "commits")}</span>${r.behind ? html`<br /><span class="detras num" title=${`${r.base} tiene ${r.behind} commits que esta rama no tiene`}>${r.behind} por detrás</span>` : ""}`}</td>
     <td class="c-ci"><div class="ci">
@@ -209,7 +123,7 @@ function FilaRama({ r, abierta, setAbierta }) {
   </tr>`;
 }
 
-function VistaRamas({ estado, filtros, setFiltros, abierta, setAbierta, preparar, setVista }) {
+function VistaRamas({ estado, filtros, setFiltros, abierta, setAbierta, preparar, setVista, ir }) {
   if (!estado.configurado && !estado.ramas.length) return html`<div class="contenido"><${Bienvenida} setVista=${setVista} demo=${estado.demo} /></div>`;
   const visibles = filtrar(estado.ramas, filtros);
   const grupos = estado.proyectos.map((p) => ({ p, ramas: visibles.filter((r) => (r.feature || "") === p.feature) })).filter((g) => g.ramas.length);
@@ -227,14 +141,14 @@ function VistaRamas({ estado, filtros, setFiltros, abierta, setAbierta, preparar
       </div>
       <div style="overflow-x:auto"><table class="tabla">
         <thead><tr><th scope="col">Repo</th><th scope="col">Rama y PR</th><th scope="col">Último commit</th><th scope="col" class="c-prod">Fuera de producción</th><th scope="col">Action y DP</th><th scope="col" class="c-n" title="Componentes">Comp.</th></tr></thead>
-        <tbody>${ramas.map((r) => html`<${FilaRama} key=${r.id} r=${r} abierta=${abierta} setAbierta=${setAbierta} />`)}</tbody>
+        <tbody>${ramas.map((r) => html`<${FilaRama} key=${r.id} r=${r} abierta=${abierta} setAbierta=${setAbierta} ir=${ir} />`)}</tbody>
       </table></div>
     </section>`)}
   </div>`;
 }
 
 /* ── Detalle de una rama ── */
-function Detalle({ id, onCerrar, aviso, recargar }) {
+function Detalle({ id, onCerrar, aviso, recargar, ir }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState(null);
   const [nuevoDP, setNuevoDP] = useState("");
@@ -267,8 +181,8 @@ function Detalle({ id, onCerrar, aviso, recargar }) {
         </div>
         ${d && html`<div class="repo">${d.repo}${d.feature ? html` · <span class="chip chip-acento" style=${{ background: colorDe(d.feature) }}>${d.feature}</span>` : ""}</div>`}
         ${d && html`<div class="enlaces">
-          <a class="btn btn-s" href=${d.url} target="_blank" rel="noopener noreferrer"><${Icono} n="externo" /> Ver en GitHub</a>
-          ${d.comparar && html`<a class="btn btn-s" href=${d.comparar} target="_blank" rel="noopener noreferrer"><${Icono} n="externo" /> Comparar con ${d.base}</a>`}
+          ${!d.esBase && d.baseSha && !d.mergeada && html`<button class="btn btn-s btn-pri" onClick=${() => ir({ vista: "diff", id })}>Ver las diferencias con ${d.base}</button>`}
+          <a class="btn btn-s" href=${d.url} target="_blank" rel="noopener noreferrer"><${Icono} n="externo" /> GitHub</a>
           ${d.pr && html`<a class="btn btn-s" href=${d.pr.url} target="_blank" rel="noopener noreferrer"><${Icono} n="externo" /> PR #${d.pr.numero}</a>`}
         </div>`}
       </div>
@@ -281,7 +195,7 @@ function Detalle({ id, onCerrar, aviso, recargar }) {
             <div class="dato"><b>${d.behind ?? "—"}</b><span>commits de ${d.base || "producción"} que le faltan</span></div>
             <div class="dato"><b>${d.componentes.length}</b><span>${d.componentes.length === 1 ? "componente" : "componentes"} de ${plural(d.ficheros.length, "fichero", "ficheros")}${d.ignorados ? ` (${d.ignorados} ${d.ignorados === 1 ? "ignorado" : "ignorados"})` : ""}</span></div>
           </div>
-          ${d.truncado && html`<p class="nota">GitHub solo devuelve los primeros 300 ficheros y 250 commits de una comparación: la lista puede estar incompleta. Mírala completa en «Comparar con ${d.base}».</p>`}
+          ${d.truncado && html`<p class="nota">GitHub solo devuelve los primeros 300 ficheros y 250 commits de una comparación: la lista puede estar incompleta. Mírala completa en GitHub.</p>`}
           </section>
 
           <section class="seccion" aria-labelledby="s-dps">
@@ -308,14 +222,14 @@ function Detalle({ id, onCerrar, aviso, recargar }) {
                 ${c.subida && c.subida !== c.tipo ? html`<span class="chip">${c.subida}</span>` : ""}
                 ${c.borrado ? html`<span class="chip chip-mal">se borra</span>` : ""}
                 <span class="n">${plural(c.ficheros.length, "fichero", "ficheros")}</span></summary>
-              <ul>${c.ficheros.map((f) => html`<li key=${f}>${f}</li>`)}</ul>
+              <ul>${c.ficheros.map((f) => html`<li key=${f}><button class="lnk" onClick=${() => ir({ vista: "diff", id, foco: f })} title="Ver sus diferencias">${f}</button></li>`)}</ul>
             </details>`)}</div>` : html`<p class="suave" style="margin:0">${d.mergeada ? "La rama ya está en producción: no trae cambios." : "No hay ficheros cambiados (o todos los ignoran las reglas)."}</p>`}
           </section>`}
 
           <section class="seccion" aria-labelledby="s-com">
             <h3 id="s-com">${d.esBase ? "Commits recientes" : `Commits que no están en ${d.base}`} <span class="chip">${d.commits.length}</span></h3>
             <ul class="lista">${[...d.commits].reverse().slice(0, 60).map((c) => html`<li key=${c.sha}><div class="commit"><span class="linea"><i /></span><div>
-              <div>${c.mensaje}</div>
+              <div><button class="lnk" onClick=${() => ir({ vista: "commit", repo: d.repo, sha: c.sha })}>${c.mensaje}</button></div>
               <div class="l2">${c.autor} · ${fLarga(c.fecha)} · ${c.url ? html`<a class="mono" href=${c.url} target="_blank" rel="noopener noreferrer">${c.sha.slice(0, 7)}</a>` : html`<span class="mono">${c.sha.slice(0, 7)}</span>`}</div>
             </div></div></li>`)}</ul>
           </section>
@@ -333,7 +247,7 @@ function Detalle({ id, onCerrar, aviso, recargar }) {
 }
 
 /* ── Actividad ── */
-function VistaActividad({ estado, filtros, setFiltros, setAbierta }) {
+function VistaActividad({ estado, filtros, setFiltros, setAbierta, ir }) {
   const [globo, setGlobo] = useState(null);
   const t1 = Date.now(), t0 = t1 - estado.dias * 864e5;
   const pos = (iso) => ((Date.parse(iso) - t0) / (t1 - t0)) * 100;
@@ -351,7 +265,7 @@ function VistaActividad({ estado, filtros, setFiltros, setAbierta }) {
   const pista = (r, color) => html`<div class="act-pista">
     ${ticks.map((t) => html`<span class="tick" key=${t} style=${{ left: pos(t) + "%" }} />`)}
     ${r.commits.filter((c) => pos(c.fecha) >= 0).map((c) => html`<button class="marca-c" key=${c.sha} tabindex="-1" style=${{ left: pos(c.fecha) + "%", background: color }}
-      aria-label=${`Commit ${c.mensaje}`} onMouseEnter=${(e) => mostrar(e, c.mensaje, [`${c.autor} · ${fLarga(c.fecha)}`, c.sha.slice(0, 7)])} onMouseLeave=${ocultar} onClick=${() => setAbierta(r.id)} />`)}
+      aria-label=${`Commit ${c.mensaje}`} onMouseEnter=${(e) => mostrar(e, c.mensaje, [`${c.autor} · ${fLarga(c.fecha)}`, `${c.sha.slice(0, 7)} · pulsa para ver los cambios`])} onMouseLeave=${ocultar} onClick=${() => { ocultar(); ir({ vista: "commit", repo: r.repo, sha: c.sha }); }} />`)}
     ${r.runs.filter((x) => pos(x.fecha) >= 0).map((x) => html`<button class="marca-r ${x.conclusion === "success" ? "ok" : "mal"}" key=${"r" + x.id} tabindex="-1" style=${{ left: pos(x.fecha) + "%" }}
       aria-label=${`Ejecución ${x.nombre}`} onMouseEnter=${(e) => mostrar(e, `${x.nombre} · ${x.conclusion === "success" ? "correcta" : x.estado !== "completed" ? "en curso" : "fallida"}`, [fLarga(x.fecha), x.dps.length ? "DP: " + x.dps.join(", ") : "Sin DP"])}
       onMouseLeave=${ocultar} onClick=${() => setAbierta(r.id)} />`)}
@@ -619,6 +533,21 @@ function VistaAjustes({ estado, aviso, recargar }) {
   const probarReglas = async () => {
     try { setMuestras((await api("reglas/probar", { reglas: cfg.reglas })).muestras); } catch (e) { aviso(e.message, "mal"); }
   };
+  const restablecerReglas = async () => {
+    try {
+      const nuevo = await api("config/restablecer", { clave: "reglas" });
+      setCfg(nuevo); setOrig(JSON.stringify(nuevo)); setVersion((v) => v + 1);
+      aviso("Vuelves a usar las reglas del equipo."); recargar();
+    } catch (e) { aviso(e.message, "mal"); }
+  };
+  const copiarEquipo = async () => {
+    try {
+      const r = await api("config/equipo");
+      const t = JSON.stringify(r.equipo, null, 1);
+      await navigator.clipboard.writeText(t);
+      aviso("Copiado. Pásalo para guardarlo en monitor-pases/config-equipo.json del repositorio.");
+    } catch (e) { aviso("No se pudo copiar: " + e.message, "mal"); }
+  };
   const b = cfg.bbva, n = cfg.nfq;
   const regla = (i, k, v) => set(["reglas", i, k], v);
   const mover = (i, d) => setCfg((c) => { const x = clonar(c); const [r] = x.reglas.splice(i, 1); x.reglas.splice(i + d, 0, r); return x; });
@@ -692,6 +621,7 @@ function VistaAjustes({ estado, aviso, recargar }) {
       <div class="prueba">
         <button class="btn btn-s" onClick=${() => setCfg((c) => ({ ...c, reglas: [...c.reglas, { patron: "", tipo: "", subida: "" }] }))}><${Icono} n="mas" /> Añadir regla</button>
         <button class="btn btn-s" onClick=${probarReglas}>Probar con ficheros reales</button>
+        ${cfg.reglasPropias && html`<button class="btn btn-s" onClick=${restablecerReglas}>Volver a las reglas del equipo</button>`}
         ${muestras && html`<label class="interruptor"><input type="checkbox" checked=${soloSin} onChange=${(e) => setSoloSin(e.target.checked)} /> Solo los que no encajan</label>`}
       </div>
       ${muestras && html`<div style="max-height:320px;overflow:auto;margin-top:10px"><table class="tabla-mini"><thead><tr><th>Fichero</th><th>Resultado</th></tr></thead><tbody>
@@ -703,6 +633,12 @@ function VistaAjustes({ estado, aviso, recargar }) {
         <table class="tabla-mini" style="margin-top:8px"><tbody>${estado.repos.map((r) => html`<tr key=${r.nombre}><td style="width:45%">${r.nombre}</td>
           <td><input class="inp" list="dl-sub-aj" aria-label=${"Subida de " + r.nombre} value=${(cfg.reposSubida || {})[r.nombre] || ""} onInput=${(e) => set(["reposSubida", r.nombre], e.target.value)} /></td></tr>`)}</tbody></table>
         <datalist id="dl-sub-aj">${(estado.subidas || []).map((s) => html`<option value=${s} />`)}</datalist></details>` : ""}
+    </section>
+
+    <section class="caja" aria-labelledby="aj-equipo">
+      <h2 id="aj-equipo">Ajustes del equipo</h2>
+      <p>La organización, los patrones, los nombres de los proyectos y las reglas que vienen dentro del ejecutable salen de <span class="mono">monitor-pases/config-equipo.json</span>, en el repositorio. Cada persona solo pone su token. Lo que cambies aquí vale solo para ti${cfg.hayEquipo ? "" : " (este ejecutable no trae ajustes del equipo)"}.</p>
+      <button class="btn btn-s" onClick=${copiarEquipo}><${Icono} n="copiar" /> Copiar mis ajustes para el equipo (sin tokens)</button>
     </section>
 
     <section class="caja" aria-labelledby="aj-nfq">
@@ -726,6 +662,8 @@ function VistaAjustes({ estado, aviso, recargar }) {
       <div class="prueba"><button class="btn" onClick=${() => probar("nfq")} disabled=${estado.demo}>Probar conexión</button><${Resultado} r=${res.nfq} /></div>
     </section>
 
+    <p class="tenue" style="margin:0;font-size:12px">Monitor de pases ${estado.version}</p>
+
     ${sucio && html`<div class="barra-guardar" role="status"><span>Hay cambios sin guardar.</span>
       <button class="btn" onClick=${guardar}>Guardar</button>
       <button class="btn" onClick=${() => { setCfg(JSON.parse(orig)); setVersion((v) => v + 1); }}>Descartar</button></div>`}
@@ -736,7 +674,10 @@ function VistaAjustes({ estado, aviso, recargar }) {
 function App() {
   const [estado, setEstado] = useState(null);
   const [errorCarga, setErrorCarga] = useState(null);
-  const [vista, setVistaRaw] = useState(() => (["ramas", "actividad", "pase", "ajustes"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "ramas"));
+  const leerHash = () => { const v = location.hash.slice(1); return { vista: VISTAS.includes(v) ? v : "ramas" }; };
+  const [ruta, setRuta] = useState(leerHash);
+  const pila = useRef([]);
+  const conHistorial = useRef(false);
   const [filtros, setFiltros] = useState({ proyecto: null, repo: null, q: "", ocultarMergeadas: true, soloDP: false });
   const [abierta, setAbierta] = useState(null);
   const [tostadas, setTostadas] = useState([]);
@@ -744,7 +685,25 @@ function App() {
   const [, setTic] = useState(0);
   const [tema, setTema] = useState(() => document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
 
-  const setVista = (v) => { setVistaRaw(v); history.replaceState(null, "", "#" + v); };
+  // Navegación: commits y diferencias son pantallas dentro de la pestaña de
+  // la que se viene; «Volver» y el botón Atrás del navegador deshacen el paso.
+  const ir = (r) => {
+    const destino = { ...r, desde: r.desde || (VISTAS.includes(ruta.vista) ? ruta.vista : ruta.desde) };
+    pila.current.push(ruta);
+    setRuta(destino);
+    setAbierta(null);
+    try { history.pushState({ mp: true }, "", "#" + (VISTAS.includes(destino.vista) ? destino.vista : destino.desde)); conHistorial.current = true; } catch {}
+    document.getElementById("principal")?.scrollTo(0, 0);
+  };
+  const atras = () => { setRuta(pila.current.pop() || { vista: "ramas" }); };
+  const volver = () => { if (conHistorial.current) history.back(); else atras(); };
+  useEffect(() => {
+    const f = () => atras();
+    addEventListener("popstate", f);
+    return () => removeEventListener("popstate", f);
+  }, []);
+  const vista = ruta.vista;
+  const setVista = (v) => ir({ vista: v });
   const aviso = useCallback((texto, tipo = "ok", enlace) => {
     const id = Math.random();
     setTostadas((t) => [...t.slice(-3), { id, texto, tipo, enlace }]);
@@ -758,10 +717,7 @@ function App() {
     const t = setTimeout(cargar, estado?.sincro?.enCurso ? 2000 : 30000);
     return () => clearTimeout(t);
   }, [estado, cargar]);
-  if (estado) {
-    const fs = estado.proyectos.map((p) => p.feature).filter(Boolean).sort();
-    COLORES = Object.fromEntries(fs.map((f, i) => [f, PALETA[i % PALETA.length]]));
-  }
+  if (estado) ponerColores(estado.proyectos.map((p) => p.feature));
 
   const sincronizar = async () => {
     try {
@@ -779,20 +735,23 @@ function App() {
   const preparar = (features) => { setPresel(features); setVista("pase"); };
 
   if (!estado) return html`<p class="arranque" role=${errorCarga ? "alert" : "status"}>${errorCarga ? "No se puede hablar con la app: " + errorCarga : "Cargando el monitor…"}</p>`;
-  const conLateral = vista === "ramas" || vista === "actividad";
+  const conLateral = ["ramas", "actividad", "commits"].includes(vista);
   return html`<div class="marco">
-    <${Cabecera} estado=${estado} vista=${vista} setVista=${setVista} onSync=${sincronizar} tema=${tema} cambiarTema=${cambiarTema} />
+    <${Cabecera} estado=${estado} vista=${VISTAS.includes(vista) ? vista : ruta.desde} setVista=${setVista} onSync=${sincronizar} tema=${tema} cambiarTema=${cambiarTema} />
     <${Avisos} estado=${estado} setVista=${setVista} />
     <div class="cuerpo ${conLateral ? "" : "ancho"}">
       ${conLateral && html`<${Lateral} estado=${estado} filtros=${filtros} setFiltros=${setFiltros} />`}
       <main class="principal" id="principal">
-        ${vista === "ramas" && html`<${VistaRamas} estado=${estado} filtros=${filtros} setFiltros=${setFiltros} abierta=${abierta} setAbierta=${setAbierta} preparar=${preparar} setVista=${setVista} />`}
-        ${vista === "actividad" && html`<${VistaActividad} estado=${estado} filtros=${filtros} setFiltros=${setFiltros} setAbierta=${setAbierta} />`}
+        ${vista === "ramas" && html`<${VistaRamas} estado=${estado} filtros=${filtros} setFiltros=${setFiltros} abierta=${abierta} setAbierta=${setAbierta} preparar=${preparar} setVista=${setVista} ir=${ir} />`}
+        ${vista === "actividad" && html`<${VistaActividad} estado=${estado} filtros=${filtros} setFiltros=${setFiltros} setAbierta=${setAbierta} ir=${ir} />`}
+        ${vista === "commits" && html`<${VistaCommits} estado=${estado} filtros=${filtros} setFiltros=${setFiltros} ir=${ir} />`}
+        ${vista === "commit" && html`<${VistaCommit} key=${ruta.repo + ruta.sha} repo=${ruta.repo} sha=${ruta.sha} volver=${volver} ir=${ir} aviso=${aviso} />`}
+        ${vista === "diff" && html`<${VistaDiffRama} key=${ruta.id} id=${ruta.id} foco=${ruta.foco} volver=${volver} ir=${ir} />`}
         ${vista === "pase" && html`<${VistaPase} estado=${estado} aviso=${aviso} preseleccion=${presel} limpiarPreseleccion=${() => setPresel(null)} />`}
         ${vista === "ajustes" && html`<${VistaAjustes} estado=${estado} aviso=${aviso} recargar=${cargar} />`}
       </main>
     </div>
-    ${abierta && html`<${Detalle} id=${abierta} onCerrar=${() => setAbierta(null)} aviso=${aviso} recargar=${cargar} />`}
+    ${abierta && html`<${Detalle} id=${abierta} onCerrar=${() => setAbierta(null)} aviso=${aviso} recargar=${cargar} ir=${ir} />`}
     <div class="tostadas" aria-live="polite">${tostadas.map((t) => html`<div class="tostada ${t.tipo === "mal" ? "mal" : ""}" key=${t.id} role=${t.tipo === "mal" ? "alert" : "status"}>
       <span>${t.texto}${t.enlace ? html` <a href=${t.enlace} target="_blank" rel="noopener noreferrer">Abrir</a>` : ""}</span></div>`)}</div>
   </div>`;

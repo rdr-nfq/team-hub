@@ -1,2 +1,2 @@
-*.bat text eol=crlf
 *.woff2 binary
+*.ico binary

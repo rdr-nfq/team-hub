@@ -8,7 +8,9 @@ tokens), estado.json (lo último sincronizado) y pases\\ (los .json generados).
 import copy
 import json
 import os
+import sys
 import threading
+import time
 from pathlib import Path
 
 # Reglas para convertir ficheros cambiados en componentes del pase. Se prueban
@@ -71,12 +73,20 @@ def _mezclar(base, nuevo):
 
 
 def escribir_json(ruta, datos):
-    """Escritura atómica (fichero temporal + rename)."""
+    """Escritura atómica (fichero temporal + rename). En Windows el rename
+    falla si otro hilo tiene el fichero abierto en ese momento: se reintenta."""
     ruta = Path(ruta)
-    tmp = ruta.with_suffix(ruta.suffix + ".tmp")
+    tmp = ruta.with_suffix(ruta.suffix + ".%d.tmp" % threading.get_ident())
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(datos, f, ensure_ascii=False, indent=1)
-    os.replace(tmp, ruta)
+    for intento in range(20):
+        try:
+            os.replace(tmp, ruta)
+            return
+        except PermissionError:
+            if intento == 19:
+                raise
+            time.sleep(0.05)
 
 
 def leer_json(ruta, defecto=None):
@@ -87,12 +97,45 @@ def leer_json(ruta, defecto=None):
         return defecto
 
 
+def recurso(nombre):
+    """Fichero que va dentro de la app (en el .exe, en la carpeta temporal de PyInstaller)."""
+    base = getattr(sys, "_MEIPASS", None) or Path(__file__).resolve().parent.parent
+    return Path(base) / nombre
+
+
+# Lo que se comparte con el equipo (config-equipo.json): todo menos tokens,
+# proxy, certificados y transporte, que son de cada equipo.
+CAMPOS_EQUIPO = {
+    "bbva": ("host", "organizaciones", "repos", "excluirRepos", "patronRama", "soloRamasDeProyecto", "baseProduccion",
+             "basesRepo", "patronDP", "workflowsDP", "leerLogs", "refrescoMin", "diasActividad"),
+    "nfq": ("host", "repo", "rama", "carpeta"),
+}
+
+
+def _diferencia(datos, base):
+    """Solo lo que cambia respecto a `base` (así lo que mejore el equipo en
+    config-equipo.json llega a todos los que no lo han tocado)."""
+    out = {}
+    for k, v in datos.items():
+        b = base.get(k) if isinstance(base, dict) else None
+        if isinstance(v, dict) and isinstance(b, dict) and k not in ("proyectos", "reposSubida", "basesRepo"):
+            d = _diferencia(v, b)
+            if d:
+                out[k] = d
+        elif v != b:
+            out[k] = copy.deepcopy(v)
+    return out
+
+
 class Config:
     def __init__(self):
         self.dir = carpeta_datos()
         self.ruta = self.dir / "config.json"
         self._cerrojo = threading.Lock()
-        self.datos = _mezclar(POR_DEFECTO, leer_json(self.ruta, {}))
+        self.equipo = leer_json(recurso("config-equipo.json"), {}) or {}
+        self.base = _mezclar(POR_DEFECTO, self.equipo)
+        self.propia = leer_json(self.ruta, {}) or {}
+        self.datos = _mezclar(self.base, self.propia)
 
     def get(self):
         with self._cerrojo:
@@ -106,12 +149,39 @@ class Config:
             d[seccion][clave] = ""
             d[seccion][clave + "Configurado"] = bool(t)
             d[seccion][clave + "Final"] = t[-4:] if t else ""
+        with self._cerrojo:
+            d["reglasPropias"] = "reglas" in self.propia and bool(self.equipo.get("reglas"))
+            d["hayEquipo"] = bool(self.equipo)
         return d
+
+    def para_equipo(self):
+        """Ajustes para config-equipo.json: sin tokens ni nada de este equipo."""
+        d = self.get()
+        out = {s: {k: d[s][k] for k in campos if k in d[s]} for s, campos in CAMPOS_EQUIPO.items()}
+        out.update({k: d[k] for k in ("proyectos", "reglas", "reposSubida")})
+        return out
+
+    def _guardar(self):
+        self.propia = _diferencia(self.datos, self.base)
+        escribir_json(self.ruta, self.propia)
+        try:
+            os.chmod(self.ruta, 0o600)
+        except OSError:
+            pass
+
+    def restablecer(self, clave):
+        """Vuelve a lo que diga el equipo para una clave de primer nivel (p. ej. "reglas")."""
+        with self._cerrojo:
+            self.datos[clave] = copy.deepcopy(self.base.get(clave))
+            self._guardar()
+        return self.publica()
 
     def actualizar(self, cambios):
         """Mezcla `cambios` (de la página). Un token vacío NO borra el guardado;
         para borrarlo se manda {"borrarToken": true} en su sección."""
         cambios = copy.deepcopy(cambios or {})
+        for k in ("reglasPropias", "hayEquipo"):
+            cambios.pop(k, None)
         with self._cerrojo:
             for seccion, clave in SECRETOS:
                 c = cambios.get(seccion)
@@ -127,11 +197,7 @@ class Config:
                 else:
                     c[clave] = str(c[clave]).strip()
             self.datos = _mezclar(self.datos, cambios)
-            escribir_json(self.ruta, self.datos)
-            try:
-                os.chmod(self.ruta, 0o600)
-            except OSError:
-                pass
+            self._guardar()
         return self.publica()
 
     def configurado(self):

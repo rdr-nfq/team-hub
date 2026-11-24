@@ -7,6 +7,7 @@ redirección a un almacén que rechaza el token, y contents (para la subida).
 
 import base64
 import datetime as dt
+import difflib
 import hashlib
 import json
 import random
@@ -63,6 +64,117 @@ def _rutas(repo, rnd, feature):
     return ["aperiodicos/%s_recarga.sh" % slug, "README.md"]
 
 
+# ── Contenido inventado de los ficheros y sus cambios ──
+def _base(ruta, rnd):
+    nombre = ruta.rsplit("/", 1)[-1]
+    raiz, _, ext = nombre.rpartition(".")
+    if ext == "java":
+        paquete = ".".join(ruta.split("/")[3:-1]) or "com.equipo.rdr"
+        metodos = []
+        for m in rnd.sample(["cargar", "validar", "transformar", "exportar", "calcularTotal", "resumen"], 3):
+            metodos += ["", "    public List<Operacion> %s(LocalDate fecha) {" % m,
+                        "        List<Operacion> lista = repositorio.buscar(ORIGEN, fecha);",
+                        "        if (lista.isEmpty()) {",
+                        "            LOG.info(\"Sin operaciones para {}\", fecha);",
+                        "            return List.of();",
+                        "        }",
+                        "        return lista.stream().filter(o -> o.getImporte().signum() > 0).toList();",
+                        "    }"]
+        return (["package %s;" % paquete, "", "import java.math.BigDecimal;", "import java.time.LocalDate;", "import java.util.List;",
+                 "import org.slf4j.Logger;", "import org.slf4j.LoggerFactory;", "", "/** %s del cargador RDR. */" % raiz,
+                 "public class %s {" % raiz, "", "    private static final Logger LOG = LoggerFactory.getLogger(%s.class);" % raiz,
+                 "    private static final String ORIGEN = \"%s\";" % raiz.upper()[:10],
+                 "    private static final int MAX_REINTENTOS = 3;", "", "    private final Repositorio repositorio;", "",
+                 "    public %s(Repositorio repositorio) {" % raiz, "        this.repositorio = repositorio;", "    }"]
+                + metodos + ["}"])
+    if ext == "xml":
+        campos = rnd.sample(["contrapartida", "importe", "divisa", "fechaValor", "cartera", "producto", "estado"], 5)
+        return (['<?xml version="1.0" encoding="UTF-8"?>', '<pantalla id="%s" titulo="%s">' % (raiz, raiz.replace("_", " ").capitalize()),
+                 '  <formulario>'] + ['    <campo id="%s" tipo="texto" obligatorio="%s"/>' % (c, "true" if i < 2 else "false") for i, c in enumerate(campos)]
+                + ['  </formulario>', '  <acciones>', '    <boton id="guardar" accion="guardarOperacion"/>',
+                   '    <boton id="cancelar" accion="cerrar"/>', '  </acciones>', '</pantalla>'])
+    if ext == "js":
+        return ["/* Eventos de la pantalla */", "", "function alCargar(ctx) {", "  ctx.campo('divisa').valor('EUR');",
+                "  ctx.campo('fechaValor').valor(ctx.hoy());", "}", "", "function guardarOperacion(ctx) {",
+                "  if (!ctx.campo('importe').valor()) {", "    ctx.aviso('El importe es obligatorio');", "    return;", "  }",
+                "  ctx.servicio('operaciones').guardar(ctx.datos());", "}"]
+    if ext == "css":
+        return [".pantalla { display: grid; gap: 8px; }", ".campo { min-width: 180px; }", ".campo--obligatorio label::after { content: ' *'; }",
+                ".acciones { display: flex; justify-content: flex-end; gap: 8px; }"]
+    if ext == "sql":
+        return ["-- %s" % raiz, "CREATE TABLE %s (" % raiz, "  ID_OPERACION   NUMBER(12)    NOT NULL,", "  FECHA_VALOR    DATE          NOT NULL,",
+                "  IMPORTE        NUMBER(18,2),", "  DIVISA         VARCHAR2(3),", "  CONTRAPARTIDA  VARCHAR2(40),",
+                "  CONSTRAINT PK_%s PRIMARY KEY (ID_OPERACION)" % raiz[:20], ");", "",
+                "CREATE INDEX IX_%s_FECHA ON %s (FECHA_VALOR);" % (raiz[:16], raiz)]
+    if ext == "properties":
+        return ["# Parámetros de %s" % raiz, "origen.codigo=RDR", "origen.reintentos=3", "carga.lote=500", "carga.hora=06:30",
+                "salida.carpeta=/datos/rdr/salida", "salida.formato=csv"]
+    if ext == "json":
+        return ["{", '  "job": "%s",' % raiz, '  "origen": { "tabla": "RDR_OPERACIONES", "particion": "fecha" },',
+                '  "transformaciones": [', '    { "tipo": "filtro", "condicion": "importe > 0" },',
+                '    { "tipo": "renombrar", "de": "cpty", "a": "contrapartida" }', "  ],",
+                '  "destino": { "tabla": "RDR_%s", "modo": "append" }' % raiz.upper()[:16], "}"]
+    if ext == "csv":
+        return ["origen;destino;tipo", "cpty;contrapartida;texto", "amt;importe;decimal", "ccy;divisa;texto", "vdate;fecha_valor;fecha"]
+    if ext == "jcl":
+        return ["//%s JOB (RDR),'CARGA RDR',CLASS=A" % raiz[:8], "//PASO01   EXEC PGM=RDRCARGA", "//ENTRADA  DD DSN=RDR.ENTRADA.DIARIA,DISP=SHR",
+                "//SALIDA   DD DSN=RDR.SALIDA.DIARIA,DISP=(NEW,CATLG)", "//SYSOUT   DD SYSOUT=*"]
+    if ext == "sh":
+        return ["#!/bin/bash", "# Recarga aperiódica de %s" % raiz, "set -euo pipefail", 'FECHA="${1:?Indica la fecha AAAA-MM-DD}"',
+                'echo "Recargando $FECHA"', "rdr-cli recarga --fecha \"$FECHA\" --origen operaciones", 'echo "Hecho"']
+    return ["entornos:", "  pre:", "    url: https://pre.interno", "  pro:", "    url: https://pro.interno", "reintentos: 3"]
+
+
+INSERCIONES = {
+    "java": [["        if (fecha == null) {", "            throw new IllegalArgumentException(\"La fecha es obligatoria\");", "        }"],
+             ["    private BigDecimal redondear(BigDecimal importe) {", "        return importe.setScale(2, RoundingMode.HALF_EVEN);", "    }", ""],
+             ["        LOG.debug(\"Procesando {} operaciones\", lista.size());"]],
+    "xml": [['    <campo id="observaciones" tipo="texto" obligatorio="false"/>'], ['    <boton id="exportar" accion="exportarCsv"/>']],
+    "js": [["  ctx.campo('cartera').valor(ctx.usuario().cartera);"], ["", "function exportarCsv(ctx) {", "  ctx.descargar('operaciones.csv');", "}"]],
+    "sql": [["  OBSERVACIONES  VARCHAR2(200),"], ["", "COMMENT ON TABLE ... IS 'Operaciones RDR';"]],
+    "properties": [["carga.paralelo=4"], ["salida.cabecera=true"]],
+    "json": [['    { "tipo": "calculo", "campo": "importe_eur", "expresion": "importe * cambio" },']],
+    "csv": [["cartera;cartera;texto"], ["prod;producto;texto"]],
+    "jcl": [["//PASO02   EXEC PGM=RDRVALID"]],
+    "sh": [['rdr-cli valida --fecha "$FECHA"']],
+}
+
+
+def _editar(lineas, ruta, rnd):
+    """Un cambio pequeño y creíble: insertar, retocar o quitar líneas."""
+    ext = ruta.rpartition(".")[2]
+    out = list(lineas)
+    for _ in range(rnd.randint(1, 2)):
+        op = rnd.random()
+        i = rnd.randint(1, max(1, len(out) - 2))
+        if op < 0.5 and INSERCIONES.get(ext):
+            out[i:i] = rnd.choice(INSERCIONES[ext])
+        elif op < 0.85:
+            j = rnd.randint(1, max(1, len(out) - 2))
+            ln = out[j]
+            nuevo = re.sub(r"\d+", lambda m: str(int(m.group()) + rnd.randint(1, 9)), ln, count=1)
+            if nuevo == ln:
+                nuevo = ln.replace("true", "false") if "true" in ln else ln.rstrip() + ("  // revisado" if ext == "java" else "")
+            out[j] = nuevo
+        elif len(out) > 6:
+            del out[i]
+    return out if out != lineas else lineas + [""]
+
+
+def _patch(a, b):
+    """Diff unificado como el campo `patch` de GitHub (sin las cabeceras ---/+++)."""
+    lineas = list(difflib.unified_diff(a, b, lineterm="", n=3))[2:]
+    mas = sum(1 for x in lineas if x.startswith("+"))
+    menos = sum(1 for x in lineas if x.startswith("-"))
+    return "\n".join(lineas), mas, menos
+
+
+def _fichero_api(ruta, a, b):
+    patch, mas, menos = _patch(a, b)
+    estado = "added" if not a else "removed" if not b else "modified"
+    return {"filename": ruta, "status": estado, "additions": mas, "deletions": menos, "changes": mas + menos, "patch": patch}
+
+
 def _sha(*partes):
     return hashlib.sha1("|".join(str(p) for p in partes).encode()).hexdigest()
 
@@ -75,7 +187,8 @@ class Datos:
         self.repos = {}
         self.runs = {}  # id -> run
         self.jobs = {}  # id -> job (incluye salida y log)
-        self.contenidos = {}  # (repo, ruta) -> {sha, texto}
+        self.contenidos = {}  # (repo, ruta) -> {sha, texto}   (repositorio de NFQ: lo subido)
+        self.versiones = {}  # (repo, sha) -> {ruta: [líneas]}  (ficheros en cada commit)
         run_id, job_id, pr_n, dp_n = [9000], [70000], [1], [48000]
 
         def cuando(dias, horas=0):
@@ -101,6 +214,13 @@ class Datos:
                                          "Ajuste de configuración de entornos", "Actualiza versiones de dependencias"])})
             base_commits.sort(key=lambda c: c["fecha"])
             base_commits[-1]["sha"] = master_sha
+            cfgv = _base("config/entornos.yml", rnd)
+            for c in base_commits:
+                nueva = _editar(cfgv, "config/entornos.yml", rnd)
+                c["files"] = [_fichero_api("config/entornos.yml", cfgv, nueva)]
+                cfgv = nueva
+            base_vers = {"config/entornos.yml": cfgv}
+            self.versiones[(full, master_sha)] = base_vers
             ramas = {"master": {"sha": master_sha, "commits": [], "files": [], "behind": 0, "base": True},
                      "develop": {"sha": _sha(full, "develop"), "commits": [], "files": [], "behind": 3}}
             prs, runs = [], []
@@ -120,11 +240,41 @@ class Datos:
                                         "%s: ajustes tras revisión" % feat, "%s: pruebas unitarias" % feat,
                                         "%s: renombra campos del informe" % feat, "%s: añade parámetros de entorno" % feat])})
                 commits.sort(key=lambda c: c["fecha"])
-                files = [] if mergeada else [{"filename": p, "status": rnd.choice(["modified", "modified", "added"]),
-                                               "additions": rnd.randint(2, 180), "deletions": rnd.randint(0, 60)}
-                                              for p in _rutas(repo, rnd, feat)]
-                if files and rnd.random() < 0.15:
-                    files[-1]["status"] = "removed"
+                files = []
+                if not mergeada:
+                    rutas = _rutas(repo, rnd, feat)
+                    estados = {r: rnd.choice(["modified", "modified", "added"]) for r in rutas}
+                    if rnd.random() < 0.15 and len(rutas) > 1:
+                        estados[rutas[-1]] = "removed"
+                    v0 = {r: ([] if estados[r] == "added" else _base(r, rnd)) for r in rutas}
+                    for r in rutas:
+                        if v0[r]:
+                            base_vers[r] = v0[r]
+                    actual = dict(v0)
+                    toques = {c["sha"]: set() for c in commits}
+                    for r in rutas:  # cada fichero lo toca al menos un commit; los nuevos, el primero
+                        toques[commits[0]["sha"] if estados[r] == "added" else rnd.choice(commits)["sha"]].add(r)
+                    for c in commits:
+                        if not toques[c["sha"]] or (c is not commits[0] and rnd.random() < 0.6):  # ningún commit vacío
+                            toques[c["sha"]].add(rnd.choice(rutas))
+                    ultimo = {r: max(i for i, c in enumerate(commits) if r in toques[c["sha"]]) for r in rutas}
+                    padre = master_sha
+                    for i, c in enumerate(commits):
+                        cambios = []
+                        for r in sorted(toques[c["sha"]]):
+                            antes = actual[r]
+                            if estados[r] == "removed" and ultimo[r] == i:
+                                despues = []
+                            elif not antes:
+                                despues = _base(r, rnd)
+                            else:
+                                despues = _editar(antes, r, rnd)
+                            actual[r] = despues
+                            cambios.append(_fichero_api(r, antes, despues))
+                        c["files"], c["padre"] = cambios, padre
+                        padre = c["sha"]
+                        self.versiones[(full, c["sha"])] = {r: v for r, v in actual.items() if v}
+                    files = [_fichero_api(r, v0[r], actual[r]) for r in rutas]
                 sha = commits[-1]["sha"] if commits else master_sha
                 ramas[nombre] = {"sha": sha, "commits": commits, "files": files, "behind": rnd.randint(0, 12) if commits else 0}
                 # PR
@@ -172,9 +322,12 @@ class Datos:
                         self.runs[rid] = run
                         runs.append(run)
             # una rama sin proyecto
+            hot = _editar(cfgv, "config/entornos.yml", rnd)
+            fh = [_fichero_api("config/entornos.yml", cfgv, hot)]
             ramas["hotfix/ajuste-entornos"] = {"sha": _sha(full, "hotfix"), "commits": [
-                {"sha": _sha(full, "hotfix"), "fecha": cuando(5), "autor": "jmartin", "mensaje": "Ajuste de entornos"}],
-                "files": [{"filename": "config/entornos.yml", "status": "modified", "additions": 3, "deletions": 1}], "behind": 1}
+                {"sha": _sha(full, "hotfix"), "fecha": cuando(5), "autor": "jmartin", "mensaje": "Ajuste de entornos", "files": fh,
+                 "padre": master_sha}], "files": fh, "behind": 1}
+            self.versiones[(full, _sha(full, "hotfix"))] = dict(base_vers, **{"config/entornos.yml": hot})
             self.repos[full] = {"nombre": repo, "full": full, "ramas": ramas, "prs": prs, "runs": runs,
                                 "base_commits": base_commits, "pushed_at": cuando(rnd.randint(0, 5))}
 
@@ -265,6 +418,18 @@ class _H(BaseHTTPRequestHandler):
         if not m:
             return self._json(404, {"message": "Not Found"})
         full, resto = m.group(1), m.group(2) or ""
+        if resto.startswith("/contents/") and metodo == "GET" and full in d.repos:
+            ruta = urllib.parse.unquote(resto[len("/contents/"):])
+            v = d.versiones.get((full, q.get("ref", ""))) or {}
+            if ruta not in v:
+                return self._json(404, {"message": "Not Found"})
+            texto = ("\n".join(v[ruta]) + "\n").encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(texto)))
+            self.end_headers()
+            self.wfile.write(texto)
+            return
         if metodo == "PUT" or resto.startswith("/contents/"):
             return self._contenidos(metodo, full, resto, q)
         r = d.repos.get(full)
@@ -292,8 +457,13 @@ class _H(BaseHTTPRequestHandler):
         if m:
             for b in r["ramas"].values():
                 for c in b["commits"] + r["base_commits"]:
-                    if c["sha"] == m.group(1):
-                        return self._json(200, _commit_json(full, c))
+                    if c["sha"].startswith(m.group(1)):
+                        j = _commit_json(full, c)
+                        fs = c.get("files") or []
+                        j.update(files=fs, parents=[{"sha": c["padre"]}] if c.get("padre") else [],
+                                 stats={"additions": sum(f["additions"] for f in fs), "deletions": sum(f["deletions"] for f in fs),
+                                        "total": sum(f["changes"] for f in fs)})
+                        return self._json(200, j)
             return self._json(200, _commit_json(full, {"sha": m.group(1), "fecha": d.hoy.isoformat(), "autor": "ana-ruiz",
                                                         "mensaje": "Commit"}))
         m = re.match(r"^/compare/([0-9a-f]+)\.\.\.([0-9a-f]+)$", resto)

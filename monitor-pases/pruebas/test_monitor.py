@@ -80,8 +80,9 @@ class TestConGitHubSimulado(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        cls.srv.shutdown()
-        cls.srv_ghe.shutdown()
+        for srv in (cls.srv, cls.srv_ghe):
+            srv.shutdown()
+            srv.server_close()
         shutil.rmtree(cls.dir, ignore_errors=True)
 
     def test_sincronizacion(self):
@@ -122,6 +123,41 @@ class TestConGitHubSimulado(unittest.TestCase):
         self.assertEqual(subido["formato"], "monitor-pases/1")
         self.assertNotIn("ficheros", json.dumps(subido))
         self.assertTrue(r1["commit"])
+
+    def test_commits_y_diferencias(self):
+        cs = self.app.rutas("GET", "/api/commits", {}, {})["commits"]
+        self.assertTrue(cs and all(c["sha"] and c["repo"] for c in cs))
+        c = next(x for x in cs if x["features"] and x["dps"])
+        d = self.app.rutas("GET", "/api/commit", {"repo": c["repo"], "sha": c["sha"]}, {})
+        self.assertTrue(d["ficheros"])
+        f = d["ficheros"][0]
+        self.assertTrue(f["patch"].startswith("@@"))
+        self.assertEqual(d["stats"]["additions"], sum(x["mas"] for x in d["ficheros"]))
+        # La segunda vez sale de la caché en disco: no se pide a GitHub.
+        antes = len(self.pedidas)
+        self.app.rutas("GET", "/api/commit", {"repo": c["repo"], "sha": c["sha"]}, {})
+        self.assertEqual(len(self.pedidas), antes)
+        # Rama frente a producción y fichero completo antes y después.
+        rid = next(r["id"] for r in self.mon.ramas.values() if r["repo"].endswith("rdr-javas") and not r["esBase"] and not r["mergeada"])
+        dr = self.app.rutas("GET", "/api/diff-rama", {"id": rid}, {})
+        self.assertTrue(dr["ficheros"] and dr["baseSha"])
+        mod = next(x for x in dr["ficheros"] if x["estado"] == "modified")
+        despues = self.app.rutas("GET", "/api/fichero", {"repo": dr["repo"], "ref": dr["sha"], "ruta": mod["ruta"]}, {})
+        antes_f = self.app.rutas("GET", "/api/fichero", {"repo": dr["repo"], "ref": dr["baseSha"], "ruta": mod["ruta"]}, {})
+        self.assertTrue(despues["existe"] and antes_f["existe"])
+        self.assertNotEqual(despues["texto"], antes_f["texto"])
+        with self.assertRaises(ValueError):
+            self.app.rutas("GET", "/api/commit", {"repo": "otra/repo", "sha": c["sha"]}, {})
+        with self.assertRaises(ValueError):
+            self.app.rutas("GET", "/api/fichero", {"repo": dr["repo"], "ref": dr["sha"], "ruta": "../secreto"}, {})
+
+    def test_config_del_equipo(self):
+        eq = self.app.rutas("GET", "/api/config/equipo", {}, {})["equipo"]
+        self.assertNotIn("token", json.dumps(eq))
+        self.assertIn("reglas", eq)
+        # Lo propio se guarda como diferencia respecto a lo del equipo.
+        propia = json.load(open(os.path.join(self.dir, "config.json"), encoding="utf-8"))
+        self.assertNotIn("patronDP", propia.get("bbva", {}))
 
     def test_tokens_no_llegan_a_la_pagina(self):
         txt = json.dumps(self.app.rutas("GET", "/api/config", {}, {}))

@@ -1,0 +1,21 @@
+{
+ "bbva": {
+  "host": "bbva.ghe.com",
+  "organizaciones": [],
+  "patronRama": "CIBRDR-\\d+",
+  "baseProduccion": "master",
+  "patronDP": "DP-KYTL-[A-Z0-9_-]+"
+ },
+ "nfq": {
+  "host": "github.com",
+  "rama": "main",
+  "carpeta": "pases"
+ },
+ "proyectos": {},
+ "reglas": [
+  {"patron": "^\\.github/", "ignorar": true},
+  {"patron": "(^|/)(README|CHANGELOG|LICENSE)[^/]*$", "ignorar": true},
+  {"patron": "(^|/)\\.(gitignore|gitattributes|editorconfig)$", "ignorar": true},
+  {"patron": "(?P<nombre>[^/]+)\\.java$", "tipo": "Java", "subida": "Java"}
+ ]
+}

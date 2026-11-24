@@ -177,11 +177,12 @@ Todo el código Apps Script vive en **`apps-script/`** y es **un único proyecto
 
 ---
 
-## 10. Monitor de pases (app local de la VDI)
+## 10. Monitor de pases (app de la VDI, se reparte como .exe)
 
-`monitor-pases/` es una app que se ejecuta **en la VDI de BBVA** (no en la web): lee los repositorios de GitHub BBVA (ramas, commits, PRs, Actions y DPs) y genera el `.json` del pase, que se sube a un repositorio privado de NFQ. Detalles en `monitor-pases/README.md`.
+`monitor-pases/` es una app que se ejecuta **en la VDI de BBVA** (no en la web): lee los repositorios de GitHub BBVA (ramas, commits con sus diferencias, PRs, Actions y DPs) y genera el `.json` del pase, que se sube a un repositorio privado de NFQ. Detalles en `monitor-pases/README.md`.
 
+- Se reparte como **un único `MonitorPases.exe`** (PyInstaller): lo compila, prueba y publica `.github/workflows/monitor-pases.yml` en cada push a `main` que toque `monitor-pases/`, en la release `monitor-pases` (enlace fijo). Nada de `.bat` ni instalaciones.
 - Solo librería estándar de Python (3.8+); la interfaz (`web/`) lleva Preact + htm y las fuentes dentro: **nada se descarga de internet**.
-- Tokens y datos viven fuera del repositorio (`%USERPROFILE%\.monitor-pases`). Nunca añadir datos reales de BBVA al repositorio; la demo usa datos inventados (`mp/demo.py`).
-- Antes de subir: `cd monitor-pases && python -m unittest discover -s pruebas` (usa un GitHub simulado).
+- Tokens y datos viven fuera del repositorio (`%USERPROFILE%\.monitor-pases`). Lo común del equipo (sin tokens) va en `monitor-pases/config-equipo.json` y entra en el `.exe`. Nunca añadir datos reales de BBVA al repositorio salvo esa configuración; la demo usa datos inventados (`mp/demo.py`).
+- Antes de subir: `cd monitor-pases && python -m unittest discover -s pruebas` (usa un GitHub simulado) y subir `VERSION` en `mp/__init__.py`. Tras el push, comprobar que el workflow del `.exe` pasa.
 - Los campos de componente del `.json` (`nom`, `tipo`, `subida`, `cod`, `resp`, `us`, `com`) son los de la hoja de pases de la web (`agregarComponentes`).
