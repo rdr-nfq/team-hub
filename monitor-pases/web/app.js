@@ -21,11 +21,14 @@ function EstadoSincro({ s, cuota }) {
   const titulo = `${s.llamadas ?? 0} llamadas a GitHub (${s.ahorradas ?? 0} sin coste de cuota) en ${s.segundos ?? "?"} s` +
     (cuota?.restante != null ? ` · quedan ${cuota.restante} llamadas de cuota` : "");
   if (s.estado === "error") return html`<span class="sincro"><span class="chip chip-mal">No se pudo sincronizar</span></span>`;
+  if (s.estado === "pausada") return html`<span class="sincro" title=${titulo}><span class="chip chip-borde">En pausa hasta las ${hora(s.reanuda)}</span></span>`;
   return html`<span class="sincro" title=${titulo}>
     ${s.estado === "con errores" ? html`<span class="chip chip-mal">${plural(s.errores.length, "repo con error", "repos con error")}</span>` : ""}
     <span class="sincro-etq">Actualizado </span><b>${hace(s.fin)}</b>
   </span>`;
 }
+
+const hora = (iso) => (iso ? new Date(iso).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }) : "");
 
 const VISTAS = ["ramas", "actividad", "commits", "dps", "repos", "copilot", "pase", "ajustes"];
 
@@ -53,6 +56,11 @@ function Cabecera({ estado, vista, setVista, onSync, tema, cambiarTema, abrirPal
 function Avisos({ estado, setVista }) {
   const s = estado?.sincro;
   if (!s) return null;
+  if (s.estado === "pausada")
+    return html`<div class="aviso aviso-cuota" role="status"><div>
+      <b>Sincronización en pausa por la cuota de GitHub BBVA</b> (cada persona tiene un número de llamadas por hora).
+      ${s.repos?.[1] ? html` Ya están al día <b class="num">${s.repos[0]} de ${s.repos[1]}</b> repositorios;` : ""} sigue sola a las <b>${hora(s.reanuda)}</b> desde donde se quedó.
+      <div class="tenue">La primera carga es la que más gasta: después, lo que no ha cambiado no consume cuota. Mientras, los repositorios pendientes se ven con los datos que hubiera.</div></div></div>`;
   if (s.estado === "error" && s.error)
     return html`<div class="aviso" role="alert"><div><b>${s.error.mensaje}</b>${s.error.pista ? html` ${s.error.pista}` : ""}</div><button class="btn" onClick=${() => setVista("ajustes")}>Ir a Ajustes</button></div>`;
   if (s.estado === "con errores" && s.errores?.length)
@@ -691,6 +699,8 @@ function VistaAjustes({ estado, aviso, recargar }) {
         <label class="campo"><span>Workflows que generan DPs</span><${CampoLista} valor=${b.workflowsDP} onCambio=${(v) => set(["bbva", "workflowsDP"], v)} placeholder="Vacío = todos" /><small>Parte del nombre o del fichero .yml, separados por comas.</small></label>
         <label class="campo"><span>Refrescar cada (minutos)</span><input class="inp" type="number" min="2" value=${b.refrescoMin} onInput=${(e) => set(["bbva", "refrescoMin"], Number(e.target.value) || 10)} /></label>
         <label class="campo"><span>Días de actividad</span><input class="inp" type="number" min="7" max="180" value=${b.diasActividad} onInput=${(e) => set(["bbva", "diasActividad"], Number(e.target.value) || 45)} /></label>
+        <label class="campo"><span>Releases que se siguen por repositorio</span><input class="inp" type="number" min="1" max="20" value=${b.releasesPorRepo ?? 3} onInput=${(e) => set(["bbva", "releasesPorRepo"], Number(e.target.value) || 3)} />
+          <small>Las más recientes. Las anteriores ya están en producción y leerlas gasta cuota de GitHub.</small></label>
         <label class="interruptor"><input type="checkbox" checked=${b.soloRamasDeProyecto} onChange=${(e) => set(["bbva", "soloRamasDeProyecto"], e.target.checked)} /> Solo ramas con código de proyecto</label>
         <label class="interruptor"><input type="checkbox" checked=${b.leerLogs} onChange=${(e) => set(["bbva", "leerLogs"], e.target.checked)} /> Buscar el DP en los logs si no está en el resumen</label>
       </div>

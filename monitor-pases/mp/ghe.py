@@ -32,6 +32,15 @@ class ErrorGHE(Exception):
         return {"mensaje": str(self), "estado": self.estado, "pista": self.pista}
 
 
+class ErrorCuota(ErrorGHE):
+    """Se ha gastado (o casi) la cuota de la API. `reinicio`: cuándo vuelve (epoch)."""
+    def __init__(self, reinicio, url=None, estado=None):
+        cuando = time.strftime("%H:%M", time.localtime(reinicio)) if reinicio else "dentro de un rato"
+        super().__init__("Se ha gastado la cuota de la API de GitHub.", estado, url,
+                         "Se recupera a las %s y la sincronización sigue sola entonces." % cuando)
+        self.reinicio = reinicio
+
+
 class _SinRedireccion(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
@@ -76,7 +85,8 @@ def _diagnostico(err):
 
 
 class Cliente:
-    def __init__(self, api, token, proxy="", ca="", timeout=30, transporte="python"):
+    def __init__(self, api, token, proxy="", ca="", timeout=30, transporte="python", reserva=0):
+        self.reserva = reserva  # llamadas de cuota que no gasta (las deja para navegar mientras sincroniza)
         self.api = str(api or "").rstrip("/")
         self.token = str(token or "").strip()
         self.timeout = timeout
@@ -107,6 +117,8 @@ class Cliente:
 
     def _peticion(self, metodo, url, cuerpo=None, cabeceras=None, seguir=True, auth=True, limite=None):
         """-> (estado, cabeceras(dict en minúsculas), bytes). No lanza por HTTP != 2xx."""
+        if self.reserva and self.restante is not None and self.restante <= self.reserva and (self.reinicio or 0) > time.time():
+            raise ErrorCuota(self.reinicio, url)
         h = self._cabeceras(auth, cabeceras)
         datos = None
         if cuerpo is not None:
@@ -156,9 +168,9 @@ class Cliente:
                             "Autorízalo desde: " + (m.group(1) if m else "GitHub → Settings → Tokens → Configure SSO"))
         if estado in (403, 429) and (cab.get("x-ratelimit-remaining") == "0" or "rate limit" in msg.lower()):
             reinicio = int(cab.get("x-ratelimit-reset") or 0)
-            cuando = time.strftime("%H:%M", time.localtime(reinicio)) if reinicio else "dentro de un rato"
-            return ErrorGHE("Se ha gastado la cuota de la API de GitHub.", estado, url,
-                            "Se recupera a las " + cuando + ". Sube el intervalo de refresco o limita los repositorios.")
+            if cab.get("retry-after", "").isdigit():  # límite secundario (demasiadas a la vez): esperar lo que diga
+                reinicio = max(reinicio if cab.get("x-ratelimit-remaining") == "0" else 0, int(time.time()) + int(cab["retry-after"]))
+            return ErrorCuota(reinicio or int(time.time()) + 60, url, estado)
         if estado == 403 and "ip allow list" in msg.lower():
             return ErrorGHE("La organización no deja entrar desde esta IP.", estado, url,
                             "Ejecuta la app dentro de la VDI/VPN de BBVA.")

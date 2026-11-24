@@ -13,6 +13,7 @@ import json
 import random
 import re
 import threading
+import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -223,6 +224,8 @@ class Datos:
         self.contenidos = {}  # (repo, ruta) -> {sha, texto}   (repositorio de NFQ: lo subido)
         self.versiones = {}  # (repo, sha) -> {ruta: [líneas]}  (ficheros en cada commit)
         self.sin_propiedades = False  # True: como un GitHub sin la API de propiedades (se usa la búsqueda)
+        self.cuota = None  # llamadas que quedan (None = sin límite); los 304 no gastan, como en GitHub
+        self.cuota_cerrojo = threading.Lock()
         run_id, job_id, pr_n, dp_n = [9000], [70000], [1], [48000]
 
         rmin = random.Random(semilla + 7)  # minutos sueltos: que nada pase «ahora mismo» (otra semilla: no cambia el resto)
@@ -337,7 +340,8 @@ class Datos:
                                "conclusion": "success" if ok else "failure", "run_attempt": 1, "event": "push",
                                "path": ".github/workflows/build-dp.yml",
                                "created_at": cuando(max(0, rnd.randint(0, inicio) - k), rnd.randint(0, 9)),
-                               "html_url": "https://demo.invalid/%s/actions/runs/%d" % (full, rid), "_repo": full, "_jobs": []}
+                               "html_url": "https://demo.invalid/%s/actions/runs/%d" % (full, rid), "_repo": full, "_jobs": [],
+               "check_suite_id": rid}
                         for jn in ("compilar", "empaquetar"):
                             job_id[0] += 1
                             jid = job_id[0]
@@ -424,7 +428,8 @@ def _crear_run(datos, full, rama, sha, titulo, fuente, fecha, rnd, dp_n, run_id,
     dp, rid = "DP-KYTL-%d" % dp_n[0], run_id[0]
     run = {"id": rid, "name": "Release y DP", "display_title": titulo, "head_branch": rama, "head_sha": sha, "status": "completed",
            "conclusion": "success", "run_attempt": 1, "event": "push", "path": ".github/workflows/release-dp.yml", "created_at": fecha,
-           "html_url": "https://demo.invalid/%s/actions/runs/%d" % (full, rid), "_repo": full, "_jobs": []}
+           "html_url": "https://demo.invalid/%s/actions/runs/%d" % (full, rid), "_repo": full, "_jobs": [],
+               "check_suite_id": rid}
     for jn in ("compilar", "empaquetar"):
         job_id[0] += 1
         salida = {"title": None, "summary": None, "text": None, "annotations_count": 0}
@@ -492,8 +497,8 @@ class _H(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(cuerpo)))
         self.send_header("ETag", etag)
-        self.send_header("X-RateLimit-Remaining", "4321")
-        self.send_header("X-RateLimit-Reset", "1999999999")
+        self.send_header("X-RateLimit-Remaining", str(self.datos.cuota if self.datos.cuota is not None else 4321))
+        self.send_header("X-RateLimit-Reset", str(int(time.time()) + 3600) if self.datos.cuota is not None else "1999999999")
         for k, v in (extra or {}).items():
             self.send_header(k, v)
         self.end_headers()
@@ -533,6 +538,11 @@ class _H(BaseHTTPRequestHandler):
             return
         if self.headers.get("Authorization") != "Bearer " + TOKEN:
             return self._json(401, {"message": "Bad credentials"})
+        if d.cuota is not None:
+            with d.cuota_cerrojo:
+                if d.cuota <= 0:
+                    return self._json(403, {"message": "API rate limit exceeded for user."})
+                d.cuota -= 1  # (un 304 la devolvería, pero aquí basta con contar todas)
         if p == "/user":
             return self._json(200, {"login": "usuario-demo"}, {"X-OAuth-Scopes": "repo"})
         m = re.match(r"^/orgs/([^/]+)/repos$", p)
@@ -683,6 +693,15 @@ class _H(BaseHTTPRequestHandler):
                      "check_run_url": "http://127.0.0.1:%d/repos/%s/check-runs/%d" % (self.puerto, full, j)}
                     for j in run["_jobs"]]
             return self._json(200, {"total_count": len(jobs), "jobs": jobs})
+        m = re.match(r"^/check-suites/(\d+)/check-runs$", resto)
+        if m:  # la check suite de una ejecución es la propia ejecución en la demo
+            run = d.runs.get(int(m.group(1)))
+            if not run:
+                return self._json(404, {"message": "Not Found"})
+            chks = [{"id": j, "name": d.jobs[j]["name"], "status": "completed", "conclusion": d.jobs[j]["conclusion"],
+                     "url": "http://127.0.0.1:%d/repos/%s/check-runs/%d" % (self.puerto, full, j), "output": d.jobs[j]["_salida"]}
+                    for j in run["_jobs"]]
+            return self._json(200, {"total_count": len(chks), "check_runs": chks})
         m = re.match(r"^/check-runs/(\d+)(/annotations)?$", resto)
         if m:
             j = d.jobs[int(m.group(1))]

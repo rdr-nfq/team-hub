@@ -43,6 +43,7 @@ POR_DEFECTO = {
         "leerLogs": True,
         "refrescoMin": 10,
         "diasActividad": 45,
+        "releasesPorRepo": 3,
         "proxy": "",
         "ca": "",
         "transporte": "python",
@@ -111,7 +112,7 @@ def recurso(nombre):
 # proxy, certificados y transporte, que son de cada equipo.
 CAMPOS_EQUIPO = {
     "bbva": ("host", "organizaciones", "filtroRepos", "repos", "excluirRepos", "patronRama", "patronRelease", "soloRamasDeProyecto",
-             "baseProduccion", "basesRepo", "patronDP", "workflowsDP", "leerLogs", "refrescoMin", "diasActividad"),
+             "baseProduccion", "basesRepo", "patronDP", "workflowsDP", "leerLogs", "refrescoMin", "diasActividad", "releasesPorRepo"),
     "nfq": ("host", "repo", "rama", "carpeta", "publicarDPs"),
 }
 

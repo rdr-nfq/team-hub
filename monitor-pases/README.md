@@ -89,7 +89,18 @@ Las copias locales viven en `%USERPROFILE%\.monitor-pases\repos` y `copilot\`.
 
 ## Cuánto pide a GitHub
 
-- **Sincronización:** cada pocos minutos. Lo que no ha cambiado contesta 304 y no gasta cuota.
+**No se clona nada para mirar los repositorios:** todo va por la API de GitHub. Solo Copilot descarga una copia, y solo de la rama sobre la que le preguntas.
+
+GitHub da a cada persona un número de llamadas por hora (normalmente 5.000).
+
+- **La primera sincronización es la cara.** Por cada repositorio pide sus ramas, PRs, ejecuciones de Actions y los commits de producción. Por cada rama de proyecto y cada release, lo que trae frente a producción. Y de cada ejecución correcta, su resumen, para encontrar el DP.
+  - Con 150+ repositorios puede no caber en una hora. La app **para antes de gastarla entera**: deja 300 llamadas para que puedas seguir navegando. **Sigue sola cuando GitHub la recupera**, desde donde se quedó. Lo ya leído no se vuelve a pedir.
+  - Los repositorios con cambios más recientes van primero.
+- **Después, cada 10 minutos** (*Ajustes → Refrescar cada*), vuelve a preguntar. Lo que no ha cambiado contesta «sin cambios» (304) y **no gasta cuota**. Solo cuesta lo nuevo: ramas o commits nuevos y ejecuciones nuevas.
+- **Para gastar menos:**
+  - De cada repositorio solo se siguen las **3 últimas releases**: las anteriores ya están en producción (*Ajustes → Releases que se siguen por repositorio*).
+  - Solo se buscan DPs en las **ejecuciones correctas**: las 10 últimas de cada release y las 2 últimas de cada feature.
+  - Los logs solo se leen en las releases, y solo si el DP no aparece en el resumen.
 - **Commits, diferencias, árboles, ficheros y PRs:** se piden al abrirlos. Lo que identifica un SHA se guarda en disco y no se vuelve a pedir.
 
 ## Seguridad

@@ -68,6 +68,7 @@ export function VistaRepos({ estado, f, setF, setFacetas, ir }) {
       <tbody>${visibles.slice(0, limite).map((x) => html`<tr class="fila" key=${x.repo} onClick=${() => ir({ vista: "repo", repo: x.repo, sub: "codigo" })}>
         <td class="c-nombre-repo"><button class="lnk" onClick=${(e) => { e.stopPropagation(); ir({ vista: "repo", repo: x.repo, sub: "codigo" }); }}><b>${corto(x.repo)}</b></button>
           ${x.o.error ? html` <span class="chip chip-mal" title=${x.o.error.mensaje}>error</span>` : ""}
+          ${x.o.pendiente ? html` <span class="chip chip-borde" title="Todavía no se ha podido leer: se hará cuando vuelva la cuota de GitHub">pendiente</span>` : ""}
           ${x.o.descripcion ? html`<span class="desc-repo">${x.o.descripcion}</span>` : ""}
           ${x.proyectos.length ? html`<span class="feats-repo">${x.proyectos.slice(0, 4).map((p) => html`<span class="punto" key=${p} style=${{ background: colorDe(p), borderRadius: "3px" }} title=${p} />`)}</span>` : ""}</td>
         <td class="c-num">${x.abiertas ? html`<button class="lnk num" title="Ver sus ramas" onClick=${(e) => { e.stopPropagation(); setF({ ...f, repos: [x.repo] }); ir({ vista: "ramas" }); }}>${x.abiertas}</button>` : html`<span class="tenue">0</span>`}</td>

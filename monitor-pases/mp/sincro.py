@@ -18,12 +18,14 @@ from concurrent.futures import ThreadPoolExecutor
 
 from .clasificar import buscar_dps, clave_version, componentes, feature_de_rama, features_en, version_release
 from .config import escribir_json, leer_json
-from .ghe import Cliente, ErrorGHE, api_de_host
+from .ghe import Cliente, ErrorCuota, ErrorGHE, api_de_host
 
 POOL_REPOS = 6
 POOL_RAMAS = 4
 POOL_DETALLE = 8
-RUNS_POR_RAMA = 10
+RUNS_POR_RAMA = 10      # ejecuciones en las que se busca el DP en una release
+RUNS_POR_FEATURE = 2    # y en una rama de feature (solo las últimas)
+RESERVA_CUOTA = 300     # la sincronización para antes y deja estas llamadas para navegar
 
 
 def _ahora():
@@ -42,10 +44,15 @@ def _commit_ligero(c):
             "mensaje": (info.get("message") or "").split("\n")[0][:160], "url": c.get("html_url", "")}
 
 
-def cliente_bbva(cfg):
+def cliente_bbva(cfg, reserva=0):
     b = cfg["bbva"]
     return Cliente(b.get("api") or api_de_host(b.get("host")), b.get("token"), b.get("proxy"), b.get("ca"),
-                   transporte=b.get("transporte"))
+                   transporte=b.get("transporte"), reserva=reserva)
+
+
+def _repo_de_clave(k):
+    """Repositorio de una clave de caché («repo|base|sha» o «repo#run#intento»)."""
+    return k.replace("#", "|").split("|")[0]
 
 
 class Monitor:
@@ -90,8 +97,10 @@ class Monitor:
                     self.sincronizar()
                 except Exception:  # nunca tumbar el hilo
                     traceback.print_exc()
-            minutos = max(2, int(self.cfg.get()["bbva"].get("refrescoMin") or 10))
-            self._despertar.wait(minutos * 60)
+            espera = max(2, int(self.cfg.get()["bbva"].get("refrescoMin") or 10)) * 60
+            if self.sincro.get("estado") == "pausada" and self.sincro.get("reanudaEpoch"):
+                espera = max(60, self.sincro["reanudaEpoch"] - time.time() + 30)  # sigue en cuanto vuelve la cuota
+            self._despertar.wait(espera)
             self._despertar.clear()
 
     def pedir_sincro(self):
@@ -111,51 +120,90 @@ class Monitor:
         self._en_curso = True
         inicio = time.time()
         self._progreso(estado="en curso", inicio=_ahora(), fase="Buscando repositorios", repos=[0, 0], errores=[])
-        cli = cliente_bbva(cfg)
+        cli = cliente_bbva(cfg, RESERVA_CUOTA)
         cli.etags = self.etags
         try:
             repos = self._descubrir(cli, b)
+            # Los que tienen cambios más recientes, primero: si se acaba la cuota, lo que queda es lo que menos se mueve.
+            repos.sort(key=lambda r: r.get("pushed_at") or "", reverse=True)
             self._progreso(fase="Leyendo ramas y ejecuciones", repos=[0, len(repos)])
             nuevos_repos, nuevas_ramas, errores = {}, {}, []
-            usadas_compare, usadas_runs = set(), set()
+            usadas_compare, usadas_runs, al_dia = set(), set(), set()
             hechos = [0]
+            parar = threading.Event()
+            cuota = [None]
+
+            def anteriores(r, error=None):
+                """Lo de la sincronización anterior (si la hay) de un repo que no se ha podido leer ahora."""
+                full = r["full_name"]
+                info = dict(self.repos.get(full) or {"nombre": full, "url": r.get("html_url", ""),
+                                                     "propiedades": r.get("_propiedades") or {}, "lenguaje": r.get("language") or "",
+                                                     "temas": r.get("topics") or [], "descripcion": (r.get("description") or "")[:200]})
+                info["error"] = error
+                info["pendiente"] = error is None
+                return info, {k: v for k, v in self.ramas.items() if v.get("repo") == full}
 
             def un_repo(r):
-                try:
-                    info, ramas, uc, ur = self._repo(cli, cfg, r)
-                except ErrorGHE as e:
-                    info, ramas, uc, ur = ({"nombre": r["full_name"], "url": r.get("html_url", ""), "error": e.como_dict(),
-                                            "propiedades": r.get("_propiedades") or {}, "lenguaje": r.get("language") or "",
-                                            "temas": r.get("topics") or [], "descripcion": (r.get("description") or "")[:200]},
-                                           {}, set(), set())
-                    previas = {k: v for k, v in self.ramas.items() if v.get("repo") == r["full_name"]}
-                    ramas = previas  # se conservan los datos anteriores del repo que falla
-                    errores.append({"repo": r["full_name"], **e.como_dict()})
+                full = r["full_name"]
+                if parar.is_set():  # sin cuota: se queda como estaba y se lee en la próxima
+                    info, ramas = anteriores(r)
+                    uc = ur = set()
+                else:
+                    try:
+                        info, ramas, uc, ur = self._repo(cli, cfg, r)
+                        with self._cerrojo:
+                            al_dia.add(full)
+                    except ErrorCuota as e:
+                        parar.set()
+                        cuota[0] = e
+                        info, ramas = anteriores(r)
+                        uc = ur = set()
+                    except ErrorGHE as e:
+                        info, ramas = anteriores(r, e.como_dict())
+                        uc = ur = set()
+                        errores.append({"repo": full, **e.como_dict()})
                 with self._cerrojo:
-                    nuevos_repos[r["full_name"]] = info
+                    nuevos_repos[full] = info
                     nuevas_ramas.update(ramas)
                     usadas_compare.update(uc)
                     usadas_runs.update(ur)
                     hechos[0] += 1
-                    self.sincro["repos"] = [hechos[0], len(repos)]
+                    self.sincro["repos"] = [len(al_dia), len(repos)]
                     self.cuota = cli.estado_cuota()
 
             with ThreadPoolExecutor(POOL_REPOS) as ex:
                 list(ex.map(un_repo, repos))
 
-            self._progreso(fase="Buscando DPs nuevos")
-            self._actualizar_dps(cli, cfg, nuevas_ramas)
+            if not parar.is_set():
+                self._progreso(fase="Buscando DPs nuevos")
+                self._actualizar_dps(cli, cfg, nuevas_ramas)
+            completa = not parar.is_set()
             with self._cerrojo:
                 self.repos = nuevos_repos
                 self.ramas = nuevas_ramas
-                self.cache_compare = {k: v for k, v in self.cache_compare.items() if k in usadas_compare}
-                self.cache_runs = {k: v for k, v in self.cache_runs.items() if k in usadas_runs}
-                self.etags = {k: v for k, v in cli.etags.items() if k in cli.usadas}
+                # Lo de los repos que no se han leído ahora se guarda: es lo que ya está pagado.
+                self.cache_compare = {k: v for k, v in self.cache_compare.items() if k in usadas_compare or _repo_de_clave(k) not in al_dia}
+                self.cache_runs = {k: v for k, v in self.cache_runs.items() if k in usadas_runs or _repo_de_clave(k) not in al_dia}
+                if completa:
+                    self.etags = {k: v for k, v in cli.etags.items() if k in cli.usadas}
+                else:
+                    self.etags = cli.etags
                 self.cuota = cli.estado_cuota()
                 self.sincro = {"estado": "ok" if not errores else "con errores", "fin": _ahora(),
                                "inicio": self.sincro.get("inicio"), "segundos": round(time.time() - inicio, 1),
-                               "repos": [len(repos), len(repos)], "ramas": len(nuevas_ramas), "errores": errores,
+                               "repos": [len(al_dia), len(repos)], "ramas": len(nuevas_ramas), "errores": errores,
                                "llamadas": cli.llamadas, "ahorradas": cli.ahorradas}
+                if not completa:
+                    reinicio = cuota[0].reinicio or int(time.time()) + 3600
+                    self.sincro.update(estado="pausada", reanudaEpoch=reinicio,
+                                       reanuda=dt.datetime.fromtimestamp(reinicio, dt.timezone.utc).isoformat().replace("+00:00", "Z"))
+        except ErrorCuota as e:  # ni siquiera se ha podido ver la lista de repositorios
+            with self._cerrojo:
+                reinicio = e.reinicio or int(time.time()) + 3600
+                self.sincro = {"estado": "pausada", "fin": _ahora(), "segundos": round(time.time() - inicio, 1),
+                               "repos": [0, len(self.repos)], "errores": [], "reanudaEpoch": reinicio,
+                               "reanuda": dt.datetime.fromtimestamp(reinicio, dt.timezone.utc).isoformat().replace("+00:00", "Z")}
+                self.cuota = cli.estado_cuota()
         except ErrorGHE as e:
             with self._cerrojo:
                 self.sincro = {"estado": "error", "fin": _ahora(), "error": e.como_dict(),
@@ -177,6 +225,8 @@ class Monitor:
         try:
             lista = cli.paginar("orgs/%s/properties/values" % _q(org), {"repository_query": filtro} if filtro else {},
                                 max_paginas=50)
+        except ErrorCuota:
+            raise
         except ErrorGHE as e:
             if e.estado in (403, 404, 410, 422):
                 return None
@@ -201,6 +251,8 @@ class Monitor:
             def detalle(full):
                 try:
                     return cli.get("repos/" + full)[0]
+                except ErrorCuota:
+                    raise
                 except ErrorGHE as e:
                     if e.estado in (403, 404):
                         return None  # sin acceso a ese repo
@@ -282,12 +334,19 @@ class Monitor:
         patron = b.get("patronRama")
         p_rel = b.get("patronRelease")
         elegidas = [n for n in shas if n != base and (not solo or feature_de_rama(n, patron) or version_release(n, p_rel))]
+        # De las releases, solo las más recientes: las antiguas ya están en producción y leerlas gasta cuota.
+        n_rel = int(b.get("releasesPorRepo") or 3)
+        rels = sorted((n for n in elegidas if version_release(n, p_rel)), key=lambda n: clave_version(version_release(n, p_rel)), reverse=True)
+        viejas = set(rels[n_rel:])
+        elegidas = [n for n in elegidas if n not in viejas]
 
         # PRs recientes (una página): la más reciente por rama.
         pr_de = {}
         pr_hacia = defaultdict(list)  # rama destino -> ramas que se han mezclado en ella por PR
         try:
             prs = cli.get("repos/%s/pulls" % full, {"state": "all", "per_page": 100, "sort": "updated", "direction": "desc"})[0]
+        except ErrorCuota:
+            raise
         except ErrorGHE:
             prs = []
         for p in prs or []:
@@ -303,6 +362,8 @@ class Monitor:
         # Ejecuciones de Actions del periodo, agrupadas por rama.
         try:
             runs = cli.paginar("repos/%s/actions/runs" % full, {"created": ">=" + desde}, max_paginas=5, clave="workflow_runs")
+        except ErrorCuota:
+            raise
         except ErrorGHE as e:
             if e.estado in (403, 404):
                 runs = []  # Actions desactivadas o sin permiso
@@ -320,6 +381,8 @@ class Monitor:
         if base:
             try:
                 cs = cli.get("repos/%s/commits" % full, {"sha": base, "since": desde + "T00:00:00Z", "per_page": 60})[0]
+            except ErrorCuota:
+                raise
             except ErrorGHE:
                 cs = []
             commits = [_commit_ligero(c) for c in cs or []][::-1]
@@ -375,6 +438,8 @@ class Monitor:
                     comp["cabeza"] = _commit_ligero(cli.get("repos/%s/commits/%s" % (full, sha))[0])
                 with self._cerrojo:
                     self.cache_compare[clave] = comp
+        except ErrorCuota:
+            raise
         except ErrorGHE as e:
             prev = self.ramas.get(rid) or {}
             comp = {k: prev.get(k) for k in ("ahead", "behind", "commits", "ficheros", "truncado", "cabeza")}
@@ -383,20 +448,25 @@ class Monitor:
         out["commits"] = out.get("commits") or []
         out["ficheros"] = out.get("ficheros") or []
         out["mergeada"] = out.get("ahead") == 0 and bool(base_sha)
-        out["runs"] = self._runs(cli, cfg, full, n, runs, usadas_runs)
+        out["runs"] = self._runs(cli, cfg, full, n, runs, usadas_runs, es_release=bool(version_release(n, b.get("patronRelease"))))
         return out
 
-    def _runs(self, cli, cfg, full, rama, runs, usadas_runs):
+    def _runs(self, cli, cfg, full, rama, runs, usadas_runs, es_release=False):
         runs = sorted(runs, key=lambda x: x.get("created_at") or "", reverse=True)
         out = []
+        cuantas = RUNS_POR_RAMA if es_release else RUNS_POR_FEATURE
         for i, x in enumerate(runs[:25]):
             res = {"dps": [], "fuente": ""}
-            if i < RUNS_POR_RAMA:
+            if i < cuantas:
                 clave = "%s#%s#%s" % (full, x.get("id"), x.get("run_attempt") or 1)
                 usadas_runs.add(clave)
                 res = self.cache_runs.get(clave)
+                if res is None and x.get("status") == "completed" and x.get("conclusion") not in ("success", None):
+                    res = {"dps": [], "fuente": "", "final": True}  # una ejecución fallida no genera DP: no se lee
+                    with self._cerrojo:
+                        self.cache_runs[clave] = res
                 if res is None:
-                    res = self._dps_run(cli, cfg, full, x)
+                    res = self._dps_run(cli, cfg, full, x, logs=es_release)
                     if res.get("final"):
                         with self._cerrojo:
                             self.cache_runs[clave] = res
@@ -406,7 +476,7 @@ class Monitor:
                         "dps": res.get("dps") or [], "fuenteDP": res.get("fuente") or "", "errorDP": res.get("error")})
         return out
 
-    def _dps_run(self, cli, cfg, full, run):
+    def _dps_run(self, cli, cfg, full, run, logs=True):
         """DPs de una ejecución: nombres de pasos, resumen y anotaciones de cada
         job (lo que GitHub enseña en Summary) y, si no aparece, sus logs."""
         b = cfg["bbva"]
@@ -426,33 +496,63 @@ class Monitor:
                     encontrados.append(d)
                     fuente = fuente or f
 
-        try:
-            jobs = (cli.get("repos/%s/actions/runs/%s/jobs" % (full, run["id"]), {"per_page": 100})[0] or {}).get("jobs", [])
-            for j in jobs:
-                anadir(buscar_dps("\n".join([j.get("name") or ""] + [s.get("name") or "" for s in j.get("steps") or []]), patron), "pasos")
-                cr = j.get("check_run_url") or ("repos/%s/check-runs/%s" % (full, j["id"]))
+        def leer_check(chk, url):
+            o = chk.get("output") or {}
+            anadir(buscar_dps("\n".join([chk.get("name") or "", o.get("title") or "", o.get("summary") or "", o.get("text") or ""]), patron), "resumen")
+            if o.get("annotations_count") and url:
                 try:
-                    chk = cli.get(cr, etag=False)[0] or {}
+                    anns = cli.get(url.rstrip("/") + "/annotations", {"per_page": 100}, etag=False)[0] or []
+                except ErrorCuota:
+                    raise
                 except ErrorGHE:
-                    chk = {}
-                o = chk.get("output") or {}
-                anadir(buscar_dps("\n".join([o.get("title") or "", o.get("summary") or "", o.get("text") or ""]), patron), "resumen")
-                if o.get("annotations_count"):
+                    anns = []
+                anadir(buscar_dps("\n".join("%s %s" % (a.get("title") or "", a.get("message") or "") for a in anns), patron), "anotación")
+
+        def pedir_jobs():
+            return (cli.get("repos/%s/actions/runs/%s/jobs" % (full, run["id"]), {"per_page": 100})[0] or {}).get("jobs", [])
+
+        try:
+            # Una sola llamada: todos los check-runs de la ejecución, con su resumen (lo que se ve en Summary).
+            chks, jobs = None, None
+            if run.get("check_suite_id"):
+                try:
+                    chks = (cli.get("repos/%s/check-suites/%s/check-runs" % (full, run["check_suite_id"]), {"per_page": 100},
+                                    etag=False)[0] or {}).get("check_runs")
+                except ErrorCuota:
+                    raise
+                except ErrorGHE:
+                    chks = None
+            if chks is not None:
+                for chk in chks:
+                    leer_check(chk, chk.get("url") or ("repos/%s/check-runs/%s" % (full, chk.get("id"))))
+            else:  # sin check suite: job a job (pasos, resumen y anotaciones)
+                jobs = pedir_jobs()
+                for jb in jobs:
+                    anadir(buscar_dps("\n".join([jb.get("name") or ""] + [x.get("name") or "" for x in jb.get("steps") or []]), patron), "pasos")
+                    cr = jb.get("check_run_url") or ("repos/%s/check-runs/%s" % (full, jb["id"]))
                     try:
-                        anns = cli.get(cr.rstrip("/") + "/annotations", {"per_page": 100}, etag=False)[0] or []
+                        chk = cli.get(cr, etag=False)[0] or {}
+                    except ErrorCuota:
+                        raise
                     except ErrorGHE:
-                        anns = []
-                    anadir(buscar_dps("\n".join("%s %s" % (a.get("title") or "", a.get("message") or "") for a in anns), patron), "anotación")
-            if not encontrados and b.get("leerLogs", True):
-                for j in jobs:
-                    if j.get("status") != "completed":
+                        chk = {}
+                    leer_check(chk, cr)
+            if not encontrados and logs and b.get("leerLogs", True) and jobs is None:
+                jobs = pedir_jobs()
+                for jb in jobs:
+                    anadir(buscar_dps("\n".join([jb.get("name") or ""] + [x.get("name") or "" for x in jb.get("steps") or []]), patron), "pasos")
+            if not encontrados and logs and b.get("leerLogs", True):
+                for jb in jobs or []:
+                    if jb.get("status") != "completed":
                         continue
                     try:
-                        anadir(buscar_dps(cli.texto("repos/%s/actions/jobs/%s/logs" % (full, j["id"])), patron), "log")
+                        anadir(buscar_dps(cli.texto("repos/%s/actions/jobs/%s/logs" % (full, jb["id"])), patron), "log")
                     except ErrorGHE as e:
                         if e.estado not in (404, 410):  # 404/410: log caducado, no hay nada que leer
                             raise
             return {"dps": encontrados, "fuente": fuente, "final": True}
+        except ErrorCuota:
+            raise
         except ErrorGHE as e:
             return {"dps": [], "fuente": "", "final": False, "error": str(e)}
 

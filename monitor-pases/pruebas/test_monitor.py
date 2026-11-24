@@ -114,6 +114,54 @@ class TestConGitHubSimulado(unittest.TestCase):
         self.assertEqual({r["full_name"] for r in vistos}, del_equipo)
         self.assertTrue(any("/search/repositories" in p for m, p, h in self.pedidas))
 
+    def test_cuota_pausa_y_sigue_donde_lo_dejo(self):
+        from mp.config import Config
+        from mp.sincro import Monitor, RESERVA_CUOTA
+        dir_ = tempfile.mkdtemp(prefix="mp-cuota-")
+        antes_env = os.environ["MONITOR_PASES_DIR"]
+        os.environ["MONITOR_PASES_DIR"] = dir_
+        try:
+            cfg = Config()
+            cfg.actualizar(self.cfg.get())
+            mon = Monitor(cfg)
+            total = len(self.mon.repos)
+            caras = lambda desde: sum(1 for m, p, h in self.pedidas[desde:] if any(x in p for x in ("/compare/", "/check-suites/", "/logs", "/jobs")))
+            self.datos.cuota = RESERVA_CUOTA + 400  # da para unos cuantos repos, no para todos
+            n0 = len(self.pedidas)
+            mon.sincronizar()
+            primera = caras(n0)
+            s = mon.sincro
+            self.assertEqual(s["estado"], "pausada")
+            self.assertTrue(s.get("reanuda") and s["errores"] == [])  # la cuota no es un error de cada repo
+            self.assertTrue(0 < s["repos"][0] < total, s["repos"])
+            self.assertGreaterEqual(self.datos.cuota, 0)
+            self.assertLessEqual(self.datos.cuota, RESERVA_CUOTA + 10)  # para en la reserva, no la gasta
+            hechos = s["repos"][0]
+            self.assertEqual(len(mon.repos), total)  # los pendientes se ven igual (marcados como pendientes)
+            self.assertEqual(sum(1 for r in mon.repos.values() if r.get("pendiente")), total - hechos)
+            # Al volver la cuota sigue y termina; lo ya leído no se vuelve a pagar.
+            self.datos.cuota = None
+            n0 = len(self.pedidas)
+            mon.sincronizar()
+            self.assertEqual(mon.sincro["estado"], "ok")
+            self.assertEqual(mon.sincro["repos"], [total, total])
+            self.assertFalse(any(r.get("pendiente") for r in mon.repos.values()))
+            segunda = caras(n0)
+            # Desde cero (otra carpeta) cuesta lo mismo que las dos juntas: nada se ha pagado dos veces.
+            dir2 = tempfile.mkdtemp(prefix="mp-cuota2-")
+            os.environ["MONITOR_PASES_DIR"] = dir2
+            cfg2 = Config()
+            cfg2.actualizar(self.cfg.get())
+            n0 = len(self.pedidas)
+            Monitor(cfg2).sincronizar()
+            shutil.rmtree(dir2, ignore_errors=True)
+            self.assertGreater(primera, 0)
+            self.assertLessEqual(primera + segunda, caras(n0) + 5)
+        finally:
+            self.datos.cuota = None
+            os.environ["MONITOR_PASES_DIR"] = antes_env
+            shutil.rmtree(dir_, ignore_errors=True)
+
     def test_dps_de_las_tres_fuentes(self):
         fuentes = {d["fuente"] for x in self.mon.resumen()["ramas"] for d in x["dps"]}
         self.assertEqual(fuentes, {"resumen", "anotación", "log"})

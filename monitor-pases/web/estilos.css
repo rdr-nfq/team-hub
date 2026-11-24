@@ -743,3 +743,5 @@ kbd { font: 700 11px/1 var(--f-body); padding: 2px 5px; border-radius: 4px; bord
 .principal, .grupo, .caja { position: relative; }
 .cerrar-lat { width: 100%; justify-content: center; margin-bottom: 12px; }
 @media (max-width: 760px) { .ver-filtros .principal::after { content: ""; position: fixed; inset: 0; background: var(--overlay); z-index: 24; } }
+.aviso .tenue { color: var(--electric); opacity: 0.85; margin-top: 2px; }
+.aviso-cuota { background: var(--canary); }
