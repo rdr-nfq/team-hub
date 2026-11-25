@@ -7,7 +7,7 @@
   cada una (campo tech-version). La rama release/x.y.z suele existir antes que
   la release en Jira: entonces se ve con las historias de sus commits.
 
-Sesión: con el navegador (se abre Edge con un perfil de la app, la persona
+Sesión: con el navegador (se abre Chrome, o Edge, con un perfil de la app, la persona
 entra con el SSO de siempre y la app recoge la sesión: ver navegador.py), con
 un token personal o con usuario y contraseña. Los dos últimos se guardan con
 Git (Git Credential Manager → almacén de credenciales de Windows), como las de
@@ -69,6 +69,15 @@ def _texto_valor(v):
     if isinstance(v, dict):
         return str(v.get("name") or v.get("value") or v.get("key") or v.get("displayName") or "")
     return str(v)
+
+
+def _resumen_campo(f):
+    if not f:
+        return None
+    sch = f.get("schema") or {}
+    return {"id": f.get("id"), "nombre": f.get("name"), "tipo": sch.get("type"), "items": sch.get("items"),
+            "custom": (sch.get("custom") or "").split(":")[-1], "jql": "cf[%s]" % f["id"].split("_")[-1]
+            if str(f.get("id", "")).startswith("customfield_") else '"%s"' % f.get("name")}
 
 
 def _tipo_valor(v):
@@ -181,7 +190,7 @@ class ClienteJira:
         out, inicio = [], 0
         while inicio < maximo:
             d = self.pedir("POST", "rest/api/2/search", cuerpo={"jql": jql, "startAt": inicio, "maxResults": min(100, maximo - inicio),
-                                                                 "fields": campos, "validateQuery": "warn"}) or {}
+                                                                 "fields": campos}) or {}
             lote = d.get("issues") or []
             out += lote
             inicio += len(lote)
@@ -200,10 +209,14 @@ class Jira:
         self.releases = d.get("releases", [])   # versiones del proyecto de releases
         self.rel_historias = d.get("relHistorias", {})  # id de versión -> claves de historias (tech-version)
         self.campos = d.get("campos", {})       # feature / techVersion / sdatool detectados
-        self.no_existen = set(d.get("noExisten", []))
+        # Hasta la 1.6.0 un error de la consulta marcaba todas las claves como inexistentes: se olvidan.
+        self.no_existen = set(d.get("noExisten", [])) if d.get("noExistenV") == 2 else set()
         self.ultima_completa = d.get("ultimaCompleta", 0)
         self.sincro = d.get("sincro") or {"estado": "nunca"}
         self.metodo = d.get("metodo") or ""  # "navegador" si la última sesión fue con el navegador (sin secretos)
+        self.desarrollo = d.get("desarrollo", [])  # proyectos en desarrollo: Features/Tasks no desplegadas (compactos)
+        self.desarrollo_info = d.get("desarrolloInfo") or {}
+        self.nfq = d.get("nfq") or {"claves": [], "por": "", "fecha": ""}  # los proyectos que son de NFQ
         if self.sincro.get("estado") == "en curso":
             self.sincro["estado"] = "interrumpida"
         self.sesion = {"estado": "sin sesión"}
@@ -212,6 +225,8 @@ class Jira:
         self._en_curso = False
         self._informes = {}
         self._entrando = False
+        self._silencioso = threading.Event()  # puesto = no hay un intento sin ventana en marcha
+        self._silencioso.set()
         self.perfil = config.dir / "navegador-jira"
 
     # ── sesión ──────────────────────────────────────────────────────────────
@@ -225,7 +240,7 @@ class Jira:
         renovar = self._renovar if auth and auth[0] == "cookie" and self.metodo == "navegador" else None
         return ClienteJira(j.get("url"), auth, j.get("proxy") or b.get("proxy"), j.get("ca") or b.get("ca"), renovar=renovar)
 
-    # Con el navegador: se abre Edge (perfil de la app), la persona entra con su SSO y se recogen las cookies de Jira.
+    # Con el navegador: se abre Chrome o Edge (perfil de la app), la persona entra con su SSO y se recogen las cookies de Jira.
     def _url_entrar(self):
         return (self.cfg.get()["jira"].get("url") or "").rstrip("/") + "/secure/ViewProfile.jspa"
 
@@ -260,6 +275,11 @@ class Jira:
 
         def trabajo():
             try:
+                self._silencioso.wait(60)  # si se está comprobando sin ventana (mismo perfil), se espera
+                with self._c:
+                    if self.sesion.get("estado") == "iniciada":
+                        return
+                    self.sesion = {"estado": "entrando", "mensaje": "Se ha abierto Jira en el navegador: entra como siempre. Se cerrará sola."}
                 cab, yo = self._por_navegador(True)
                 self._iniciada(("cookie", cab), yo)
                 with self._c:
@@ -268,7 +288,8 @@ class Jira:
                 threading.Thread(target=self.sincronizar, name="jira", daemon=True).start()
             except Exception as e:
                 with self._c:
-                    self.sesion = {"estado": "sin sesión", "aviso": str(e), "fallo": "navegador"}
+                    if self.sesion.get("estado") != "iniciada":
+                        self.sesion = {"estado": "sin sesión", "aviso": str(e), "fallo": "navegador"}
             finally:
                 with self._c:
                     self._entrando = False
@@ -294,11 +315,23 @@ class Jira:
         j = self.cfg.get()["jira"]
         if not j.get("url"):
             return False
+        if self.demo and not j.get("token"):
+            return False  # en la demo se enseña cómo se conecta
+        with self._c:
+            self.sesion = {"estado": "comprobando"}
+            self._silencioso.clear()
+        try:
+            return self._iniciar_guardada(j)
+        finally:
+            with self._c:
+                if self.sesion.get("estado") == "comprobando":
+                    self.sesion = {"estado": "sin sesión"}
+            self._silencioso.set()
+
+    def _iniciar_guardada(self, j):
         try:
             if j.get("token"):
                 auth = ("token", j["token"])
-            elif self.demo:
-                return False  # en la demo se enseña cómo se conecta
             elif self.metodo == "navegador":
                 try:
                     cab, yo = self._por_navegador(False, espera=40)  # sin ventana, con el SSO que guarda el perfil
@@ -390,13 +423,7 @@ class Jira:
                         return f
             return None
 
-        def resumen(f):
-            if not f:
-                return None
-            sch = f.get("schema") or {}
-            return {"id": f.get("id"), "nombre": f.get("name"), "tipo": sch.get("type"), "items": sch.get("items"),
-                    "custom": (sch.get("custom") or "").split(":")[-1], "jql": "cf[%s]" % f["id"].split("_")[-1]
-                    if str(f.get("id", "")).startswith("customfield_") else '"%s"' % f.get("name")}
+        resumen = _resumen_campo
 
         campos = {
             "feature": resumen(buscar(j.get("campoFeature"), [r"feature[ _-]?link", r"epic[ _-]?link", r"parent[ _-]?link", r"feature"])),
@@ -409,6 +436,195 @@ class Jira:
         with self._c:
             self.campos = campos
         return campos
+
+    def _versiones_github(self):
+        with self.mon._cerrojo:
+            return {r.get("release") for r in self.mon.ramas.values() if r.get("release")}
+
+    def _detectar_tv_por_valores(self, cli, forzar=False):
+        """Si ningún campo se llama tech-version: el campo cuyos valores coinciden con las releases de GitHub
+        (x.y.z de las ramas release/…) en las historias de los commits de esas ramas."""
+        if self.campos.get("techVersion") or self.cfg.get()["jira"].get("campoTechVersion"):
+            return self.campos.get("techVersion")
+        if self.campos.get("_tvProbado", 0) > time.time() - 86400 and not forzar:
+            return None
+        versiones = self._versiones_github()
+        with self.mon._cerrojo:
+            ramas = [r for r in self.mon.ramas.values() if r.get("release")]
+        claves = []
+        for r in ramas:
+            for c in r.get("commits") or []:
+                claves += [k for k in claves_en(c.get("mensaje")) if k in self.issues and k not in claves]
+        puntos, ejemplo = collections.Counter(), {}
+        if claves and versiones:
+            for i in self._por_claves(cli, claves[:60], ["*all"]):
+                for fid, v in (i.get("fields") or {}).items():
+                    if fid in ("summary", "description", "comment", "issuelinks", "status") or v in (None, "", [], {}):
+                        continue
+                    if set(RE_VERSION.findall(_texto_valor(v))) & versiones:
+                        puntos[fid] += 1
+                        ejemplo[fid] = v
+        res = None
+        if puntos:
+            fid, n = puntos.most_common(1)[0]
+            if n >= 2:
+                todos = {f.get("id"): f for f in cli.get("rest/api/2/field") or []}
+                res = _resumen_campo(todos.get(fid) or {"id": fid, "name": fid})
+                res.update(detectado="por valores", aciertos=n, muestra=len(claves[:60]))
+        with self._c:
+            self.campos["techVersion"] = res
+            self.campos["_tvProbado"] = time.time()
+            self.campos["_tvPuntos"] = [{"id": k, "aciertos": n} for k, n in puntos.most_common(5)]
+        return res
+
+    def _proyecto_releases(self, cli):
+        """-> (clave del proyecto, versiones). El de Ajustes; si no existe, el proyecto de Jira cuyas versiones
+        coinciden con las releases de GitHub entre los que se parecen (contienen su nombre o son los de las features)."""
+        j = self.cfg.get()["jira"]
+        proy = str(j.get("proyectoReleases") or "").strip().upper()
+        probados = []
+
+        def versiones(k):
+            try:
+                vs = cli.get("rest/api/2/project/%s/versions" % urllib.parse.quote(k)) or []
+            except ErrorGHE as e:
+                if e.estado not in (400, 403, 404):
+                    raise
+                vs = None
+            nums = {(RE_VERSION.findall(v.get("name") or "") or [""])[0] for v in vs or []}
+            probados.append({"proyecto": k, "existe": vs is not None, "versiones": len(vs or []),
+                             "coinciden": len(nums & self._versiones_github())})
+            return vs
+
+        vs = versiones(proy) if proy else None
+        elegido = proy if vs else ""
+        if not vs:
+            feats, _ = self.claves_de_github()
+            cands = collections.Counter(k.split("-")[0] for k in feats)
+            try:
+                for p in cli.get("rest/api/2/project") or []:
+                    k = str(p.get("key") or "")
+                    if proy and proy in k:
+                        cands[k] += 1
+            except ErrorGHE:
+                pass
+            mejor = None
+            for k, _n in cands.most_common(8):
+                if k == proy:
+                    continue
+                v2 = versiones(k)
+                if v2 and (not mejor or probados[-1]["coinciden"] > mejor[2]):
+                    mejor = (k, v2, probados[-1]["coinciden"])
+            if mejor:
+                elegido, vs = mejor[0], mejor[1]
+        with self._c:
+            self.campos["_proyRel"] = {"proyecto": elegido, "configurado": proy, "probados": probados}
+        return elegido, vs or []
+
+    # ── proyectos en desarrollo y los de NFQ ────────────────────────────────
+    def _proyecto_de_proyectos(self):
+        j = self.cfg.get()["jira"]
+        return (str(j.get("proyectoProyectos") or "").strip() or (self.campos.get("_proyRel") or {}).get("proyecto")
+                or str(j.get("proyectoReleases") or "").strip())
+
+    def _proyectos_en_desarrollo(self, cli):
+        """Features y Tasks del proyecto que no están desplegadas (estado Deployed)."""
+        j = self.cfg.get()["jira"]
+        proy = self._proyecto_de_proyectos()
+        if not proy:
+            return []
+        tipos = [t.strip() for t in str(j.get("tiposProyecto") or "Feature, Task").split(",") if t.strip()]
+        fin = str(j.get("estadoFin") or "Deployed").strip()
+        campos = list(CAMPOS_BASE) + ([self.campos["feature"]["id"]] if self.campos.get("feature") else [])
+        lista_tipos = ", ".join('"%s"' % t.replace('"', "") for t in tipos)
+        consultas = [  # de la más precisa a la más general (si Jira no conoce un tipo o estado, da 400)
+            ('project = "%s" AND issuetype in (%s) AND status != "%s" ORDER BY updated DESC' % (proy, lista_tipos, fin), "completa"),
+            ('project = "%s" AND issuetype in (%s) AND statusCategory != Done ORDER BY updated DESC' % (proy, lista_tipos), "sin el estado"),
+            ('project = "%s" AND statusCategory != Done ORDER BY updated DESC' % proy, "sin tipos ni estado"),
+        ]
+        res, usada, error = None, "", ""
+        for jql, nombre in consultas:
+            try:
+                res = cli.buscar(jql, campos, maximo=3000)
+                usada = nombre
+                break
+            except ErrorGHE as e:
+                if e.estado != 400:
+                    raise
+                error = str(e)[:200]
+        if res is None:
+            with self._c:
+                self.desarrollo_info = {"proyecto": proy, "error": error, "fecha": _ahora()}
+            return []
+        tl, fl = {t.lower() for t in tipos}, fin.lower()
+        out = []
+        for i in res:
+            x = self._compacta(i)
+            if x["e"].lower() == fl or (usada == "sin tipos ni estado" and x["t"].lower() not in tl):
+                continue
+            out.append({k: x[k] for k in ("k", "s", "e", "c", "t", "a", "u")})
+        with self._c:
+            self.desarrollo = out
+            self.desarrollo_info = {"proyecto": proy, "tipos": tipos, "fin": fin, "consulta": usada, "fecha": _ahora(), "total": len(out)}
+        return out
+
+    RUTA_NFQ = "equipo/proyectos-nfq.json"
+
+    def _leer_nfq_equipo(self):
+        """La selección del equipo en pases-datos (si hay sesión de NFQ). Gana la más reciente."""
+        if self.demo:
+            return
+        try:
+            from .pase import cliente_nfq
+            cfg = self.cfg.get()
+            n = cfg["nfq"]
+            cli = cliente_nfq(cfg)
+            d = cli.get("repos/%s/contents/%s" % (n["repo"], self.RUTA_NFQ), {"ref": n.get("rama") or "main"}, etag=False)[0] or {}
+            remoto = json.loads(base64.b64decode(d.get("content") or "").decode("utf-8") or "{}")
+        except Exception:
+            return
+        claves = [k for k in remoto.get("proyectos") or [] if RE_CLAVE.fullmatch(str(k))]
+        if remoto.get("fecha", "") > (self.nfq.get("fecha") or ""):
+            with self._c:
+                self.nfq = {"claves": sorted(set(claves)), "por": str(remoto.get("por") or "")[:80], "fecha": remoto.get("fecha", ""),
+                            "compartido": True}
+
+    def guardar_nfq(self, claves, por=""):
+        """Guarda qué proyectos son de NFQ y, con sesión de NFQ, lo comparte en pases-datos (solo las claves)."""
+        claves = sorted({str(k).strip().upper() for k in claves or [] if RE_CLAVE.fullmatch(str(k).strip().upper())})
+        with self._c:
+            self.nfq = {"claves": claves, "por": str(por or "")[:80], "fecha": _ahora(), "compartido": False}
+        self.guardar()
+        motivo = ""
+        if self.demo:
+            motivo = ""  # en la demo no se comparte
+        else:
+            try:
+                from .pase import cliente_nfq
+                cfg = self.cfg.get()
+                n = cfg["nfq"]
+                cli = cliente_nfq(cfg)
+                rama = n.get("rama") or "main"
+                sha = None
+                try:
+                    sha = (cli.get("repos/%s/contents/%s" % (n["repo"], self.RUTA_NFQ), {"ref": rama}, etag=False)[0] or {}).get("sha")
+                except ErrorGHE as e:
+                    if e.estado != 404:
+                        raise
+                contenido = json.dumps({"proyectos": claves, "por": self.nfq["por"], "fecha": self.nfq["fecha"]}, ensure_ascii=False, indent=1) + "\n"
+                cuerpo = {"message": "Proyectos de NFQ: %d" % len(claves), "branch": rama,
+                          "content": base64.b64encode(contenido.encode("utf-8")).decode("ascii")}
+                if sha:
+                    cuerpo["sha"] = sha
+                cli.escribir("PUT", "repos/%s/contents/%s" % (n["repo"], self.RUTA_NFQ), cuerpo)
+                with self._c:
+                    self.nfq["compartido"] = True
+                self.guardar()
+            except Exception as e:
+                motivo = "No se ha podido compartir con el equipo (%s). Se ha guardado en tu equipo." % (str(e)[:120] or "sin sesión de NFQ")
+        # Los nuevos de NFQ: sus historias y SDATOOL en la siguiente lectura.
+        threading.Thread(target=self.sincronizar, kwargs={"completa": True}, name="jira", daemon=True).start()
+        return dict(self.nfq, motivo=motivo)
 
     def _lista_campos(self):
         out = list(CAMPOS_BASE)
@@ -454,6 +670,9 @@ class Jira:
                                 buenas += cli.buscar("key = %s" % c, campos, maximo=1)
                             except ErrorGHE as e2:
                                 if e2.estado != 400:
+                                    raise
+                                # Solo si Jira dice que esa clave no existe; otro error (la consulta en sí) se enseña.
+                                if not any(c in m for m in getattr(e2, "mensajes", [])):
                                     raise
                                 self.no_existen.add(c)
                         out += buenas
@@ -545,6 +764,7 @@ class Jira:
                 self.issues.update(nuevos)
             # Features: las de las ramas y las de las historias.
             feats |= {x["f"] for x in self.issues.values() if x.get("f")}
+            feats |= set(self.nfq.get("claves") or [])  # los de NFQ, aunque no tengan ramas
             feats = sorted(k for k in feats if RE_CLAVE.fullmatch(k))
             pedir_f = [k for k in feats if refresco or k not in self.features]
             if pedir_f:
@@ -581,14 +801,20 @@ class Jira:
                         if k in self.features:
                             self.features[k]["h"] = sorted(set(hijas.get(k, [])) | {h for h, x in self.issues.items() if x.get("f") == k})
             # Releases del proyecto y sus historias (tech-version).
-            proy = str(j.get("proyectoReleases") or "").strip()
-            if proy and refresco:
-                vs = cli.get("rest/api/2/project/%s/versions" % urllib.parse.quote(proy)) or []
+            if refresco:
+                self._detectar_tv_por_valores(cli)
+                campos = self._lista_campos()
+            if refresco:
+                proy, vs = self._proyecto_releases(cli)
+                versiones_gh = self._versiones_github()
+                if not vs and self.campos.get("techVersion") and self.campos["techVersion"].get("tipo") != "version" \
+                        and self.campos["techVersion"].get("items") != "version":
+                    # Sin versiones en Jira, pero la release va en un campo de texto: las releases son las de GitHub.
+                    vs = [{"id": "gh-" + v, "name": v, "released": None} for v in versiones_gh]
                 rel = [{"id": str(v.get("id")), "nombre": v.get("name") or "", "publicada": bool(v.get("released")),
                         "archivada": bool(v.get("archived")), "fecha": v.get("releaseDate") or "", "inicio": v.get("startDate") or "",
                         "num": (RE_VERSION.findall(v.get("name") or "") or [""])[0]} for v in vs]
                 rel.sort(key=lambda v: (v["fecha"] or "9999", v["nombre"]), reverse=True)
-                versiones_gh = {r.get("release") for r in self.mon.ramas.values() if r.get("release")}
                 interesan = [v for v in rel if not v["archivada"] and (not v["publicada"] or v["num"] in versiones_gh
                              or (v["fecha"] and v["fecha"] >= (dt.date.today() - dt.timedelta(days=120)).isoformat()))][:40]
                 rh = dict(self.rel_historias)
@@ -607,6 +833,8 @@ class Jira:
                 with self._c:
                     self.releases, self.rel_historias = rel, rh
             if refresco:
+                self._leer_nfq_equipo()
+                self._proyectos_en_desarrollo(cli)
                 self.ultima_completa = time.time()
             self.sincro = {"estado": "ok", "fin": _ahora(), "segundos": round(time.time() - inicio, 1), "llamadas": cli.llamadas}
         except ErrorGHE as e:
@@ -627,18 +855,20 @@ class Jira:
         with self._c:
             escribir_json(self.ruta, {"issues": dict(self.issues), "features": dict(self.features), "releases": list(self.releases),
                                       "relHistorias": dict(self.rel_historias), "campos": dict(self.campos),
-                                      "noExisten": sorted(self.no_existen), "ultimaCompleta": self.ultima_completa, "sincro": self.sincro,
-                                      "metodo": self.metodo})
+                                      "noExisten": sorted(self.no_existen), "noExistenV": 2, "ultimaCompleta": self.ultima_completa, "sincro": self.sincro,
+                                      "metodo": self.metodo,
+                                      "desarrollo": list(self.desarrollo), "desarrolloInfo": dict(self.desarrollo_info), "nfq": dict(self.nfq)})
 
     # ── para la página ──────────────────────────────────────────────────────
     def vista(self):
         j = self.cfg.get()["jira"]
         with self._c:
             return {"sesion": dict(self.sesion), "url": (j.get("url") or "").rstrip("/"), "pats": PAGINA_PATS,
-                    "proyectoReleases": j.get("proyectoReleases") or "", "sincro": dict(self.sincro, enCurso=self._en_curso),
+                    "proyectoReleases": (self.campos.get("_proyRel") or {}).get("proyecto") or j.get("proyectoReleases") or "", "sincro": dict(self.sincro, enCurso=self._en_curso),
                     "issues": dict(self.issues), "features": {k: {kk: vv for kk, vv in v.items() if kk != "links"} for k, v in self.features.items()},
                     "releases": list(self.releases), "relHistorias": dict(self.rel_historias),
-                    "campos": {k: v for k, v in self.campos.items() if not k.startswith("_")}}
+                    "campos": {k: v for k, v in self.campos.items() if not k.startswith("_")},
+                    "desarrollo": list(self.desarrollo), "desarrolloInfo": dict(self.desarrollo_info), "nfq": dict(self.nfq)}
 
     # ── diagnóstico (lo único de Jira que puede salir, y solo si la persona lo envía) ──
     def diagnostico(self):
@@ -658,6 +888,13 @@ class Jira:
         info = probar("serverInfo", lambda: cli.get("rest/api/2/serverInfo")) or {}
         probar("myself", lambda: cli.get("rest/api/2/myself"))
         campos = probar("campos", lambda: self._detectar_campos(cli, forzar=True)) or self.campos
+        _, una = self.claves_de_github()
+        if una:  # una búsqueda real, para ver si la consulta en sí funciona
+            k = sorted(una)[0]
+            probar("buscar una clave", lambda: len(cli.buscar("key = %s" % k, ["summary"], maximo=1)))
+        probar("campo de la release por valores", lambda: self._detectar_tv_por_valores(cli, forzar=True))
+        campos = self.campos
+        proy_det = probar("proyecto de releases", lambda: self._proyecto_releases(cli)) or ("", [])
         feats, historias = self.claves_de_github()
         por_proy = collections.Counter(k.split("-")[0] for k in historias)
         with self._c:
@@ -666,8 +903,7 @@ class Jira:
         hist_feature = [x for x in issues.values() if x.get("f")]
         tvs = [x["tv"] for x in issues.values() if x.get("tv")]
         # Prueba de las consultas de release con la primera versión de cada tipo.
-        proy = str(self.cfg.get()["jira"].get("proyectoReleases") or "").strip()
-        vs = probar("versiones de %s" % proy, lambda: cli.get("rest/api/2/project/%s/versions" % urllib.parse.quote(proy))) if proy else None
+        proy, vs = proy_det
         versiones_gh = sorted({r.get("release") for r in self.mon.ramas.values() if r.get("release")})
         consultas = []
         for v in [x for x in (vs or []) if not x.get("archived")][-3:]:
@@ -688,7 +924,7 @@ class Jira:
         except OSError:
             pass
         informe = {
-            "formato": "monitor-pases/diagnostico-jira-1", "app": VERSION, "fecha": _ahora(),
+            "formato": "monitor-pases/diagnostico-jira-2", "app": VERSION, "fecha": _ahora(),
             "servidor": {"version": info.get("version"), "tipo": info.get("deploymentType")},
             "sesion": {"metodo": (self.sesion or {}).get("metodo"), "estado": (self.sesion or {}).get("estado")},
             "pruebas": pruebas,
@@ -705,7 +941,9 @@ class Jira:
             "sdatool": {"features": len(features), "conSdatool": len([f for f in features.values() if f.get("sd")]),
                         "donde": dict(collections.Counter(f.get("sdDonde") or "no encontrado" for f in features.values())),
                         "tiposDeEnlaceEnFeatures": dict(sum((collections.Counter(f.get("links") or {}) for f in features.values()), collections.Counter()).most_common(10))},
-            "releases": {"proyecto": proy, "versiones": len(vs or []), "publicadas": len([v for v in vs or [] if v.get("released")]),
+            "techVersionPorValores": campos.get("_tvPuntos"),
+            "desarrollo": {k: v for k, v in self._diag_desarrollo(cli, probar).items()},
+            "releases": {"proyecto": proy, "probados": (campos.get("_proyRel") or {}).get("probados"), "versiones": len(vs or []), "publicadas": len([v for v in vs or [] if v.get("released")]),
                          "formasNombre": dict(collections.Counter(forma(n) for n in nombres_v).most_common(10)),
                          "versionesGitHub": len(versiones_gh), "formasGitHub": dict(collections.Counter(forma(v) for v in versiones_gh).most_common(5)),
                          "coincidenConGitHub": len(set(versiones_gh) & nums_jira), "consultas": consultas},
@@ -714,6 +952,13 @@ class Jira:
         ident = "%d" % (time.time() * 1000)
         self._informes = {ident: informe}
         return {"id": ident, "informe": informe}
+
+    def _diag_desarrollo(self, cli, probar):
+        out = probar("proyectos en desarrollo", lambda: self._proyectos_en_desarrollo(cli))
+        info = dict(self.desarrollo_info)
+        return {"proyecto": info.get("proyecto"), "consulta": info.get("consulta"), "error": info.get("error"), "total": len(out or []),
+                "tipos": dict(collections.Counter(x["t"] for x in out or [])), "estados": dict(collections.Counter(x["e"] for x in out or [])),
+                "marcadosNFQ": len(self.nfq.get("claves") or [])}
 
     def enviar_diagnostico(self, ident, usuario=""):
         """Sube el informe que la persona ha visto (por su id) a pases-datos/diagnostico/."""

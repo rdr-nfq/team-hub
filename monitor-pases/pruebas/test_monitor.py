@@ -174,6 +174,63 @@ class TestConGitHubSimulado(unittest.TestCase):
         finally:
             self.datos_jira.sso_automatico = False
 
+    def test_jira_como_el_de_bbva(self):
+        """En Ajustes pone RDR, que no existe (las versiones están en CIBRDR), y el campo de la release no se
+        llama tech-version: se encuentran el proyecto por sus versiones y el campo por sus valores."""
+        from mp.jira import Jira
+        d = self.datos_jira
+        d.nombre_tv = "Release BBVA"
+        self.cfg.actualizar({"jira": {"proyectoReleases": "RDR"}})
+        try:
+            j = Jira(self.cfg, self.mon)
+            j.ruta = Path(self.dir) / "jira-bbva.json"
+            j.issues, j.features, j.campos, j.no_existen = {}, {}, {}, set()
+            j._iniciada(("token", "un-token"), {"name": "u"})
+            self.assertTrue(j.sincronizar(completa=True))
+            self.assertEqual(j.sincro["estado"], "ok", j.sincro)
+            self.assertEqual(j.campos["techVersion"]["nombre"], "Release BBVA")
+            self.assertEqual(j.campos["techVersion"]["detectado"], "por valores")
+            v = j.vista()
+            self.assertEqual(v["proyectoReleases"], "CIBRDR")
+            r = next(x for x in v["releases"] if x["nombre"] == "2.108.0")
+            self.assertIn("RDR-999", v["relHistorias"][r["id"]])
+            inf = j.diagnostico()["informe"]
+            self.assertEqual(inf["releases"]["proyecto"], "CIBRDR")
+            self.assertTrue(any(p["proyecto"] == "RDR" and not p["existe"] for p in inf["releases"]["probados"]))
+            self.assertTrue(any(x["prueba"] == "buscar una clave" and x["ok"] for x in inf["pruebas"]))
+        finally:
+            d.nombre_tv = "tech-version"
+            self.cfg.actualizar({"jira": {"proyectoReleases": "CIBRDR"}})
+
+    def test_jira_proyectos_en_desarrollo_y_los_de_nfq(self):
+        """Proyectos = Features y Tasks de CIBRDR que no están en Deployed; se marcan los de NFQ."""
+        from mp.jira import Jira
+        j = Jira(self.cfg, self.mon)
+        j.ruta = Path(self.dir) / "jira-nfq.json"
+        j._iniciada(("token", "un-token"), {"name": "u"})
+        self.assertTrue(j.sincronizar(completa=True))
+        self.assertEqual(j.sincro["estado"], "ok", j.sincro)
+        v = j.vista()
+        des = {x["k"]: x for x in v["desarrollo"]}
+        self.assertEqual(v["desarrolloInfo"]["consulta"], "completa")
+        self.assertTrue(des and all(x["t"] in ("Feature", "Task") and x["e"] != "Deployed" for x in des.values()))
+        self.assertIn("Task", {x["t"] for x in des.values()})
+        self.assertIn("CIBRDR-2600", des)          # en desarrollo aunque no tenga ramas
+        self.assertNotIn("CIBRDR-2628", des)       # desplegado
+        # Marcar los de NFQ: se guardan (solo claves válidas) y sus datos se leen aunque no tengan ramas.
+        r = j.guardar_nfq(["CIBRDR-2600", "cibrdr-2311", "no vale"], "alguien")
+        self.assertEqual(r["claves"], ["CIBRDR-2311", "CIBRDR-2600"])
+        for _ in range(200):
+            if not j._en_curso and "CIBRDR-2600" in j.features:
+                break
+            time.sleep(0.1)
+        self.assertIn("CIBRDR-2600", j.features)
+        self.assertEqual(Jira(self.cfg, self.mon).__class__, Jira)
+        j2 = Jira(self.cfg, self.mon)
+        j2.ruta = j.ruta
+        from mp.config import leer_json
+        self.assertEqual(leer_json(j.ruta)["nfq"]["claves"], ["CIBRDR-2311", "CIBRDR-2600"])
+
     def test_jira_historias_features_y_releases(self):
         from mp.ghe import ErrorGHE
         from mp.demo_jira import RESUMENES
@@ -216,7 +273,7 @@ class TestConGitHubSimulado(unittest.TestCase):
         self.assertFalse([x for x in RESUMENES if x in texto])
         self.assertNotIn("Descripción de", texto)
         self.assertNotIn("Usuario demo", texto)
-        self.assertEqual(d["informe"]["releases"]["proyecto"], "RDR")
+        self.assertEqual(d["informe"]["releases"]["proyecto"], "CIBRDR")
         self.assertGreater(d["informe"]["sdatool"]["conSdatool"], 0)
 
     def test_se_cierra_al_cerrar_la_ultima_pestana(self):

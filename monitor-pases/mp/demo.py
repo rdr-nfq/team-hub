@@ -786,7 +786,7 @@ REGLAS_DEMO = [
 
 def config_demo(puerto_ghe, url_jira=""):
     return {
-        "jira": {"url": url_jira, "token": "", "proyectoReleases": "RDR"},
+        "jira": {"url": url_jira, "token": "", "proyectoReleases": "CIBRDR"},
         "bbva": {"host": "demo.invalid", "api": "http://127.0.0.1:%d" % puerto_ghe, "token": "",
                  "organizaciones": [ORG], "filtroRepos": "props.uuaa:KYTL0000", "refrescoMin": 60, "proxy": "", "ca": ""},
         "nfq": {"host": "github.com", "repo": "rdr-nfq/pases-datos", "token": "", "publicarDPs": False},

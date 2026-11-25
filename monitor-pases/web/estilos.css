@@ -864,3 +864,20 @@ a.chip-jira:hover { border-color: var(--brand); }
 .form-chat { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 12px 18px 16px; border-top: 1px solid var(--line); align-items: end; }
 .form-chat textarea.inp { font-family: var(--f-body); font-size: 13.5px; min-height: 44px; }
 .panel-ayuda .panel-cab h2 { font: 600 20px/1.2 var(--f-head); }
+
+/* Entrada: pasos y «Conectar todo» */
+.num-paso { font: 700 14px/1 var(--sans, inherit); color: var(--brand); }
+.todo-entrada { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 14px; margin: 4px 0 8px; border-radius: 10px;
+  background: color-mix(in srgb, var(--brand) 7%, transparent); }
+.todo-entrada .tenue { font-size: 13px; flex: 1 1 220px; }
+.fila-sesion .t > .chip { justify-self: start; }
+.chip-sesion.chip-aviso { border-color: var(--mandarin, #ffa14f); background: color-mix(in srgb, var(--mandarin, #ffa14f) 18%, transparent); }
+/* Proyectos de NFQ */
+.nota-nfq { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.nota-nfq .btn { margin-left: auto; }
+.barra-nfq { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; position: sticky; top: 0; z-index: 2;
+  padding: 8px 0; background: var(--bg); }
+.tabla-nfq .c-sel { width: 36px; text-align: center; }
+.tabla-nfq .c-sel input { width: 16px; height: 16px; accent-color: var(--brand); cursor: pointer; }
+.tabla-nfq tr.marcada td { background: color-mix(in srgb, var(--brand) 6%, transparent); }
+.tabla-nfq tr { cursor: pointer; }

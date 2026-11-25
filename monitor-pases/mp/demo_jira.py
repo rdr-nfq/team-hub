@@ -9,7 +9,7 @@ con `sso_automatico` entra sola (como el SSO integrado de Windows).
   issues, en un enlace remoto o no está.
 - Historias: RDR-1xxx, citadas en los mensajes de commit. Cuelgan de su
   feature por «Feature Link» y van a una release por «tech-version».
-- Releases (versiones del proyecto RDR): las de las ramas release/x.y.z, salvo
+- Releases (versiones del proyecto CIBRDR): las de las ramas release/x.y.z, salvo
   algunas que aún no existen en Jira (la rama se crea antes).
 """
 
@@ -39,6 +39,8 @@ def _h(*partes):
 class DatosJira:
     def __init__(self, datos_gh):
         self.sesiones = set()
+        self.proyecto_rel = "CIBRDR"     # proyecto con las versiones (releases)
+        self.nombre_tv = "tech-version"  # nombre del campo que une historia y release
         self.sso_automatico = False
         hoy = dt.date.today()
         todas = {**demo.PROYECTOS, **demo.PROYECTOS_EXTRA}
@@ -86,6 +88,18 @@ class DatosJira:
                     est = ESTADOS[_h(k) % 3]
                 tv = [{"id": id_v[v]["id"], "name": v}] if v in id_v and _h(k, "tv") % 9 else None  # alguna se olvida el campo
                 self.issues[k] = self._issue(k, RESUMENES[_h(k) % len(RESUMENES)], "Historia", est, "RDR", feature=feat, tv=tv)
+        # Más proyectos en desarrollo en Jira (Features y Tasks) sin ramas todavía, y alguno ya desplegado.
+        otros = ["Migración de informes a la nube", "Nuevo cálculo de provisiones", "Alertas de límites", "Cuadro de mando de riesgos",
+                 "Depuración de históricos", "Integración con el motor de reglas", "Revisión de permisos", "Carga diaria de tipos de cambio",
+                 "Mejoras de rendimiento del batch", "Exportación regulatoria trimestral", "Limpieza de tablas temporales", "Pantalla de auditoría"]
+        for n, nombre in enumerate(otros):
+            k = "CIBRDR-%d" % (2600 + n * 7)
+            tipo = "Task" if n % 3 == 2 else "Feature"
+            est = ("Deployed", "done") if n % 5 == 4 else ESTADOS[n % 3]
+            self.issues[k] = self._issue(k, nombre, tipo, est, "CIBRDR")
+        for n, feat in enumerate(sorted(todas)):
+            if n % 6 == 5:  # algunas features de las ramas ya están desplegadas
+                self.issues[feat]["fields"]["status"] = {"name": "Deployed", "statusCategory": {"key": "done"}}
         # Una historia en la release de Jira que no está en ningún commit (para ver la diferencia).
         if self.versiones:
             v = next((x for x in self.versiones if x["name"] == "2.108.0"), None) or next(
@@ -122,17 +136,24 @@ class DatosJira:
         m = re.fullmatch(r"cf\[20500\] = (\d+)", jql)
         if m:
             return 200, [i for i in self.issues.values() if any(v["id"] == m.group(1) for v in i["fields"].get(CAMPO_TV) or [])]
+        m = re.fullmatch(r'project = "(\w+)" AND (?:issuetype in \(([^)]*)\) AND )?(?:status != "([^"]+)"|statusCategory != Done) ORDER BY updated DESC', jql)
+        if m:
+            tipos = {t.strip().strip('"') for t in (m.group(2) or "").split(",") if t.strip()}
+            res = [i for i in self.issues.values() if i["fields"]["project"]["key"] == m.group(1)
+                   and (not tipos or i["fields"]["issuetype"]["name"] in tipos)
+                   and (i["fields"]["status"]["name"] != m.group(3) if m.group(3) else i["fields"]["status"]["statusCategory"]["key"] != "done")]
+            return 200, res
         if re.fullmatch(r"fixVersion = \d+", jql):
             return 200, []
         return 400, {"errorMessages": ["La consulta JQL no es válida: %s" % jql]}
 
 
-def campos():
+def campos(nombre_tv="tech-version"):
     return [{"id": "summary", "name": "Summary", "schema": {"type": "string"}},
             {"id": "status", "name": "Status", "schema": {"type": "status"}},
             {"id": CAMPO_FEATURE, "name": "Feature Link", "custom": True,
              "schema": {"type": "any", "custom": "com.pyxis.greenhopper.jira:gh-epic-link"}},
-            {"id": CAMPO_TV, "name": "tech-version", "custom": True,
+            {"id": CAMPO_TV, "name": nombre_tv, "custom": True,
              "schema": {"type": "array", "items": "version", "custom": "com.atlassian.jira.plugin.system.customfieldtypes:multiversion"}},
             {"id": "customfield_10007", "name": "Epic Name", "custom": True, "schema": {"type": "string"}},
             {"id": "fixVersions", "name": "Fix Version/s", "schema": {"type": "array", "items": "version"}}]
@@ -210,15 +231,25 @@ class _H(BaseHTTPRequestHandler):
         if p == "/rest/api/2/serverInfo":
             return self._json(200, {"version": "9.12.15", "deploymentType": "Server"})
         if p == "/rest/api/2/field":
-            return self._json(200, campos())
-        if p == "/rest/api/2/project/RDR/versions":
-            return self._json(200, d.versiones)
+            return self._json(200, campos(d.nombre_tv))
+        if p == "/rest/api/2/project":
+            return self._json(200, [{"key": k, "name": "Proyecto %s" % k} for k in sorted({"CIBRDR", "CIRDR", "OTRO", d.proyecto_rel})])
+        m = re.fullmatch(r"/rest/api/2/project/([A-Z0-9_]+)/versions", p)
+        if m:
+            if m.group(1) == d.proyecto_rel:
+                return self._json(200, d.versiones)
+            if m.group(1) in ("CIBRDR", "CIRDR", "OTRO"):
+                return self._json(200, [])
+            return self._json(404, {"errorMessages": ["No project could be found with key '%s'." % m.group(1)]})
         m = re.fullmatch(r"/rest/api/2/issue/([A-Z]+-\d+)/remotelink", p)
         if m:
             return self._json(200, d.remotos.get(m.group(1), []))
         if p == "/rest/api/2/search" and metodo == "POST":
             n = int(self.headers.get("Content-Length") or 0)
             q = json.loads(self.rfile.read(n) or b"{}")
+            if "validateQuery" in q and not isinstance(q["validateQuery"], bool):
+                # Jira Server/Data Center: validateQuery es booleano (en Cloud es texto).
+                return self._json(400, {"errorMessages": ["Can not deserialize instance of java.lang.Boolean out of VALUE_STRING token"]})
             estado, res = d.buscar(q.get("jql") or "")
             if estado != 200:
                 return self._json(estado, res)

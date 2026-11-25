@@ -53,6 +53,10 @@ function Cabecera({ estado, vista, setVista, onSync, tema, cambiarTema, abrirPal
       <span aria-live="polite"><${EstadoSincro} s=${estado?.sincro} cuota=${estado?.cuota} /></span>
       <button class="chip-sesion" onClick=${() => setVista("ajustes")} title="Sesiones de GitHub">
         <${Icono} n="usuario" /> <span>${ses.bbva?.usuario || "sin BBVA"}${ses.nfq?.estado === "iniciada" ? "" : " · sin NFQ"}</span></button>
+      ${ses.jira && ses.jira.estado !== "iniciada" && !estado?.demo ? html`<button class="chip-sesion chip-aviso" title="Jira no está conectado: pulsa para entrar"
+        onClick=${() => ses.jira.estado === "entrando" || ses.jira.estado === "comprobando" ? null : api("jira/navegador", {})}>
+        <${Icono} n=${ses.jira.estado === "sin sesión" ? "candado" : "actualizar"} cls=${ses.jira.estado === "sin sesión" ? "" : "gira"} />
+        <span>${ses.jira.estado === "sin sesión" ? "Conectar Jira" : "Entrando en Jira…"}</span></button>` : ""}
       <button class="btn btn-s" onClick=${onSync} disabled=${!estado?.configurado || enCurso}><${Icono} n="actualizar" cls=${enCurso ? "gira" : ""} /> Actualizar</button>
       <button class="btn-tema" onClick=${abrirAyuda} title="Manual y ayuda (F1)" aria-label="Abrir el manual y la ayuda (F1)"><${Icono} n="ayuda" /></button>
       <${BotonTema} tema=${tema} cambiar=${cambiarTema} />
@@ -780,14 +784,18 @@ function VistaAjustes({ estado, aviso, recargar, jira, recargarJira }) {
       <${ConectarJira} estado=${estado} jira=${jira} recargar=${recargarJira} aviso=${aviso} />
       <div class="rejilla" style="margin-top:14px">
         <label class="campo"><span>Dirección de Jira</span><input class="inp mono" value=${cfg.jira?.url || ""} onInput=${(e) => set(["jira", "url"], e.target.value)} placeholder="https://jira.globaldevtools.bbva.com" /></label>
-        <label class="campo"><span>Proyecto de las releases</span><input class="inp mono" value=${cfg.jira?.proyectoReleases || ""} onInput=${(e) => set(["jira", "proyectoReleases"], e.target.value)} placeholder="RDR" /></label>
+        <label class="campo"><span>Proyecto de las releases</span><input class="inp mono" value=${cfg.jira?.proyectoReleases || ""} onInput=${(e) => set(["jira", "proyectoReleases"], e.target.value)} placeholder="CIBRDR" />
+          <small>Si no existe en Jira, la app busca el proyecto cuyas versiones coinciden con las ramas release/x.y.z.</small></label>
         <label class="campo"><span>Campo que une historia y feature</span><input class="inp mono" value=${cfg.jira?.campoFeature || ""} onInput=${(e) => set(["jira", "campoFeature"], e.target.value)}
           placeholder=${jira?.campos?.feature ? `${jira.campos.feature.nombre} (encontrado solo)` : "Feature Link / Epic Link"} />
           <small>Vacío = lo busca solo por el nombre. Vale el nombre o el id (customfield_…).</small></label>
         <label class="campo"><span>Campo de la release de una historia</span><input class="inp mono" value=${cfg.jira?.campoTechVersion || ""} onInput=${(e) => set(["jira", "campoTechVersion"], e.target.value)}
           placeholder=${jira?.campos?.techVersion ? `${jira.campos.techVersion.nombre} (encontrado solo)` : "tech-version"} /></label>
+        <label class="campo"><span>Proyecto de los proyectos (features)</span><input class="inp mono" value=${cfg.jira?.proyectoProyectos || ""} onInput=${(e) => set(["jira", "proyectoProyectos"], e.target.value)} placeholder="Vacío = el de las releases" /></label>
+        <label class="campo"><span>Tipos que son proyecto</span><input class="inp" value=${cfg.jira?.tiposProyecto || ""} onInput=${(e) => set(["jira", "tiposProyecto"], e.target.value)} placeholder="Feature, Task" /></label>
+        <label class="campo"><span>Estado de «ya desplegado»</span><input class="inp" value=${cfg.jira?.estadoFin || ""} onInput=${(e) => set(["jira", "estadoFin"], e.target.value)} placeholder="Deployed" /></label>
         <label class="campo ancho"><span>Navegador para entrar en Jira (si no lo encuentra solo)</span><input class="inp mono" value=${cfg.jira?.navegador || ""} onInput=${(e) => set(["jira", "navegador"], e.target.value)}
-          placeholder="Vacío = Edge (o Chrome). Ruta de msedge.exe o chrome.exe" /></label>
+          placeholder="Vacío = Chrome (o Edge si no hay Chrome). Ruta de chrome.exe o msedge.exe" /></label>
       </div>
       ${jira?.sesion?.estado === "iniciada" ? html`<div class="prueba"><button class="btn" onClick=${() => api("jira/sincronizar", {}).then(() => { aviso("Leyendo Jira…"); setTimeout(recargarJira, 1500); }, (e) => aviso(e.message, "mal"))}><${Icono} n="actualizar" /> Leer Jira ahora</button>
         ${jira?.sincro?.fin ? html`<span class="tenue">Última lectura ${hace(jira.sincro.fin)}${jira.sincro.estado === "error" ? " · " + (jira.sincro.error?.mensaje || "con error") : ""}</span>` : ""}</div>

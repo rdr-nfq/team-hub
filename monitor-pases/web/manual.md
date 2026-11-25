@@ -14,12 +14,12 @@ El Monitor de pases es una app para la **VDI de BBVA**. Junta en un solo sitio l
 - **Volver a abrirla:** otra vez doble clic en el .exe. Si ya estaba abierta, solo abre la pestaña.
 
 ### Iniciar sesión
-Al abrirla pide:
-- **GitHub BBVA** (obligatorio): para leer repositorios, commits, Actions y DPs. Pulsa *Iniciar sesión* y sigue la ventana de GitHub; si ya tienes sesión en Git, entra solo.
-- **GitHub NFQ**: para publicar los DPs y los pases en `rdr-nfq/pases-datos`. Sin él la app funciona, pero no publica.
-- **Jira** (opcional): historias, features con su SDATOOL y releases. Mira la sección *Jira*.
+Al abrirla comprueba si ya tienes las sesiones y, si están, entra sola. Si falta alguna, pulsa **Conectar todo**: abre una tras otra las ventanas de inicio de sesión que falten y solo tienes que entrar como siempre en cada una.
+1. **GitHub BBVA** (obligatoria): repositorios, commits, Actions y DPs. Se abre la ventana de GitHub; si ya tienes sesión en Git, entra sola.
+2. **Jira** (obligatoria): proyectos, historias, SDATOOL y releases. Se abre Jira en Chrome (o Edge) y entras con tu usuario de BBVA (ver *Jira*).
+3. **GitHub NFQ** (opcional): para publicar los DPs, los pases y compartir qué proyectos son de NFQ en `rdr-nfq/pases-datos`. Si entras sin ella, la app lo recuerda y no vuelve a esperarla.
 
-Las sesiones las guarda Git (el almacén de credenciales de Windows): solo se piden la primera vez.
+Sin GitHub BBVA y Jira no se puede entrar. Solo se piden la primera vez: GitHub lo guarda Git (almacén de credenciales de Windows) y Jira, el perfil del navegador de la app. Si dentro de la app se pierde la sesión de Jira, arriba sale **Conectar Jira**: un clic y vuelve a entrar.
 
 ### La primera carga
 La primera vez descarga la información de todos los repositorios (los de `props.uuaa:KYTL0000`). Arriba sale **«Primera carga de los repositorios»** con una barra de progreso:
@@ -62,22 +62,30 @@ Botones del panel:
 
 Une GitHub con Jira. Necesita Jira conectado (si no, la pestaña te enseña cómo).
 
-### Proyectos (features)
-Una fila por feature (las `CIBRDR-…`). Cada fila tiene:
+### Qué es un proyecto
+Un proyecto es una **Feature o Task de `CIBRDR` que no está en *Deployed***. En *Proyectos → En desarrollo (elegir)* salen todos los de Jira:
+- Marca los que son **de NFQ** (clic en la fila o en la casilla) y pulsa **Guardar**. *Marcar los que tienen ramas* marca de golpe los que tienen ramas abiertas en vuestros repos.
+- La selección se **comparte con el equipo** en `pases-datos` (solo las claves, como `CIBRDR-1234`) si tienes la sesión de GitHub NFQ: cuando otra persona abre la app, ve la misma.
+- Filtros: tipo (Feature, Task), marcados / sin marcar y buscador.
+
+Los tipos, el estado «desplegado» y el proyecto se cambian en *Ajustes → Jira*.
+
+### Proyectos de NFQ
+Una fila por cada proyecto marcado como de NFQ (los ya desplegados se ocultan; *También los ya desplegados* los enseña). Mientras no hay ninguno marcado, salen todos los que tienen ramas. Cada fila tiene:
 - **Estado en Jira**.
 - **SDATOOL**, que se busca solo en la feature: en enlaces, campos, enlaces remotos o la descripción. *sin SDATOOL* = no aparece en ninguno.
 - **Historias hechas** (barra: verde hechas, azul en curso).
 - Ramas abiertas, repos, DPs y último cambio en GitHub.
 
-Filtros: buscador, *También sin ramas abiertas* y *Solo sin SDATOOL* (para detectar las que falta pedir).
+Filtros: buscador, *También los ya desplegados* y *Solo sin SDATOOL* (para detectar las que falta pedir).
 
 Al pulsar una feature ves su ficha:
 - botones *Abrir en Jira*, *Ver sus ramas* y *Preparar pase*;
 - sus **historias**, con estado, quién la tiene, release (*tech-version*) y en qué repos tiene commits. *no cuelga de la feature* = se cita en los commits de sus ramas, pero en Jira no está unida a esta feature;
 - sus ramas y releases en GitHub.
 
-### Releases de RDR
-Todas las releases del proyecto RDR de Jira, con buscador y *Solo las que no se han publicado*. Abre una para comparar sus historias:
+### Releases de CIBRDR
+Todas las releases del proyecto CIBRDR de Jira, con buscador y *Solo las que no se han publicado*. Abre una para comparar sus historias:
 - **En Jira**: tiene esa release en *tech-version*.
 - **En la rama**: aparece en los commits de la rama `release/x.y.z`.
 - Se marcan las que están en Jira sin commits y las que están en la rama sin la release en Jira.
@@ -197,10 +205,10 @@ Ruta de Copilot CLI, modelo, opciones y variables de entorno (proxy).
 
 ### Conectar (iniciar sesión)
 1. En la entrada, en Proyectos o en *Ajustes → Jira*, pulsa **Iniciar sesión en Jira**.
-2. Se abre una ventana de **Edge** con Jira. Entra como siempre, con tu usuario de BBVA.
+2. Se abre Jira en **Chrome** (en **Edge** si no tienes Chrome). Entra como siempre, con tu usuario de BBVA.
 3. En cuanto estás dentro, la ventana **se cierra sola** y la app queda conectada.
 
-La ventana usa un perfil de Edge propio de la app: tu Edge de siempre no se toca. Ese perfil recuerda el inicio de sesión, así que en los siguientes arranques la app entra **sola, sin ventana**. Si un día la sesión ha caducado del todo, te avisa y vuelves a pulsar *Iniciar sesión en Jira*.
+Esa ventana usa un perfil de Chrome propio de la app: tu Chrome de siempre, con sus pestañas, no se toca (la app no puede leer la sesión de tu perfil normal, por eso es una ventana aparte). Ese perfil recuerda el inicio de sesión, así que en los siguientes arranques la app entra **sola, sin ventana**. Si un día la sesión ha caducado del todo, te avisa y vuelves a pulsar *Iniciar sesión en Jira*.
 
 **Otras formas de entrar** (debajo del botón), por si la ventana no se abre o no conecta:
 - **Usuario y contraseña**: tu usuario de Jira (el de tu perfil) y tu contraseña de BBVA. Solo vale si vuestro Jira la admite además del SSO.
@@ -212,7 +220,7 @@ La ventana usa un perfil de Edge propio de la app: tu Edge de siempre no se toca
 ### Qué saca de Jira
 - **Historias de los commits**: las claves de Jira de cada mensaje (`RDR-1234 …`). Las de los DPs (`DP-KYTL-…`) no cuentan.
 - **Features**: nombre, estado, SDATOOL y sus historias (campo *Feature Link* / *Epic Link*).
-- **Releases** del proyecto RDR y sus historias (campo *tech-version*).
+- **Releases** del proyecto CIBRDR y sus historias (campo *tech-version*: si en vuestro Jira se llama de otra forma, la app lo encuentra por sus valores).
 
 ### Diagnóstico
 Si algo no cuadra (un campo con otro nombre, releases con otro formato…), usa *Ajustes → Jira → Generar diagnóstico*:
@@ -249,7 +257,7 @@ Escribe un trozo del nombre de un repositorio, una rama, una release, un proyect
 ## Seguridad: qué sale de la VDI {#seguridad}
 
 - La app solo escucha en tu propio equipo (`127.0.0.1`) y cada llamada lleva una clave de sesión.
-- Los tokens y contraseñas los guarda Git (almacén de credenciales de Windows); la sesión de Jira vive en el perfil de Edge de la app, cifrada por el propio Edge. La app no escribe secretos en disco.
+- Los tokens y contraseñas los guarda Git (almacén de credenciales de Windows); la sesión de Jira vive en el perfil de Chrome (o Edge) de la app, cifrada por el propio navegador. La app no escribe secretos en disco.
 - **Solo sale de la VDI** lo que se publica en `rdr-nfq/pases-datos`:
   - los DPs: release, features y nombres de componentes, nunca código;
   - los pases que subes tú;
@@ -263,7 +271,7 @@ Escribe un trozo del nombre de un repositorio, una rama, una release, un proyect
 - **No me deja iniciar sesión en GitHub**: comprueba que Git tiene el gestor de credenciales (`git config --get credential.helper`). Si no, pon un token personal en *Ajustes*.
 - **No encuentra Copilot CLI**: si en una terminal te funciona `gh copilot`, escribe `gh copilot` en *Ajustes → Copilot → Ruta de Copilot CLI*; si te funciona `copilot`, pega ahí la ruta de `where copilot`. La pestaña Copilot dice qué ha encontrado y por qué lo ha descartado.
 - **Copilot o npm no conectan**: casi siempre es el proxy (`HTTPS_PROXY`, `HTTP_PROXY`, `NODE_EXTRA_CA_CERTS`).
-- **No se abre la ventana de Jira o no conecta**: puede que una política de la empresa no deje a la app leer la sesión de Edge. Usa *Otras formas de entrar* (sección *Jira*).
+- **No se abre la ventana de Jira o no conecta**: puede que una política de la empresa no deje a la app leer la sesión del navegador. Usa *Otras formas de entrar* (sección *Jira*).
 - **«La sesión de Jira ha caducado»**: pulsa otra vez *Iniciar sesión en Jira*.
 - **Un proyecto sale *sin SDATOOL***: la feature de Jira no lo tiene en enlaces, campos ni descripción. Añádelo en Jira.
 - **Una historia sale *sin tech-version***: está en la rama de release, pero en Jira no tiene esa release. Revísalo en Jira.

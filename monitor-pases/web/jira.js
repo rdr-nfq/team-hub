@@ -44,10 +44,11 @@ function Sdatool({ f }) {
 /* ── Conectar Jira (entrada y Ajustes) ── */
 const METODO = { navegador: "con tu sesión del navegador", token: "token personal", usuario: "usuario y contraseña", cookie: "sesión copiada del navegador" };
 
-export function ConectarJira({ estado, jira, recargar, aviso, compacto }) {
-  // La más reciente: la de /api/jira se vuelve a pedir justo al conectar; la del estado general, cada 30 s.
+export function ConectarJira({ estado, jira, recargar, aviso, compacto, paso, etiqueta }) {
+  // Iniciada gana; luego la que está en marcha (entrando/comprobando); luego la del estado (más reciente) y la de /api/jira.
   const sesJira = jira?.sesion, sesEstado = estado?.sesion?.jira;
-  const ses0 = [sesJira, sesEstado].find((x) => x?.estado === "iniciada") || sesJira || sesEstado || {};
+  const ses0 = [sesJira, sesEstado].find((x) => x?.estado === "iniciada")
+    || [sesEstado, sesJira].find((x) => x?.estado === "entrando" || x?.estado === "comprobando") || sesEstado || sesJira || {};
   const url = jira?.url || "";
   const [vivo, setVivo] = useState(null);  // sesión mientras se entra con el navegador
   const ses = vivo || ses0;
@@ -58,7 +59,7 @@ export function ConectarJira({ estado, jira, recargar, aviso, compacto }) {
   const [cookie, setCookie] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState(null);
-  const entrando = ses.estado === "entrando";
+  const entrando = ses.estado === "entrando" || ses.estado === "comprobando";
   useEffect(() => {
     if (!entrando) return;
     const iv = setInterval(async () => {
@@ -99,15 +100,17 @@ export function ConectarJira({ estado, jira, recargar, aviso, compacto }) {
   const fallo = ses.fallo === "navegador";
   const listo = otra === "usuario" ? usuario && clave : otra === "cookie" ? cookie.trim() : token.trim();
   return html`<div class="fila-sesion jira-conectar">
-    <span class="ico-sesion" aria-hidden="true"><${Icono} n="candado" /></span>
+    <span class="ico-sesion" aria-hidden="true">${paso ? html`<b class="num-paso">${paso}</b>` : html`<${Icono} n="candado" />`}</span>
     <div class="t">
-      <b>Jira</b> <span class="mono tenue">${host}</span> ${compacto ? html`<span class="chip chip-borde">opcional</span>` : ""}
+      <b>Jira</b> <span class="mono tenue">${host}</span> ${etiqueta ? html`<span class="chip chip-borde">${etiqueta}</span>` : ""}
       <span>Para ver las historias de cada commit, las features con su SDATOOL y las releases.</span>
-      ${entrando ? html`<div class="entrando-jira" role="status"><${Icono} n="actualizar" cls="gira" />
-          <span><b>Se ha abierto una ventana de Jira.</b> Entra como siempre (usuario de BBVA). Cuando estés dentro, la ventana se cierra sola y esto se conecta.</span></div>`
+      ${ses.estado === "comprobando" ? html`<div class="entrando-jira" role="status"><${Icono} n="actualizar" cls="gira" />
+          <span>Comprobando si ya tienes la sesión de Jira…</span></div>`
+        : entrando ? html`<div class="entrando-jira" role="status"><${Icono} n="actualizar" cls="gira" />
+          <span><b>Se ha abierto Jira en el navegador.</b> Entra como siempre (usuario de BBVA). Cuando estés dentro, la ventana se cierra sola y esto se conecta.</span></div>`
         : html`<div class="acc-jira">
           <button class="btn btn-pri" type="button" onClick=${conNavegador}><${Icono} n="externo" /> Iniciar sesión en Jira</button>
-          <span class="tenue nota-jira">Se abre una ventana de Edge: entras con tu usuario de BBVA y la app recoge la sesión. Solo la primera vez; después entra sola.</span>
+          <span class="tenue nota-jira">Se abre Jira en Chrome (o Edge si no tienes Chrome): entras con tu usuario de BBVA y la app recoge la sesión. Solo la primera vez; después entra sola.</span>
         </div>`}
       ${ses.aviso && !entrando ? html`<span class="error-sesion" role="alert">${ses.aviso}${fallo ? " Prueba una de las otras formas de entrar." : ""}</span>` : ""}
       <details class="otras-jira" open=${fallo || !!otra}>
@@ -149,37 +152,47 @@ export function ConectarJira({ estado, jira, recargar, aviso, compacto }) {
 export function VistaProyectos({ estado, jira, ir, preparar, recargarJira, aviso }) {
   const [sub, setSub] = useState("proyectos");
   return html`<div class="contenido">
-    <div class="titulo-vista"><h1>${sub === "proyectos" ? "Proyectos" : "Releases"}</h1>
+    <div class="titulo-vista"><h1>${sub === "proyectos" ? "Proyectos de NFQ" : sub === "desarrollo" ? "Proyectos en desarrollo" : "Releases"}</h1>
       <div class="segmento" role="group" aria-label="Ver">
-        <button aria-pressed=${sub === "proyectos"} onClick=${() => setSub("proyectos")}>Proyectos (features)</button>
+        <button aria-pressed=${sub === "proyectos"} onClick=${() => setSub("proyectos")}>De NFQ${jira?.nfq?.claves?.length ? ` (${jira.nfq.claves.length})` : ""}</button>
+        <button aria-pressed=${sub === "desarrollo"} onClick=${() => setSub("desarrollo")}>En desarrollo (elegir)</button>
         <button aria-pressed=${sub === "releases"} onClick=${() => setSub("releases")}>Releases${jira?.proyectoReleases ? " de " + jira.proyectoReleases : ""}</button>
       </div>
       ${jira?.sincro?.enCurso ? html`<span class="tenue"><${Icono} n="actualizar" cls="gira" /> Leyendo Jira…</span>` : jira?.sincro?.fin ? html`<span class="tenue" title="Última lectura de Jira">Jira: ${hace(jira.sincro.fin)}</span>` : ""}
     </div>
     ${jira?.sesion?.estado !== "iniciada" ? html`<section class="caja" style="margin-bottom:16px"><${ConectarJira} estado=${estado} jira=${jira} recargar=${recargarJira} aviso=${aviso} /></section>` : ""}
     ${jira?.sincro?.estado === "error" ? html`<p class="nota" role="alert">No se ha podido leer Jira: ${jira.sincro.error?.mensaje}${jira.sincro.error?.pista ? " " + jira.sincro.error.pista : ""}</p>` : ""}
-    ${sub === "proyectos" ? html`<${ListaProyectos} estado=${estado} jira=${jira} ir=${ir} preparar=${preparar} />` : html`<${ListaReleases} estado=${estado} jira=${jira} />`}
+    ${sub === "proyectos" ? html`<${ListaProyectos} estado=${estado} jira=${jira} ir=${ir} preparar=${preparar} elegir=${() => setSub("desarrollo")} />`
+      : sub === "desarrollo" ? html`<${ElegirNFQ} estado=${estado} jira=${jira} ir=${ir} recargar=${recargarJira} aviso=${aviso} />`
+      : html`<${ListaReleases} estado=${estado} jira=${jira} />`}
   </div>`;
 }
 
-function ListaProyectos({ estado, jira, ir, preparar }) {
+function ListaProyectos({ estado, jira, ir, preparar, elegir }) {
   const [q, setQ] = useState("");
-  const [todos, setTodos] = useState(false);
+  const [todos, setTodos] = useState(false);  // sin marcas: también sin ramas abiertas; con marcas: también los desplegados
   const [sinSd, setSinSd] = useState(false);
+  const nfq = jira?.nfq?.claves || [];
+  const enDes = useMemo(() => new Set((jira?.desarrollo || []).map((x) => x.k)), [jira]);
   const filas = useMemo(() => {
     const gh = Object.fromEntries(estado.proyectos.filter((p) => p.feature).map((p) => [p.feature, p]));
-    const claves = uniq([...Object.keys(gh), ...Object.keys(jira?.features || {})]);
-    return claves.map((k) => ({ k, gh: gh[k], f: jira?.features?.[k] })).sort((a, b) =>
+    const des = Object.fromEntries((jira?.desarrollo || []).map((x) => [x.k, x]));
+    // Con proyectos marcados: solo los de NFQ. Sin marcar todavía: los de las ramas y las features de Jira, como antes.
+    const claves = nfq.length ? nfq : uniq([...Object.keys(gh), ...Object.keys(jira?.features || {})]);
+    return claves.map((k) => ({ k, gh: gh[k], f: jira?.features?.[k] || des[k] })).sort((a, b) =>
       (b.gh?.ultima || "").localeCompare(a.gh?.ultima || "") || a.k.localeCompare(b.k, "es", { numeric: true }));
   }, [estado, jira]);
   const pq = q.trim().toLowerCase();
-  const visibles = filas.filter((x) => (todos || x.gh?.abiertas) && (!sinSd || (x.f && !x.f.sd?.length)) &&
+  const desplegado = (x) => enDes.size && !enDes.has(x.k);
+  const visibles = filas.filter((x) => (nfq.length ? todos || !desplegado(x) : todos || x.gh?.abiertas) && (!sinSd || (x.f && !x.f.sd?.length)) &&
     (!pq || [x.k, x.f?.s, x.gh?.nombre, ...(x.f?.sd || []), ...(x.gh?.repos || [])].join(" ").toLowerCase().includes(pq)));
   return html`<div>
+    ${!nfq.length ? html`<p class="nota nota-nfq"><${Icono} n="marcador" /> <span>Aún no habéis marcado qué proyectos son de NFQ: ahora se ven todos los que tienen ramas.</span>
+      <button class="btn btn-s btn-pri" onClick=${elegir}>Elegir los proyectos de NFQ</button></p>` : ""}
     <div class="filtros">
       <label class="buscar"><span class="sr">Buscar proyecto</span><${Icono} n="buscar" />
         <input class="inp" type="search" placeholder="Código, nombre, SDATOOL o repositorio" value=${q} onInput=${(e) => setQ(e.target.value)} /></label>
-      <label class="interruptor"><input type="checkbox" checked=${todos} onChange=${(e) => setTodos(e.target.checked)} /> También sin ramas abiertas</label>
+      <label class="interruptor"><input type="checkbox" checked=${todos} onChange=${(e) => setTodos(e.target.checked)} /> ${nfq.length ? "También los ya desplegados" : "También sin ramas abiertas"}</label>
       <label class="interruptor"><input type="checkbox" checked=${sinSd} onChange=${(e) => setSinSd(e.target.checked)} /> Solo sin SDATOOL</label>
       <span class="tenue">${plural(visibles.length, "proyecto", "proyectos")}</span>
     </div>
@@ -260,6 +273,79 @@ export function VistaProyecto({ feature, estado, jira, ir, volver, preparar, set
         <span class="l2">${r.cabeza ? `${r.cabeza.autor} · ${hace(r.cabeza.fecha)}` : ""}</span></li>`)}</ul>`
         : html`<p class="suave" style="margin:0">Sin ramas en GitHub.</p>`}
     </section>
+  </div>`;
+}
+
+/* ── Proyectos en desarrollo (Features y Tasks no desplegadas): se marcan los de NFQ ── */
+function ElegirNFQ({ estado, jira, ir, recargar, aviso }) {
+  const guardadas = jira?.nfq?.claves || [];
+  const [sel, setSel] = useState(() => new Set(guardadas));
+  const [q, setQ] = useState("");
+  const [tipo, setTipo] = useState("");
+  const [ver, setVer] = useState("todos");  // todos | marcados | sin
+  const [guardando, setGuardando] = useState(false);
+  useEffect(() => { setSel(new Set(jira?.nfq?.claves || [])); }, [jira?.nfq?.fecha]);
+  const info = jira?.desarrolloInfo || {};
+  const gh = useMemo(() => Object.fromEntries(estado.proyectos.filter((p) => p.feature).map((p) => [p.feature, p])), [estado]);
+  const lista = jira?.desarrollo || [];
+  const tipos = uniq(lista.map((x) => x.t)).sort();
+  const pq = q.trim().toLowerCase();
+  const visibles = lista.filter((x) => (!tipo || x.t === tipo) && (ver === "todos" || (ver === "marcados") === sel.has(x.k)) &&
+    (!pq || [x.k, x.s, x.e, x.a].join(" ").toLowerCase().includes(pq)));
+  const cambiado = sel.size !== guardadas.length || guardadas.some((k) => !sel.has(k));
+  const alternar = (k) => setSel((s0) => { const s1 = new Set(s0); s1.has(k) ? s1.delete(k) : s1.add(k); return s1; });
+  const conRamas = lista.filter((x) => gh[x.k]?.abiertas).map((x) => x.k);
+  const guardar = async () => {
+    setGuardando(true);
+    try {
+      const r = await api("jira/nfq", { claves: [...sel] });
+      const n = plural(r.claves.length, "proyecto", "proyectos");
+      aviso?.(r.motivo || `Guardado: ${n} de NFQ.${r.compartido ? " Compartido con el equipo." : ""}`, r.motivo ? "mal" : undefined);
+      recargar?.();
+    } catch (e) { aviso?.(e.message, "mal"); } finally { setGuardando(false); }
+  };
+  if (jira?.sesion?.estado !== "iniciada" && !lista.length) return html`<div class="vacio-mini">Conecta Jira para ver los proyectos en desarrollo.</div>`;
+  return html`<div>
+    <p class="suave" style="margin:0 0 12px;max-width:820px">Las <b>${(info.tipos || ["Feature", "Task"]).join(" y ")}</b> de <b class="mono">${info.proyecto || "CIBRDR"}</b>${" "}que no están en <b>${info.fin || "Deployed"}</b>. Marca las que son de NFQ: son las que se ven en <i>Proyectos</i>
+      ${jira?.nfq?.compartido ? html`· <span class="tenue">la selección se comparte con el equipo (pases-datos${jira.nfq.por ? ", último cambio de " + jira.nfq.por : ""}${jira.nfq.fecha ? " " + hace(jira.nfq.fecha) : ""})</span>` : ""}.</p>
+    ${info.error && !lista.length ? html`<p class="nota" role="alert">Jira no acepta la consulta de proyectos: ${info.error}</p>` : ""}
+    ${info.consulta && info.consulta !== "completa" ? html`<p class="nota">Jira no reconoce ${info.consulta === "sin el estado" ? `el estado «${info.fin}»: se quitan los terminados` : "los tipos ni el estado"}. Revisa los nombres en Ajustes → Jira.</p>` : ""}
+    <div class="filtros">
+      <label class="buscar"><span class="sr">Buscar</span><${Icono} n="buscar" />
+        <input class="inp" type="search" placeholder="Código, nombre, estado o responsable" value=${q} onInput=${(e) => setQ(e.target.value)} /></label>
+      <div class="segmento" role="group" aria-label="Tipo">
+        <button aria-pressed=${!tipo} onClick=${() => setTipo("")}>Todos</button>
+        ${tipos.map((t) => html`<button key=${t} aria-pressed=${tipo === t} onClick=${() => setTipo(t)}>${t}</button>`)}
+      </div>
+      <div class="segmento" role="group" aria-label="Marcados">
+        <button aria-pressed=${ver === "todos"} onClick=${() => setVer("todos")}>Todos</button>
+        <button aria-pressed=${ver === "marcados"} onClick=${() => setVer("marcados")}>De NFQ (${sel.size})</button>
+        <button aria-pressed=${ver === "sin"} onClick=${() => setVer("sin")}>Sin marcar</button>
+      </div>
+      <span class="tenue">${plural(visibles.length, "proyecto", "proyectos")}</span>
+    </div>
+    <div class="barra-nfq">
+      <button class="btn btn-pri" disabled=${!cambiado || guardando} onClick=${guardar}>${guardando ? "Guardando…" : `Guardar (${sel.size} de NFQ)`}</button>
+      ${cambiado ? html`<button class="btn btn-t btn-s" onClick=${() => setSel(new Set(guardadas))}>Deshacer cambios</button>` : ""}
+      ${conRamas.some((k) => !sel.has(k)) ? html`<button class="btn btn-s" onClick=${() => setSel((s0) => new Set([...s0, ...conRamas]))}
+        title="Marca los que tienen ramas abiertas en vuestros repositorios"><${Icono} n="rama" /> Marcar los que tienen ramas (${conRamas.filter((k) => !sel.has(k)).length})</button>` : ""}
+      ${jira?.sincro?.enCurso ? html`<span class="tenue"><${Icono} n="actualizar" cls="gira" /> Leyendo Jira…</span>` : info.fecha ? html`<span class="tenue">Leído de Jira ${hace(info.fecha)}</span>` : ""}
+    </div>
+    ${visibles.length ? html`<div class="grupo"><div style="overflow-x:auto"><table class="tabla tabla-nfq">
+      <thead><tr><th scope="col" class="c-sel"><span class="sr">De NFQ</span></th><th scope="col">Proyecto</th><th scope="col">Tipo</th><th scope="col">Estado</th>
+        <th scope="col">Responsable</th><th scope="col" class="c-num">Ramas</th><th scope="col">Actualizado</th></tr></thead>
+      <tbody>${visibles.map((x) => html`<tr key=${x.k} class=${"fila" + (sel.has(x.k) ? " marcada" : "")} onClick=${() => alternar(x.k)}>
+        <td class="c-sel"><input type="checkbox" checked=${sel.has(x.k)} aria-label=${"De NFQ: " + x.k} onClick=${(e) => e.stopPropagation()} onChange=${() => alternar(x.k)} /></td>
+        <td class="c-proy"><span class="barra-proy" style=${{ background: colorDe(x.k) }} />
+          <span><a class="lnk mono" href=${urlJira(x.k)} target="_blank" rel="noopener noreferrer" onClick=${(e) => e.stopPropagation()}><b>${x.k}</b></a>
+          <span class="nombre-proy">${x.s}</span></span></td>
+        <td>${x.t}</td>
+        <td><span class=${"chip-jira cat-" + x.c}><span class="punto-cat" />${x.e}</span></td>
+        <td class="tenue">${x.a || "—"}</td>
+        <td class="c-num num">${gh[x.k]?.abiertas ? html`<button class="lnk" onClick=${(e) => { e.stopPropagation(); ir({ vista: "proyecto", feature: x.k }); }}>${gh[x.k].abiertas}</button>` : html`<span class="tenue">0</span>`}</td>
+        <td class="tenue">${x.u ? hace(x.u) : "—"}</td>
+      </tr>`)}</tbody></table></div></div>`
+      : html`<div class="vacio-mini">${lista.length ? "Ninguno con estos filtros." : jira?.sincro?.enCurso ? "Leyendo los proyectos de Jira…" : "Jira no ha devuelto proyectos en desarrollo. Pulsa «Leer Jira ahora» en Ajustes → Jira."}</div>`}
   </div>`;
 }
 

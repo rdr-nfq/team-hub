@@ -189,6 +189,9 @@ class App:
             return self.jira.conectar(cuerpo.get("token"), cuerpo.get("usuario"), cuerpo.get("clave"), cuerpo.get("cookie"))
         if metodo == "GET" and ruta == "/api/jira/sesion-estado":
             return self.jira.publica()
+        if metodo == "POST" and ruta == "/api/jira/nfq":
+            # Quién: el usuario de GitHub NFQ (lo que se comparte en pases-datos no lleva datos de BBVA).
+            return self.jira.guardar_nfq(cuerpo.get("claves") or [], (self.ses.publica().get("nfq") or {}).get("usuario") or "")
         if metodo == "POST" and ruta == "/api/jira/navegador":
             return self.jira.conectar_navegador()
         if metodo == "POST" and ruta == "/api/jira/cerrar":

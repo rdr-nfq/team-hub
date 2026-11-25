@@ -1,4 +1,4 @@
-"""Inicio de sesión en una web con el navegador de la persona (Edge o Chrome),
+"""Inicio de sesión en una web con el navegador de la persona (Chrome o, si no, Edge),
 para cuando no hay tokens: se abre una ventana con un perfil propio de la app,
 la persona entra como siempre (SSO) y la app recoge las cookies de esa web por
 el protocolo de DevTools, solo en 127.0.0.1. Después cierra la ventana.
@@ -30,7 +30,7 @@ class ErrorNavegador(Exception):
 
 
 def buscar_navegador(propio=""):
-    """Ruta de Edge o Chrome (Edge primero: siempre está en Windows)."""
+    """Ruta de Chrome o, si no está, Edge (que siempre está en Windows)."""
     if propio and os.path.isfile(propio):
         return propio
     e = os.environ.get
@@ -40,9 +40,9 @@ def buscar_navegador(propio=""):
             if base:
                 cands += [os.path.join(base, "Microsoft", "Edge", "Application", "msedge.exe"),
                           os.path.join(base, "Google", "Chrome", "Application", "chrome.exe")]
-        cands.sort(key=lambda c: "Google" in c)
+        cands.sort(key=lambda c: "Google" not in c)  # Chrome primero
     else:
-        cands = [shutil.which(n) or "" for n in ("microsoft-edge", "google-chrome", "chromium", "chromium-browser")]
+        cands = [shutil.which(n) or "" for n in ("google-chrome", "chromium", "chromium-browser", "microsoft-edge")]
         cands += sorted(glob.glob("/opt/pw-browsers/chromium-*/chrome-linux*/chrome"))
     return next((c for c in cands if c and os.path.isfile(c)), None)
 
@@ -168,12 +168,12 @@ class Navegador:
             pass
         exe = buscar_navegador(self.ruta_nav)
         if not exe:
-            raise ErrorNavegador("No se encuentra Microsoft Edge ni Google Chrome.")
+            raise ErrorNavegador("No se encuentra Google Chrome ni Microsoft Edge.")
         args = [exe, "--remote-debugging-port=0", "--user-data-dir=" + self.perfil, "--no-first-run",
                 "--no-default-browser-check", "--disable-features=msEdgeWelcomePage"]
         if os.name != "nt" and hasattr(os, "geteuid") and os.geteuid() == 0:
             args.append("--no-sandbox")
-        args += (["--new-window", "--app=" + url] if visible else ["--headless=new", url])
+        args += ([url] if visible else ["--headless=new", url])  # visible: una ventana normal, con su pestaña
         self.proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                      creationflags=0 if visible else SIN_VENTANA)
         fin = time.time() + espera

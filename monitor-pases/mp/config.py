@@ -50,7 +50,8 @@ POR_DEFECTO = {
     },
     "nfq": {"host": "github.com", "api": "", "repo": "rdr-nfq/pases-datos", "rama": "main", "carpeta": "pases", "token": "",
             "proxy": "", "ca": "", "transporte": "python", "usuario": "", "publicarDPs": True},
-    "jira": {"url": "", "token": "", "proyectoReleases": "RDR", "campoFeature": "", "campoTechVersion": "", "proxy": "", "ca": "", "navegador": ""},
+    "jira": {"url": "", "token": "", "proyectoReleases": "CIBRDR", "campoFeature": "", "campoTechVersion": "", "proxy": "", "ca": "", "navegador": "",
+             "proyectoProyectos": "", "tiposProyecto": "Feature, Task", "estadoFin": "Deployed"},
     "copilot": {"entrada": "", "modelo": "", "opciones": "", "permitirComandos": False, "urlRepo": "https://{host}/{repo}.git"},
     "proyectos": {},
     "reglas": REGLAS_POR_DEFECTO,
@@ -115,7 +116,7 @@ CAMPOS_EQUIPO = {
     "bbva": ("host", "organizaciones", "filtroRepos", "repos", "excluirRepos", "patronRama", "patronRelease", "soloRamasDeProyecto",
              "baseProduccion", "basesRepo", "patronDP", "workflowsDP", "leerLogs", "refrescoMin", "diasActividad", "releasesPorRepo"),
     "nfq": ("host", "repo", "rama", "carpeta", "publicarDPs"),
-    "jira": ("url", "proyectoReleases", "campoFeature", "campoTechVersion"),
+    "jira": ("url", "proyectoReleases", "campoFeature", "campoTechVersion", "proyectoProyectos", "tiposProyecto", "estadoFin"),
 }
 
 
