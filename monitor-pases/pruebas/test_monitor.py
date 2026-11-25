@@ -57,6 +57,34 @@ class TestReglas(unittest.TestCase):
             P.limpiar({"pase": "28/11/2026", "proyectos": []})
 
 
+class TestNavegador(unittest.TestCase):
+    def test_si_chrome_no_arranca_se_usa_el_siguiente(self):
+        """Chrome primero; si no arranca o no deja leer la sesión, el siguiente (Edge), con su propio perfil."""
+        from mp import navegador
+        real = navegador.buscar_navegador()
+        if not real:
+            self.skipTest("hace falta Edge, Chrome o Chromium")
+        d = Path(tempfile.mkdtemp(prefix="mp-nav-"))
+        roto = d / ("chrome.cmd" if os.name == "nt" else "chrome")
+        roto.write_text("@exit 1\n" if os.name == "nt" else "#!/bin/sh\nexit 1\n")
+        roto.chmod(0o755)
+        antes = navegador.buscar_navegadores
+        navegador.buscar_navegadores = lambda propio="": [str(roto), real]
+        try:
+            nav = navegador.Navegador(d / "perfil")
+            ws = nav.abrir("about:blank", visible=False, espera=10)
+            self.assertTrue(ws.llamar("Browser.getVersion").get("product"))
+            try:
+                ws.llamar("Browser.close")
+            except Exception:
+                pass
+            ws.cerrar()
+            nav.matar()
+        finally:
+            navegador.buscar_navegadores = antes
+            shutil.rmtree(d, ignore_errors=True)
+
+
 class TestConGitHubSimulado(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

@@ -404,6 +404,7 @@ class Jira:
         if auth and auth[0] == "cookie":
             import shutil
             shutil.rmtree(self.perfil, ignore_errors=True)  # se borra la sesión del navegador de la app
+            shutil.rmtree(str(self.perfil) + "-edge", ignore_errors=True)
             return self.publica()
         if auth and not self.demo:
             try:

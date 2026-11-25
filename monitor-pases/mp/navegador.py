@@ -31,8 +31,19 @@ class ErrorNavegador(Exception):
 
 def buscar_navegador(propio=""):
     """Ruta de Chrome o, si no está, Edge (que siempre está en Windows)."""
+    xs = buscar_navegadores(propio)
+    return xs[0] if xs else None
+
+
+def es_edge(exe):
+    return "edge" in os.path.basename(os.path.dirname(os.path.dirname(exe or ""))).lower() or "msedge" in os.path.basename(exe or "").lower() \
+        or "microsoft-edge" in os.path.basename(exe or "").lower()
+
+
+def buscar_navegadores(propio=""):
+    """Los navegadores que se pueden usar, en orden: el de Ajustes, Chrome y Edge (si Chrome no puede, se prueba Edge)."""
     if propio and os.path.isfile(propio):
-        return propio
+        return [propio]
     e = os.environ.get
     if os.name == "nt":
         cands = []
@@ -44,7 +55,7 @@ def buscar_navegador(propio=""):
     else:
         cands = [shutil.which(n) or "" for n in ("google-chrome", "chromium", "chromium-browser", "microsoft-edge")]
         cands += sorted(glob.glob("/opt/pw-browsers/chromium-*/chrome-linux*/chrome"))
-    return next((c for c in cands if c and os.path.isfile(c)), None)
+    return list(dict.fromkeys(c for c in cands if c and os.path.isfile(c)))
 
 
 class _WS:
@@ -144,8 +155,12 @@ class Navegador:
         self.ruta_nav = ruta_nav
         self.proc = None
 
-    def _puerto_activo(self):
-        f = os.path.join(self.perfil, "DevToolsActivePort")
+    def _dir(self, exe):
+        # Cada navegador, su perfil: Chrome en la carpeta de siempre y Edge en otra (mezclarlos la estropea).
+        return self.perfil + "-edge" if es_edge(exe) else self.perfil
+
+    def _puerto_activo(self, carpeta=None):
+        f = os.path.join(carpeta or self.perfil, "DevToolsActivePort")
         try:
             with open(f, encoding="utf-8") as h:
                 puerto, ruta = h.read().split("\n")[:2]
@@ -155,37 +170,53 @@ class Navegador:
             return None
 
     def abrir(self, url, visible=True, espera=25):
-        """Abre `url` en el perfil de la app con DevTools en un puerto libre de 127.0.0.1. -> _WS del navegador."""
-        os.makedirs(self.perfil, exist_ok=True)
-        ya = self._puerto_activo()
-        if ya:  # una ventana anterior de la app sigue abierta: se reutiliza
-            ws = _WS(*ya)
-            ws.llamar("Target.createTarget", {"url": url})
-            return ws
+        """Abre `url` en el perfil de la app con DevTools en un puerto libre de 127.0.0.1. -> _WS del navegador.
+        Chrome primero; si no arranca o no deja leer la sesión, Edge."""
+        exes = buscar_navegadores(self.ruta_nav)
+        if not exes:
+            raise ErrorNavegador("No se encuentra Google Chrome ni Microsoft Edge.")
+        for exe in exes:
+            ya = self._puerto_activo(self._dir(exe))
+            if ya:  # una ventana anterior de la app sigue abierta: nueva pestaña en ella
+                ws = _WS(*ya)
+                ws.llamar("Target.createTarget", {"url": url})
+                return ws
+        for exe in exes:
+            ws = self._lanzar(exe, url, visible, espera)
+            if ws:
+                return ws
+        raise ErrorNavegador("El navegador no deja que la app lea la sesión (puede que lo impida una política de la empresa).")
+
+    def _lanzar(self, exe, url, visible, espera):
+        carpeta = self._dir(exe)
+        os.makedirs(carpeta, exist_ok=True)
         try:
-            os.remove(os.path.join(self.perfil, "DevToolsActivePort"))
+            os.remove(os.path.join(carpeta, "DevToolsActivePort"))
         except OSError:
             pass
-        exe = buscar_navegador(self.ruta_nav)
-        if not exe:
-            raise ErrorNavegador("No se encuentra Google Chrome ni Microsoft Edge.")
-        args = [exe, "--remote-debugging-port=0", "--user-data-dir=" + self.perfil, "--no-first-run",
+        args = [exe, "--remote-debugging-port=0", "--user-data-dir=" + carpeta, "--no-first-run",
                 "--no-default-browser-check", "--disable-features=msEdgeWelcomePage"]
         if os.name != "nt" and hasattr(os, "geteuid") and os.geteuid() == 0:
             args.append("--no-sandbox")
         args += ([url] if visible else ["--headless=new", url])  # visible: una ventana normal, con su pestaña
-        self.proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                     creationflags=0 if visible else SIN_VENTANA)
+        try:
+            self.proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                         creationflags=0 if visible else SIN_VENTANA)
+        except OSError:
+            return None  # no se puede ejecutar: el siguiente
         fin = time.time() + espera
         while time.time() < fin:
-            ya = self._puerto_activo()
+            ya = self._puerto_activo(carpeta)
             if ya:
-                return _WS(*ya)
-            if self.proc.poll() is not None and not os.path.exists(os.path.join(self.perfil, "DevToolsActivePort")):
+                try:
+                    return _WS(*ya)
+                except (OSError, ErrorNavegador):
+                    break
+            if self.proc.poll() is not None and not os.path.exists(os.path.join(carpeta, "DevToolsActivePort")):
                 break
             time.sleep(0.3)
         self.matar()
-        raise ErrorNavegador("El navegador no deja que la app lea la sesión (puede que lo impida una política de la empresa).")
+        return None
 
     def matar(self):
         if self.proc and self.proc.poll() is None:
