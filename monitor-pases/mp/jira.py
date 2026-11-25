@@ -984,11 +984,27 @@ class Jira:
                          "formasNombre": dict(collections.Counter(forma(n) for n in nombres_v).most_common(10)),
                          "versionesGitHub": len(versiones_gh), "formasGitHub": dict(collections.Counter(forma(v) for v in versiones_gh).most_common(5)),
                          "coincidenConGitHub": len(set(versiones_gh) & nums_jira), "consultas": consultas},
-            "github": {"sincroLog": sincro_log},
+            "github": {"sincroLog": sincro_log, "dps": self._diag_dps(versiones_gh, nums_jira)},
         }
         ident = "%d" % (time.time() * 1000)
         self._informes = {ident: informe}
         return {"id": ident, "informe": informe}
+
+    def _diag_dps(self, versiones_gh, nums_jira):
+        """Cómo cuadran los DPs con GitHub y con Jira (solo cifras)."""
+        with self.mon._cerrojo:
+            ds = [dict(v) for v in self.mon.dps_info.values()]
+        rel = [d for d in ds if d.get("release")]
+        return {"total": len(ds), "deRelease": len(rel), "congelados": len([d for d in ds if d.get("congelado")]),
+                "frente": dict(collections.Counter(forma(d.get("frente") or "") for d in ds)),
+                "sinContenido": len([d for d in ds if d.get("comprobadoContenido") is False]),
+                "conFicherosIgualesEnProduccion": len([d for d in ds if any(f.get("igualProduccion") for f in d.get("ficheros") or [])]),
+                "produccionPorDelante": len([d for d in ds if (d.get("soloProduccion") or {}).get("commits")]),
+                "pisariaProduccion": len([d for d in ds if (d.get("soloProduccion") or {}).get("enComun")]),
+                "yaEnProduccionAlVerlo": len([d for d in ds if d.get("yaEnProduccion")]),
+                "truncados": len([d for d in ds if d.get("truncado")]),
+                "releasesSinVersionEnJira": len({d["release"] for d in rel} - set(nums_jira)),
+                "releasesGitHub": len(versiones_gh)}
 
     def _diag_desarrollo(self, cli, probar):
         probar("proyectos en desarrollo", lambda: self._proyectos_en_desarrollo(cli))

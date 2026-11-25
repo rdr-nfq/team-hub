@@ -543,9 +543,10 @@ function VistaPase({ estado, aviso, preseleccion, limpiarPreseleccion }) {
       <td><input class="inp" value=${v.nom} onInput=${set("nom")} aria-label="Componente" placeholder="Nombre" style="min-width:210px" title=${v.nom} /></td>
       <td><input class="inp" value=${v.tipo} onInput=${set("tipo")} list="dl-tipos" aria-label="Tipo" style="width:120px" /></td>
       <td><input class="inp" value=${v.subida} onInput=${set("subida")} list="dl-subidas" aria-label="Tipo de subida" style="width:140px" /></td>
-      <td><input class="inp mono" value=${v.cod} onInput=${set("cod")} list=${"dl-dp-" + p.feature} aria-label="DP" placeholder="DP-KYTL-…" style="width:150px" /></td>
+      <td><input class="inp mono" value=${v.cod} onInput=${set("cod")} list=${"dl-dp-" + p.feature} aria-label="DP" placeholder="DP-KYTL-…" style="width:150px" />
+        ${!manual && c.dpDe ? html`<br /><span class="tenue" style="font-size:11.5px">${c.dpDe.startsWith("release") ? "DP de la " + c.dpDe : "DP de su rama"}</span>` : ""}</td>
       <td><input class="inp" value=${v.resp} onInput=${set("resp")} aria-label="Responsable" style="width:120px" /></td>
-      <td class="origen">${manual ? html`<span class="tenue">A mano</span>` : html`<b>${corto(c.repo)}</b><br /><span class="mono" title=${(c.ficheros || []).join("\n")}><${Rama} nombre=${c.rama} /></span>${c.com ? html`<br /><span class="chip chip-mal">${c.com}</span>` : ""}`}</td>
+      <td class="origen">${manual ? html`<span class="tenue">A mano</span>` : html`<b>${corto(c.repo)}</b><br /><span class="mono" title=${(c.ficheros || []).join("\n")}><${Rama} nombre=${c.rama} /></span>${c.com ? html`<br /><span class=${"chip " + (c.yaEnProduccion ? "chip-borde" : "chip-mal")}>${c.com}</span>` : ""}`}</td>
     </tr>`;
   };
 

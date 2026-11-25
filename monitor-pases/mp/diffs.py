@@ -120,7 +120,11 @@ class Diffs:
         if not info.get("frenteSha"):
             raise ValueError("No hay con qué comparar este DP.")
         d = self.comparar(repo, info["frenteSha"], info["sha"])
-        return dict(d, cod=cod, frente=info.get("frente"), rama=info.get("rama"), release=info.get("release"))
+        # Los ficheros que ya son iguales en producción no son modificaciones del DP: se apartan.
+        iguales = {f["ruta"] for f in info.get("ficheros") or [] if f.get("igualProduccion")}
+        fs = d.get("ficheros") or []
+        return dict(d, ficheros=[f for f in fs if (f.get("ruta") or f.get("filename")) not in iguales],
+                    iguales=sorted(iguales), cod=cod, frente=info.get("frente"), rama=info.get("rama"), release=info.get("release"))
 
     def fichero(self, repo, ref, ruta):
         self._repo_conocido(repo)

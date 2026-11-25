@@ -983,3 +983,15 @@ a.chip-jira:hover { border-color: var(--brand); }
 .pie-ayuda { display: flex; align-items: center; gap: 6px; }
 @media (max-width: 560px) { .cuerpo-sub { padding-left: 16px; } .ant-sig { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .recorrido, .tarjeta-ayuda, .res-ayuda, .sub-ayuda .flecha-sub { transition: none; } }
+/* Comprobación de un DP */
+.comprobacion-dp { margin-bottom: 16px; }
+.lista-compr { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.lista-compr > li { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: var(--r); font-size: 13.5px; line-height: 1.5;
+  background: var(--surface-2); }
+.lista-compr > li > .icono { flex: none; margin-top: 2px; }
+.lista-compr > li.ok > .icono { color: #1a7f37; }
+.lista-compr > li.aviso { background: color-mix(in srgb, var(--canary) 45%, var(--surface)); color: var(--electric); }
+.lista-compr > li.mal { background: color-mix(in srgb, var(--mandarin) 55%, var(--surface)); color: var(--electric); }
+.lista-compr ul { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; }
+.lista-compr details summary { cursor: pointer; color: var(--brand); font-weight: 700; margin-top: 4px; }
+.lista-compr .chip-jira { margin: 2px 4px 0 0; }

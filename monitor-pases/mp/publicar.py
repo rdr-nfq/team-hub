@@ -22,7 +22,8 @@ def _ahora():
 
 
 def documento(info, cfg, usuario):
-    comps, _ = componentes(info.get("ficheros"), cfg.get("reglas") or [], (cfg.get("reposSubida") or {}).get(info["repo"], ""))
+    from .sincro import ficheros_reales
+    comps, _ = componentes(ficheros_reales(info), cfg.get("reglas") or [], (cfg.get("reposSubida") or {}).get(info["repo"], ""))
     return {
         "formato": "monitor-pases/dp-1",
         "cod": info["cod"], "repo": info["repo"], "release": info.get("release") or "", "rama": info.get("rama") or "",

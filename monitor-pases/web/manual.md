@@ -138,6 +138,25 @@ Los DPs detectados en las Actions, agrupados por **Release**, **Proyecto** o **R
 
 Pulsa un DP para ver todos sus componentes (con buscador y filtro por tipo) y sus **modificaciones**: lo que trae frente a producción.
 
+En la lista, dos avisos te dicen qué DPs mirar: **pisaría cambios de producción** (en rojo) y **producción va por delante**.
+
+### Cómo se calcula lo que trae (frente a producción)
+1. Se compara el commit del DP con **producción** (`master`), como la comparación de GitHub.
+2. Se mira el **contenido**: un fichero del DP que ya es **idéntico** al de producción no cuenta. Es lo que pasa cuando entró por otro lado: una release anterior con *squash*, un *cherry-pick* o un hotfix.
+3. Se mira **al revés**: lo que producción tiene y el DP no lleva (un hotfix que no se ha bajado a la release).
+4. Mientras la release **no está en producción**, se recalcula cada vez que producción cambia. Cuando entra, se **congela** con el último cálculo. Si la app ve el DP por primera vez con la release ya en producción, lo compara con la release anterior.
+
+> **Importante:** si un DP sale con **pisaría cambios de producción**, hay ficheros que producción ha cambiado y que el DP también trae. Si se despliega tal cual, esos cambios de producción se perderían: hay que bajar producción a la release antes.
+
+### La comprobación de cada DP
+Arriba de los componentes, la caja **Comprobación** dice si todo **cuadra** o hay que **revisar**:
+- Contra qué commit de producción se ha calculado, desde dónde se separó y cuándo. **Ver la misma comparación en GitHub** abre exactamente esa comparación en GitHub para contrastarla.
+- Qué ficheros ya estaban iguales en producción.
+- Qué tiene producción que el DP no lleva, y si toca ficheros del DP.
+- **Jira:** las historias citadas en los commits del DP, las que no tienen esta release en *Fix Version/s*, y las que están en la release de Jira sin commits en este DP (pueden estar en otro repositorio).
+
+Las **features** de un DP salen de **sus propios commits**, no de cómo esté la release hoy.
+
 ### Releases y Jira
 En los grupos de release:
 - La etiqueta **Jira** dice si la release está publicada o no en Jira, o *aún no está en Jira*.

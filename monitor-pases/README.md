@@ -80,10 +80,12 @@ Las ramas de integración (`patronIntegracion`: `develop`, `qa`, `uat`…) y las
 
 ### DPs y releases
 
-Las ramas `release/x.y.z` (configurable) son subidas. La Action de la release genera el DP. Cuando la app ve un DP nuevo:
-1. Guarda en ese momento lo que trae frente a producción.
-2. Si cuando lo ve la release ya está en producción, lo compara con la release anterior.
-3. Saca las features de la release de los PRs mezclados en ella y de los mensajes de commit.
+Las ramas `release/x.y.z` (configurable) son subidas. La Action de la release genera el DP. Lo que trae cada DP frente a producción se comprueba de tres formas (`Monitor._comparar_dp`):
+1. **GitHub:** `compare/<producción>...<commit del DP>` (desde el ancestro común).
+2. **Contenido:** con el árbol de producción (`git/trees/<sha>?recursive=1`, una llamada por commit de producción), un fichero del DP cuyo blob es idéntico al de producción no cuenta (entró por otro lado: *squash*, *cherry-pick*, una release anterior). No sale en componentes, ni en el pase, ni en `pases-datos`.
+3. **Al revés:** `compare/<DP>...<producción>`: lo que producción tiene y el DP no lleva; si toca ficheros del DP, el DP sale como **«pisaría cambios de producción»**.
+
+Mientras el código del DP no está en producción, se recalcula cada vez que cambia el commit de producción; al entrar, se congela con el último cálculo. Si la app lo ve por primera vez ya en producción, lo compara con la release anterior. Las features del DP salen de sus propios commits (con el mapa historia → feature de Jira). En el **Pase**, cada componente lleva el DP de la release que contiene su feature y ese fichero (si no, el de su rama), y se marca *Ya está igual en producción* cuando no hay nada que desplegar. La ficha del DP tiene la caja **Comprobación** (producción, GitHub con enlace a la misma comparación, y Jira por *Fix Version/s*).
 
 **El DP en sí** se busca en el resumen, las anotaciones y, si no, el log de la Action. También se puede poner a mano en la rama.
 

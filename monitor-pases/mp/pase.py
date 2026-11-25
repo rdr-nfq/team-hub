@@ -28,6 +28,19 @@ def propuesta(monitor, features):
     reglas, subidas, alias = cfg.get("reglas") or [], cfg.get("reposSubida") or {}, cfg.get("proyectos") or {}
     with monitor._cerrojo:
         ramas = [r for r in monitor.ramas.values() if not r.get("esBase")]
+        # DPs de release que aún no están en producción: el código de la feature viaja en ellos.
+        dps_rel = [dict(v) for v in monitor.dps_info.values()
+                   if v.get("release") and not v.get("congelado") and v.get("conclusion") in ("success", None)]
+
+    iguales_prod = {}  # repo -> ficheros que ya están iguales en producción (según los DPs de release)
+    for d in dps_rel:
+        iguales_prod.setdefault(d["repo"], set()).update(f["ruta"] for f in d.get("ficheros") or [] if f.get("igualProduccion"))
+
+    def dp_de_release(repo, feature, rutas):
+        """El DP de release más reciente de ese repo que lleva la feature y alguno de esos ficheros."""
+        cands = [d for d in dps_rel if d["repo"] == repo and feature in (d.get("features") or [])
+                 and set(rutas) & {f["ruta"] for f in d.get("ficheros") or [] if not f.get("igualProduccion")}]
+        return max(cands, key=lambda d: d.get("fecha") or "") if cands else None
     out = []
     for f in features:
         de_f = sorted((r for r in ramas if (r.get("feature") or "") == f), key=lambda r: (r["repo"], r["rama"]))
@@ -43,10 +56,16 @@ def propuesta(monitor, features):
             cod = dps_r[0]["cod"] if dps_r else ""
             grupos, _ = componentes(r.get("ficheros"), reglas, subidas.get(r["repo"], ""))
             for c in grupos:
+                rel = dp_de_release(r["repo"], f, c["ficheros"])
+                if rel and not any(x["cod"] == rel["cod"] and x["repo"] == rel["repo"] for x in dps):
+                    dps.append({"cod": rel["cod"], "repo": rel["repo"], "rama": rel["rama"], "run": rel.get("run"),
+                                "fecha": rel.get("fecha"), "fuente": rel.get("fuente"), "url": rel.get("url")})
                 comps.append({
                     "id": "%s:%s:%s" % (r["repo"], r["rama"], c["clave"]),
-                    "nom": c["nombre"], "tipo": c["tipo"], "subida": c["subida"], "cod": cod, "resp": "", "us": "",
-                    "com": "Se borra" if c["borrado"] else "", "repo": r["repo"], "rama": r["rama"],
+                    "nom": c["nombre"], "tipo": c["tipo"], "subida": c["subida"], "cod": rel["cod"] if rel else cod, "resp": "", "us": "",
+                    "dpDe": ("release " + rel["release"]) if rel else ("rama" if cod else ""),
+                    "com": "Se borra" if c["borrado"] else ("Ya está igual en producción" if set(c["ficheros"]) <= iguales_prod.get(r["repo"], set()) else ""),
+                    "yaEnProduccion": set(c["ficheros"]) <= iguales_prod.get(r["repo"], set()), "repo": r["repo"], "rama": r["rama"],
                     "commit": (r.get("sha") or "")[:7], "ficheros": c["ficheros"], "dpsRama": [d["cod"] for d in dps_r],
                     "regla": c["regla"],
                 })

@@ -1,10 +1,54 @@
 // Monitor de pases · DPs: cada release (release/x.y.z) es una subida y su
 // Action genera el DP. Qué componentes lleva cada DP y qué modificaciones.
 import { html, useState, useEffect, useMemo, useRef } from "./vendor/preact-htm.mjs";
-import { api, Icono, Rama, hace, fLarga, fCorta, corto, plural, colorDe, leerLS, ponerLS, uniq, jira } from "./comun.js";
+import { api, ChipJira, Icono, Rama, hace, fLarga, fCorta, corto, plural, colorDe, leerLS, ponerLS, uniq, jira, historiasEn, issueJira } from "./comun.js";
 import { PanelRelease } from "./jira.js";
 import { BarraFiltros, pasa, propsDeRepos, useFacetas } from "./filtros.js";
 import { Diferencias, Cargando, Volver } from "./diffs.js";
+
+/* Comprobación del DP: contra qué commit de producción se ha calculado, lo que ya está igual en producción,
+   lo que producción tiene y el DP no lleva, y el cruce con Jira (Fix Version/s de la release). */
+function Comprobacion({ d, repo, estado }) {
+  const urlRepo = (estado.repos || []).find((r) => r.nombre === repo)?.url || "";
+  const sp = d.soloProduccion || {};
+  const iguales = (d.ficheros || []).filter((f) => f.igualProduccion).map((f) => f.ruta);
+  const j = jira();
+  // Jira: las historias de los commits del DP y las de la release en Jira (misma x.y.z).
+  const hist = uniq((d.commits || []).flatMap((c) => historiasEn(c.mensaje)));
+  const relJ = d.release && j ? (j.releases || []).find((v) => v.num === d.release) : null;
+  const enJira = relJ ? (j.relHistorias?.[relJ.id] || []) : [];
+  const numDe = (v) => (String(v).match(/(?<![\d.])\d+\.\d+(?:\.\d+){0,2}(?![\d])/) || [""])[0];
+  const sinRelease = hist.filter((k) => {
+    const x = issueJira(k);
+    const nums = [...(x?.fv || []), ...String(x?.tv || "").split(",")].map(numDe);
+    return x && d.release && !nums.includes(d.release) && !enJira.includes(k);
+  });
+  const soloJira = enJira.filter((k) => !hist.includes(k));
+  const okProd = !sp.commits, okJira = !sinRelease.length;
+  return html`<section class="caja comprobacion-dp" aria-labelledby="dp-compr">
+    <h2 id="dp-compr">Comprobación <span class=${"chip " + (okProd && okJira ? "chip-ok" : "chip-mal")}>${okProd && okJira ? "cuadra" : "revisar"}</span></h2>
+    <ul class="lista-compr">
+      <li class="ok"><${Icono} n="ok" /><div><b>Frente a producción:</b> <span class="mono">${d.frente}</span> en el commit <span class="mono">${(d.frenteSha || "").slice(0, 7)}</span>
+        ${d.mergeBase ? html` · se separó de producción en <span class="mono">${d.mergeBase.slice(0, 7)}</span>` : ""}
+        <span class="tenue"> · ${d.congelado ? `congelado ${d.enProduccion ? "al entrar en producción " + hace(d.enProduccion) : ""}` : `calculado ${hace(d.calculado || d.detectado)}; se recalcula si producción cambia`}</span>
+        ${urlRepo && d.frenteSha ? html` · <a class="lnk" href=${`${urlRepo}/compare/${d.frenteSha}...${d.sha}`} target="_blank" rel="noopener noreferrer">Ver la misma comparación en GitHub</a>` : ""}</div></li>
+      ${iguales.length ? html`<li class="info"><${Icono} n="ok" /><div><b>${plural(iguales.length, "fichero ya está igual", "ficheros ya están iguales")} en producción</b>${" "}
+        (entraron por otro lado: otra release, un squash o un cherry-pick). No cuentan como cambios del DP.
+        <details><summary>Ver cuáles</summary><ul class="mono">${iguales.map((f) => html`<li key=${f}>${f}</li>`)}</ul></details></div></li>` : ""}
+      ${d.comprobadoContenido === false ? html`<li class="aviso"><${Icono} n="mal" /><div>No se ha podido comparar el contenido con producción (repositorio muy grande): puede haber ficheros que ya estén iguales.</div></li>` : ""}
+      ${sp.commits ? html`<li class=${sp.enComun?.length ? "mal" : "aviso"}><${Icono} n="mal" /><div>
+        <b>Producción tiene ${plural(sp.commits, "commit", "commits")} que este DP no lleva</b>${sp.mensajes?.length ? html` (${sp.mensajes.slice(-3).join(" · ")})` : ""}.
+        ${sp.enComun?.length ? html` <b>Ojo:</b> ${plural(sp.enComun.length, "fichero del DP también ha cambiado", "ficheros del DP también han cambiado")} en producción: si se despliega tal cual, esos cambios de producción se perderían. Hay que bajar producción a la release.
+          <ul class="mono">${sp.enComun.map((f) => html`<li key=${f}>${f}</li>`)}</ul>` : " No tocan los ficheros del DP."}</div></li>`
+        : d.frenteSha && !d.congelado ? html`<li class="ok"><${Icono} n="ok" /><div>La release lleva todo lo que hay en producción.</div></li>` : ""}
+      ${d.release && j ? html`<li class=${okJira ? "ok" : "aviso"}><${Icono} n=${okJira ? "ok" : "mal"} /><div>
+        <b>Jira:</b> ${plural(hist.length, "historia citada", "historias citadas")} en los commits del DP${relJ ? html`; la release <span class="mono">${relJ.nombre}</span> tiene ${plural(enJira.length, "historia", "historias")} en Jira` : " · la release aún no existe en Jira"}.
+        ${sinRelease.length ? html`<div>Sin esta release en <i>Fix Version/s</i>: ${sinRelease.map((k) => html`<${ChipJira} key=${k} k=${k} />`)}</div>` : ""}
+        ${soloJira.length ? html`<div class="tenue">En la release de Jira y sin commits en este DP (pueden estar en otro repositorio): ${soloJira.slice(0, 12).map((k) => html`<${ChipJira} key=${k} k=${k} />`)}${soloJira.length > 12 ? ` y ${soloJira.length - 12} más` : ""}</div>` : ""}
+      </div></li>` : ""}
+    </ul>
+  </section>`;
+}
 
 function ChipFeature({ f, alias }) {
   return html`<span class="chip chip-acento" style=${{ background: colorDe(f) }} title=${alias?.[f] || ""}>${f}</span>`;
@@ -128,7 +172,10 @@ export function VistaDPs({ estado, f, setF, setFacetas, ir, aviso }) {
           ${hace(d.fecha)} · <span class="mono">${(d.sha || "").slice(0, 7)}</span></span>
         <span class="comps-linea">${d.yaEnProduccion ? html`<span class="tenue">Ya estaba en producción al detectarlo</span>` : html`<b>${plural(d.componentes.length, "componente", "componentes")}</b>
           <span class="num tenue">(<span class="c-mas">+${d.mas}</span> <span class="c-menos">−${d.menos}</span> en ${plural(d.nFich, "fichero", "ficheros")})</span>
-          <${Componentes} comps=${d.componentes} />`}</span>
+          <${Componentes} comps=${d.componentes} />`}
+          ${d.soloProd?.enComun ? html` <span class="chip chip-mal" title="Producción ha cambiado ficheros que este DP también cambia: revisa la comprobación del DP">pisaría cambios de producción</span>`
+            : d.soloProd?.commits ? html` <span class="chip chip-borde" title="Producción tiene commits que este DP no lleva (no tocan sus ficheros)">producción va por delante</span>` : ""}
+          ${d.nIguales ? html` <span class="chip chip-borde" title="Ficheros que ya están iguales en producción: no cuentan">${d.nIguales} ya en producción</span>` : ""}</span>
         <${EstadoPublicado} d=${d} nfq=${datos.nfq} />
       </li>`)}</ul>
     </section>`)}
@@ -179,6 +226,8 @@ export function VistaDP({ repo, cod, volver, ir, estado }) {
         <button onClick=${() => ir({ vista: "commit", repo, sha: c.sha })}><span class="mono tenue">${c.sha.slice(0, 7)}</span> ${c.mensaje}</button>
         <span class="tenue">${c.autor} · ${hace(c.fecha)}</span></li>`)}</ul>` : ""}
     </header>
+
+    <${Comprobacion} d=${d} repo=${repo} estado=${estado} />
 
     <section class="caja" aria-labelledby="dp-comp" style="margin-bottom:16px">
       <h2 id="dp-comp">Componentes <span class="chip">${d.componentes.length}</span></h2>

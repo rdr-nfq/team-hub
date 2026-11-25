@@ -64,6 +64,11 @@ def _repo_de_clave(k):
     return k.replace("#", "|").split("|")[0]
 
 
+def ficheros_reales(info):
+    """Los ficheros de un DP que de verdad cambian frente a producción (sin los que ya son iguales)."""
+    return [f for f in info.get("ficheros") or [] if not f.get("igualProduccion")]
+
+
 # Una clave de Jira (PROYECTO-123) que no sea parte de otra.
 RE_CLAVE_JIRA = re.compile(r"(?<![A-Za-z0-9_-])([A-Z][A-Z0-9_]{1,15}-\d{1,7})(?![A-Za-z0-9])")
 
@@ -623,69 +628,134 @@ class Monitor:
             return {"dps": [], "fuente": "", "final": False, "error": str(e)}
 
     # ── DPs ─────────────────────────────────────────────────────────────────
+    def _comparar_dp(self, cli, repo, frente_sha, dp_sha, arboles):
+        """Lo que trae el código del DP frente a producción (frente_sha), comprobado de tres formas:
+        - la comparación de GitHub (frente...DP), que parte del ancestro común;
+        - el contenido: un fichero del DP idéntico al de producción no es un cambio (squash, cherry-pick,
+          una release anterior ya desplegada con otros commits);
+        - al revés (DP...frente): lo que producción tiene y el DP no lleva (un hotfix sin bajar a la release)."""
+        d = cli.get("repos/%s/compare/%s...%s" % (repo, frente_sha, dp_sha), etag=False)[0] or {}
+        ficheros = [{"ruta": f.get("filename"), "estado": f.get("status"), "mas": f.get("additions", 0),
+                     "menos": f.get("deletions", 0), "antes": f.get("previous_filename"), "blob": f.get("sha")}
+                    for f in d.get("files") or []]
+        out = {"ahead": d.get("ahead_by") or 0, "behind": d.get("behind_by") or 0, "estadoGH": d.get("status") or "",
+               "mergeBase": ((d.get("merge_base_commit") or {}).get("sha") or "")[:40],
+               "ficheros": ficheros, "commits": [_commit_ligero(c) for c in d.get("commits") or []][-150:],
+               "truncado": len(ficheros) >= 300 or (d.get("total_commits") or 0) > len(d.get("commits") or [])}
+        if not out["ahead"]:
+            return out
+        # Contenido: el árbol de producción (una llamada por commit de producción, compartida por todos sus DPs).
+        if frente_sha not in arboles:
+            try:
+                t = cli.get("repos/%s/git/trees/%s" % (repo, frente_sha), {"recursive": "1"}, etag=False)[0] or {}
+                arboles[frente_sha] = None if t.get("truncated") else {x["path"]: x.get("sha") for x in t.get("tree") or [] if x.get("type") == "blob"}
+            except ErrorCuota:
+                raise
+            except ErrorGHE:
+                arboles[frente_sha] = None
+        arbol = arboles[frente_sha]
+        out["comprobadoContenido"] = arbol is not None
+        if arbol is not None:
+            for f in ficheros:
+                en_prod = arbol.get(f["ruta"])
+                igual = en_prod is None if f["estado"] == "removed" else bool(f.get("blob")) and en_prod == f["blob"]
+                if igual:
+                    f["igualProduccion"] = True
+        # Al revés: lo que está en producción y el DP no lleva.
+        if out["behind"]:
+            try:
+                r = cli.get("repos/%s/compare/%s...%s" % (repo, dp_sha, frente_sha), etag=False)[0] or {}
+                propios = {f["ruta"] for f in ficheros if not f.get("igualProduccion")}
+                rutas = [f.get("filename") for f in r.get("files") or []]
+                out["soloProduccion"] = {"commits": r.get("ahead_by") or 0, "ficheros": rutas[:300],
+                                         "enComun": sorted(propios & set(rutas))[:100],
+                                         "mensajes": [(c.get("commit") or {}).get("message", "").split("\n")[0][:140]
+                                                      for c in (r.get("commits") or [])[-10:]]}
+            except ErrorCuota:
+                raise
+            except ErrorGHE:
+                pass
+        return out
+
+    def _features_dp(self, commits, rama):
+        """Las features que lleva el DP según sus propios commits (no según cómo esté la release hoy)."""
+        if not rama.get("release"):
+            return [rama["feature"]] if rama.get("feature") else []
+        patron = self.cfg.get()["bbva"].get("patronRama") or ""
+        mapa, out = self.mapa_feature, []
+        for c in commits or []:
+            for k in RE_CLAVE_JIRA.findall(c.get("mensaje") or ""):
+                if k in mapa or (patron and re.fullmatch(patron, k)):
+                    f = mapa.get(k, k)
+                    if f not in out:
+                        out.append(f)
+        return out
+
     def _actualizar_dps(self, cli, cfg, ramas):
-        """Cada DP nuevo se guarda con lo que trae frente a producción en el
-        momento de detectarlo (después de mezclar la release ya no se vería)."""
-        b = cfg["bbva"]
+        """DPs: lo que trae cada uno frente a producción. Mientras su código no está en producción se recalcula
+        cada vez que producción cambia (así no se cuela nada que ya esté desplegado); cuando entra en
+        producción se congela con lo último calculado (después ya no se vería)."""
         releases = defaultdict(list)
+        base_de = {}
         for r in ramas.values():
             if r.get("release"):
                 releases[r["repo"]].append(r)
-        nuevos, vistos = [], set()
+            if r.get("baseSha"):
+                base_de[r["repo"]] = (r.get("base"), r["baseSha"])
+        trabajo, vistos = [], set()
         for r in ramas.values():
             for x in r.get("runs") or []:
                 for cod in x.get("dps") or []:
                     k = "%s|%s" % (r["repo"], cod)
-                    if k not in self.dps_info and k not in vistos and x.get("sha"):
-                        vistos.add(k)
-                        nuevos.append((k, r, x, cod))
+                    if k in vistos or not x.get("sha"):
+                        continue
+                    vistos.add(k)
+                    prev = self.dps_info.get(k)
+                    base = base_de.get(r["repo"])
+                    if prev is None or (not prev.get("congelado") and base and prev.get("frenteSha") != base[1]
+                                        and prev.get("frente") == base[0]):
+                        trabajo.append((k, r, x, cod, prev))
+        arboles = {}
 
         def calcular(t):
-            k, r, x, cod = t
-            info = {"cod": cod, "repo": r["repo"], "rama": r["rama"], "release": r.get("release") or "",
-                    "sha": x["sha"], "run": x.get("id"), "fecha": x.get("fecha"), "url": x.get("url"),
-                    "conclusion": x.get("conclusion"), "fuente": x.get("fuenteDP"), "flujo": x.get("nombre"),
-                    "detectado": _ahora(), "frente": r.get("base"), "frenteSha": r.get("baseSha"),
-                    "ficheros": [], "commits": [], "truncado": False}
+            k, r, x, cod, prev = t
+            base, base_sha = base_de.get(r["repo"], (r.get("base"), r.get("baseSha")))
+            info = dict(prev) if prev else {
+                "cod": cod, "repo": r["repo"], "rama": r["rama"], "release": r.get("release") or "",
+                "sha": x["sha"], "run": x.get("id"), "fecha": x.get("fecha"), "url": x.get("url"),
+                "conclusion": x.get("conclusion"), "fuente": x.get("fuenteDP"), "flujo": x.get("nombre"), "detectado": _ahora()}
             try:
-                d = None
-                if r.get("baseSha"):
-                    d = cli.get("repos/%s/compare/%s...%s" % (r["repo"], r["baseSha"], x["sha"]), etag=False)[0]
-                if (not d or not d.get("ahead_by")) and r.get("release"):
-                    # Ya estaba en producción al detectarlo: frente a la release anterior.
-                    previas = sorted((o for o in releases[r["repo"]] if clave_version(o["release"]) < clave_version(r["release"])),
+                d = self._comparar_dp(cli, r["repo"], base_sha, x["sha"], arboles) if base_sha else None
+                if d and d["ahead"]:
+                    info.update(d, frente=base, frenteSha=base_sha, calculado=_ahora(), congelado=False, yaEnProduccion=False)
+                    info.pop("ahead", None)
+                elif prev is not None and prev.get("ficheros") is not None and prev.get("frente") == base:
+                    # Ya está en producción: se queda con lo último calculado antes de entrar.
+                    info.update(congelado=True, enProduccion=_ahora(), yaEnProduccion=not prev.get("ficheros"))
+                else:
+                    # Ya estaba en producción la primera vez que se vio: frente a la release anterior.
+                    info.update(frente=base, frenteSha=base_sha, ficheros=[], commits=[], truncado=False, congelado=True)
+                    previas = sorted((o for o in releases[r["repo"]] if r.get("release") and clave_version(o["release"]) < clave_version(r["release"])),
                                      key=lambda o: clave_version(o["release"]))
                     if previas:
                         ant = previas[-1]
-                        d = cli.get("repos/%s/compare/%s...%s" % (r["repo"], ant["sha"], x["sha"]), etag=False)[0]
-                        info["frente"], info["frenteSha"] = ant["rama"], ant["sha"]
-                if d:
-                    info["ficheros"] = [{"ruta": f.get("filename"), "estado": f.get("status"), "mas": f.get("additions", 0),
-                                         "menos": f.get("deletions", 0), "antes": f.get("previous_filename")}
-                                        for f in d.get("files") or []]
-                    info["commits"] = [_commit_ligero(c) for c in d.get("commits") or []][-150:]
-                    info["truncado"] = len(info["ficheros"]) >= 300
-                info["yaEnProduccion"] = not info["ficheros"]
-            except ErrorGHE:
-                return None  # se reintenta en la próxima sincronización
+                        d = self._comparar_dp(cli, r["repo"], ant["sha"], x["sha"], arboles)
+                        info.update({k2: v for k2, v in d.items() if k2 != "ahead"}, frente=ant["rama"], frenteSha=ant["sha"])
+                    info["yaEnProduccion"] = not info.get("ficheros")
+                    info["calculado"] = _ahora()
+            except ErrorGHE:  # también la cuota: se reintenta en la próxima sincronización
+                return None
             return k, info
 
         with ThreadPoolExecutor(POOL_RAMAS) as ex:
-            for res in ex.map(calcular, nuevos):
+            for res in ex.map(calcular, trabajo):
                 if res:
                     with self._cerrojo:
                         self.dps_info[res[0]] = res[1]
-        # Las features de una release pueden crecer mientras está abierta.
-        pat = b.get("patronRama")
         with self._cerrojo:
             for info in self.dps_info.values():
-                r = ramas.get("%s:%s" % (info["repo"], info["rama"]))
-                feats = []
-                if r is not None:
-                    feats = r.get("features") if r.get("release") else ([r["feature"]] if r.get("feature") else [])
-                if not feats:
-                    feats = features_en([c.get("mensaje") for c in info.get("commits") or []], pat)
-                info["features"] = feats or info.get("features") or []
+                r = ramas.get("%s:%s" % (info["repo"], info["rama"])) or {"feature": "", "release": info.get("release")}
+                info["features"] = self._features_dp(info.get("commits"), r) or info.get("features") or []
 
     def dps(self):
         """Todos los DPs conocidos, con sus componentes según las reglas actuales."""
@@ -695,12 +765,15 @@ class Monitor:
             infos = [dict(v) for v in self.dps_info.values()]
         out = []
         for i in infos:
-            comps, _ = componentes(i.get("ficheros"), reglas, subidas.get(i["repo"], ""))
+            comps, _ = componentes(ficheros_reales(i), reglas, subidas.get(i["repo"], ""))
+            i["nIguales"] = len([f for f in i.get("ficheros") or [] if f.get("igualProduccion")])
             i["componentes"] = [{"nombre": c["nombre"], "tipo": c["tipo"], "subida": c["subida"], "borrado": c["borrado"],
                                  "nFich": len(c["ficheros"])} for c in comps]
-            i["nFich"] = len(i.get("ficheros") or [])
-            i["mas"] = sum(f.get("mas") or 0 for f in i.get("ficheros") or [])
-            i["menos"] = sum(f.get("menos") or 0 for f in i.get("ficheros") or [])
+            i["nFich"] = len(ficheros_reales(i))
+            i["mas"] = sum(f.get("mas") or 0 for f in ficheros_reales(i))
+            i["menos"] = sum(f.get("menos") or 0 for f in ficheros_reales(i))
+            sp = i.pop("soloProduccion", None) or {}
+            i["soloProd"] = {"commits": sp.get("commits") or 0, "enComun": len(sp.get("enComun") or [])}
             i.pop("ficheros", None)
             i.pop("commits", None)
             out.append(i)
@@ -714,7 +787,7 @@ class Monitor:
         if not i:
             return None
         cfg = self.cfg.get()
-        comps, ign = componentes(i.get("ficheros"), cfg.get("reglas") or [], (cfg.get("reposSubida") or {}).get(repo, ""))
+        comps, ign = componentes(ficheros_reales(i), cfg.get("reglas") or [], (cfg.get("reposSubida") or {}).get(repo, ""))
         i["componentes"], i["ignorados"] = comps, ign
         return i
 

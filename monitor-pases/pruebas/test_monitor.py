@@ -319,6 +319,64 @@ class TestConGitHubSimulado(unittest.TestCase):
         self.assertEqual(c.getresponse().status, 200)
         self.assertNotIn("p1", self.http.pestanas)
 
+    def test_dp_frente_a_produccion(self):
+        """Lo que trae un DP frente a producción: sin lo que ya está igual en producción, con lo que producción
+        tiene y la release no, recalculado si producción cambia y congelado cuando la release entra."""
+        from mp.config import Config
+        from mp.pase import propuesta
+        from mp.sincro import Monitor
+        dir_ = tempfile.mkdtemp(prefix="mp-dp-")
+        antes_env = os.environ["MONITOR_PASES_DIR"]
+        os.environ["MONITOR_PASES_DIR"] = dir_
+        full = "equipo-demo/rdr-objetos-gs"
+        repo = self.datos.repos[full]
+        rel = repo["ramas"]["release/2.108.0"]
+        master_antes, commits_antes = repo["ramas"]["master"]["sha"], list(rel["commits"])
+        try:
+            cfg = Config()
+            cfg.actualizar(self.cfg.get())
+            mon = Monitor(cfg)
+            mon.sincronizar()
+            k, info = next((k, v) for k, v in mon.dps_info.items() if v["repo"] == full and v.get("release") == "2.108.0")
+            self.assertEqual(info["frente"], "master")
+            self.assertEqual(info["frenteSha"], master_antes)
+            self.assertTrue(info["comprobadoContenido"] and info["mergeBase"])
+            iguales = [f["ruta"] for f in info["ficheros"] if f.get("igualProduccion")]
+            self.assertEqual(len(iguales), 1)  # ya estaba igual en producción: no es un cambio del DP
+            d = mon.dp(full, info["cod"])
+            self.assertFalse(any(iguales[0] in c["ficheros"] for c in d["componentes"]))
+            sp = info["soloProduccion"]  # producción tiene un hotfix que la release no lleva, en un fichero que el DP cambia
+            self.assertEqual(sp["commits"], 1)
+            self.assertTrue(sp["enComun"] and sp["enComun"][0] in {f["ruta"] for f in info["ficheros"]})
+            # Las features del DP salen de sus commits.
+            self.assertTrue(info["features"] and all(f.startswith("CIBRDR-") for f in info["features"]))
+            # El pase usa el DP de la release que lleva la feature, no el de la rama de la feature.
+            comps = [c for p in propuesta(mon, info["features"]) for c in p["componentes"] if c["repo"] == full]
+            self.assertTrue(any(c["cod"] == info["cod"] and c["dpDe"] == "release 2.108.0" for c in comps))
+            # Un componente cuyo código ya está igual en producción se marca (no hay nada que desplegar).
+            ya = [c for c in comps if iguales[0] in c["ficheros"]]
+            self.assertTrue(ya and all(c["yaEnProduccion"] and c["com"] == "Ya está igual en producción" for c in ya))
+            # Producción avanza: se recalcula frente al nuevo commit de producción.
+            repo["ramas"]["master"]["sha"] = "f" * 40
+            self.datos.versiones[(full, "f" * 40)] = self.datos.versiones[(full, master_antes)]
+            mon.sincronizar()
+            info2 = mon.dps_info[k]
+            self.assertEqual(info2["frenteSha"], "f" * 40)
+            self.assertFalse(info2["congelado"])
+            # La release entra en producción: se congela con lo último calculado.
+            rel["commits"] = []
+            repo["ramas"]["master"]["sha"] = "e" * 40
+            self.datos.versiones[(full, "e" * 40)] = self.datos.versiones[(full, master_antes)]
+            mon.sincronizar()
+            info3 = mon.dps_info[k]
+            self.assertTrue(info3["congelado"])
+            self.assertEqual(info3["frenteSha"], "f" * 40)
+            self.assertEqual(len(info3["ficheros"]), len(info["ficheros"]))
+        finally:
+            repo["ramas"]["master"]["sha"], rel["commits"] = master_antes, commits_antes
+            os.environ["MONITOR_PASES_DIR"] = antes_env
+            shutil.rmtree(dir_, ignore_errors=True)
+
     def test_cuota_pausa_y_sigue_donde_lo_dejo(self):
         from mp.config import Config
         from mp.sincro import Monitor, RESERVA_CUOTA

@@ -206,6 +206,11 @@ def _fichero_api(ruta, a, b):
     return {"filename": ruta, "status": estado, "additions": mas, "deletions": menos, "changes": mas + menos, "patch": patch}
 
 
+def _blob(ruta, lineas):
+    """SHA (inventado pero estable) del contenido de un fichero, como el «sha» de blob de GitHub."""
+    return _sha("blob", ruta, "\n".join(lineas)) if lineas else None
+
+
 def _sha(*partes):
     return hashlib.sha1("|".join(str(p) for p in partes).encode()).hexdigest()
 
@@ -237,6 +242,7 @@ class Datos:
         self.jobs = {}  # id -> job (incluye salida y log)
         self.contenidos = {}  # (repo, ruta) -> {sha, texto}   (repositorio de NFQ: lo subido)
         self.versiones = {}  # (repo, sha) -> {ruta: [líneas]}  (ficheros en cada commit)
+        self.hotfix_prod = {}  # (repo, sha de la rama) -> ficheros que producción ha cambiado y la rama no lleva
         self.sin_propiedades = False  # True: como un GitHub sin la API de propiedades (se usa la búsqueda)
         self.cuota = None  # llamadas que quedan (None = sin límite); los 304 no gastan, como en GitHub
         self.cuota_cerrojo = threading.Lock()
@@ -402,6 +408,14 @@ class Datos:
                     for f in b["files"]:
                         rfiles[f["filename"]] = f
                 ramas["release/" + rel[1]] = {"sha": padre, "commits": rcommits, "files": list(rfiles.values()), "behind": 0}
+                if repo == "rdr-objetos-gs":
+                    # Como pasa de verdad: un fichero de la release ya está igual en producción (entró por otro lado)
+                    # y producción tiene un hotfix en otro fichero de la release que la release no lleva.
+                    vivos = [f["filename"] for f in rfiles.values() if f["status"] != "removed"]
+                    if len(vivos) >= 2:
+                        base_vers[vivos[0]] = list(vers[vivos[0]])
+                        ramas["release/" + rel[1]]["behind"] = 1
+                        self.hotfix_prod[(full, padre)] = [vivos[1]]
                 prs.append({"number": pr_n[0], "title": "Release " + rel[1], "state": "open", "merged_at": None, "draft": False,
                             "html_url": "https://demo.invalid/%s/pull/%d" % (full, pr_n[0]), "head": {"ref": "release/" + rel[1]},
                             "base": {"ref": "master"}, "updated_at": cuando(0, 3)})
@@ -663,7 +677,7 @@ class _H(BaseHTTPRequestHandler):
                 partes = ruta.split("/")
                 for i in range(1, len(partes)):
                     dirs.add("/".join(partes[:i]))
-                arbol.append({"path": ruta, "type": "blob", "size": len("\n".join(lineas)) + 1})
+                arbol.append({"path": ruta, "type": "blob", "size": len("\n".join(lineas)) + 1, "sha": _blob(ruta, lineas)})
             arbol += [{"path": x, "type": "tree"} for x in sorted(dirs)]
             return self._json(200, {"sha": m.group(1), "tree": arbol, "truncated": False})
         if resto.startswith("/commits/") and "vnd.github.sha" in (self.headers.get("Accept") or ""):
@@ -705,12 +719,27 @@ class _H(BaseHTTPRequestHandler):
                                                         "mensaje": "Commit"}))
         m = re.match(r"^/compare/([0-9a-f]+)\.\.\.([0-9a-f]+)$", resto)
         if m:
-            rama = next((b for b in r["ramas"].values() if b["sha"] == m.group(2)), None)
+            base, cab = m.group(1), m.group(2)
+            master = r["ramas"]["master"]["sha"]
+            if cab == master and base != master:  # al revés: lo que producción tiene y la rama no
+                rama = next((b for b in r["ramas"].values() if b["sha"] == base), None)
+                if rama is None:
+                    return self._json(404, {"message": "Not Found"})
+                rutas = d.hotfix_prod.get((full, base), [])
+                fs = [{"filename": x, "status": "modified", "additions": 2, "deletions": 1, "changes": 3} for x in rutas]
+                cs = [_commit_json(full, {"sha": _sha(full, "hotfix-prod", base), "fecha": d.hoy.isoformat(), "autor": "jmartin",
+                                          "mensaje": "Hotfix en producción"})] if rama["behind"] else []
+                return self._json(200, {"ahead_by": rama["behind"], "behind_by": len(rama["commits"]), "total_commits": rama["behind"],
+                                        "status": "diverged", "merge_base_commit": {"sha": master}, "commits": cs, "files": fs})
+            rama = next((b for b in r["ramas"].values() if b["sha"] == cab), None)
             if rama is None:
                 return self._json(404, {"message": "Not Found"})
+            vers = d.versiones.get((full, cab)) or {}
+            fs = [dict(f, sha=_blob(f["filename"], vers.get(f["filename"]))) for f in rama["files"]]
             return self._json(200, {"ahead_by": len(rama["commits"]), "behind_by": rama["behind"],
-                                    "total_commits": len(rama["commits"]),
-                                    "commits": [_commit_json(full, c) for c in rama["commits"]], "files": rama["files"]})
+                                    "total_commits": len(rama["commits"]), "status": "diverged" if rama["behind"] else "ahead",
+                                    "merge_base_commit": {"sha": master},
+                                    "commits": [_commit_json(full, c) for c in rama["commits"]], "files": fs})
         m = re.match(r"^/actions/runs/(\d+)/jobs$", resto)
         if m:
             run = d.runs[int(m.group(1))]
