@@ -13,10 +13,10 @@ Además sigue los **DPs de cada release** (qué componentes lleva cada uno y qu�
 ## Descargar y abrir
 
 1. Descarga **[MonitorPases.exe](https://github.com/rdr-nfq/team-hub/releases/download/monitor-pases/MonitorPases.exe)**. El enlace no cambia entre versiones; la versión se ve en la [release «monitor-pases»](https://github.com/rdr-nfq/team-hub/releases/tag/monitor-pases).
-2. Ábrelo con doble clic. Se abre una ventana negra (déjala abierta mientras lo uses) y el navegador en `http://127.0.0.1:8765`. Para salir, cierra la ventana.
+2. Ábrelo con doble clic. Se abre el navegador en `http://127.0.0.1:8765`; no hay ninguna ventana más. **La app se cierra sola unos segundos después de cerrar su última pestaña** (recargar la página no la cierra). Para volver, abre otra vez el .exe. Si algo falla al arrancar, sale un aviso de Windows y el detalle queda en `monitor.log`, en la carpeta de datos.
 3. **Inicia sesión** con tu GitHub de BBVA y tu GitHub de NFQ (ver abajo).
 
-Para verlo con datos inventados, sin red: `MonitorPases.exe --demo`. Otras opciones: `--puerto 8800`, `--sin-navegador` y `--version`.
+Para verlo con datos inventados, sin red: `MonitorPases.exe --demo`. Otras opciones: `--puerto 8800`, `--sin-navegador` (no abre el navegador ni se cierra solo) y `--version`.
 
 > **Si Windows lo bloquea:** es un ejecutable sin firma digital. SmartScreen puede pedir «Más información → Ejecutar de todas formas» y algunos antivirus corporativos frenan este tipo de ejecutables. Si pasa, hay que pedir a sistemas que lo permitan o firmarlo con un certificado de la empresa.
 
@@ -77,7 +77,7 @@ Usan [GitHub Copilot CLI](https://github.com/github/copilot-cli) con tu cuenta d
 
 **Prepararlo** (la pestaña Copilot lo comprueba):
 1. Hace falta Node.js 22 o superior.
-2. Si no tienes Copilot CLI, el botón **Instalar** ejecuta `npm install -g @github/copilot`.
+2. La app encuentra Copilot CLI esté instalado como esté: en el PATH (`copilot.exe` o el de npm), con npm en cualquier carpeta, winget, nvm o dentro de VS Code. Si no lo encuentra, en una terminal donde funcione ejecuta `where copilot` y pega esa ruta en *Ajustes → Copilot*. Si no lo tienes, el botón **Instalar** ejecuta `npm install -g @github/copilot`.
 3. Si npm no conecta, suele ser el proxy: define `HTTPS_PROXY` y `HTTP_PROXY` en las variables de entorno de tu usuario o en *Ajustes → Copilot*, y `NODE_EXTRA_CA_CERTS` si hay inspección TLS.
 4. **Iniciar sesión en Copilot** abre una ventana con Copilot CLI: escribe `/login`.
 

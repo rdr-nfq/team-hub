@@ -23,12 +23,13 @@ function Preparacion({ est, recargar, seguir, aviso }) {
   return html`<section class="caja preparacion" aria-labelledby="cop-prep">
     <h2 id="cop-prep">Copilot CLI ${est.listo ? html`<span class="chip chip-ok">Listo</span>` : html`<span class="chip chip-mal">Falta preparar</span>`}</h2>
     <ul class="comprobaciones">
-      <${Comprobacion} ok=${!!est.node && !est.problemas.some((p) => p.includes("Node"))} texto="Node.js 22 o superior" detalle=${est.node || "no encontrado"} />
-      <${Comprobacion} ok=${est.npm} texto="npm" />
+      <${Comprobacion} ok=${!!est.copilot} texto="Copilot CLI"
+        detalle=${est.copilot ? `${est.copilot}${est.donde ? " · encontrado en " + est.donde : ""}` : est.instalado ? "encontrado, pero no arranca" : "no encontrado"} />
+      ${est.usaNode || !est.instalado ? html`<${Comprobacion} ok=${!!est.node && !est.problemas.some((p) => p.includes("Node"))} texto="Node.js 22 o superior" detalle=${est.node || "no encontrado"} />` : ""}
       <${Comprobacion} ok=${!!est.git} texto="Git" detalle=${est.git || "no encontrado"} />
-      <${Comprobacion} ok=${!!est.copilot} texto="Copilot CLI" detalle=${est.copilot || (est.instalado ? "instalado, pero no arranca" : "sin instalar")} />
     </ul>
     ${est.problemas.map((p) => html`<p class="nota">${p}</p>`)}
+    ${est.ruta && est.copilot ? html`<p class="tenue mono" style="margin:6px 0 0;font-size:12px;overflow-wrap:anywhere">${est.ruta}</p>` : ""}
     <div class="prueba">
       ${!est.copilot && est.npm ? html`<button class="btn btn-pri" onClick=${instalar}>Instalar Copilot CLI (npm)</button>` : ""}
       ${est.copilot ? html`<button class="btn" onClick=${sesion}><${Icono} n="usuario" /> Iniciar sesión en Copilot</button>` : ""}

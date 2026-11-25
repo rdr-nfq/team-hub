@@ -4,6 +4,10 @@
     MonitorPases.exe                  (o: python monitor.py)
     MonitorPases.exe --demo           datos inventados, sin red ni token
     MonitorPases.exe --puerto 8800 --sin-navegador
+
+El .exe no abre ninguna ventana: vive mientras haya una pestaña de la app
+abierta y se cierra solo al cerrar la última. Lo que antes salía en la
+consola va a monitor.log, en la carpeta de datos.
 """
 
 import argparse
@@ -23,6 +27,32 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mp import VERSION  # noqa: E402
 
 CONGELADO = getattr(sys, "frozen", False)  # dentro del .exe
+SIN_CONSOLA = sys.stdout is None  # .exe sin ventana: no hay dónde escribir
+
+
+def _log_a_fichero():
+    """Sin consola, lo que se escribiría en ella va a monitor.log (en la carpeta de datos)."""
+    try:
+        from mp.config import carpeta_datos
+        ruta = carpeta_datos() / "monitor.log"
+        if ruta.exists() and ruta.stat().st_size > 1_000_000:
+            ruta.replace(ruta.with_name("monitor.log.1"))
+        f = open(ruta, "a", encoding="utf-8", buffering=1)
+        f.write("\n--- %s · Monitor de pases %s ---\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), VERSION))
+        sys.stdout = sys.stderr = f
+    except OSError:
+        sys.stdout = sys.stderr = open(os.devnull, "w")
+
+
+def _avisar(texto):
+    """Un aviso que se ve aunque no haya consola (un cuadro de Windows)."""
+    print(texto)
+    if SIN_CONSOLA and os.name == "nt":
+        try:
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(0, str(texto), "Monitor de pases", 0x40)
+        except Exception:
+            pass
 
 
 def _titulo(texto):
@@ -71,7 +101,6 @@ def main():
         print("El monitor ya está abierto en %s: lo abro en el navegador." % url)
         if not a.sin_navegador:
             webbrowser.open(url)
-        time.sleep(2)
         return
 
     from mp.sesion import Sesiones
@@ -98,8 +127,20 @@ def main():
     print("  Abierto en  %s" % url)
     print("  Datos en    %s" % cfg.dir)
     print()
-    print("  Deja esta ventana abierta mientras lo uses. Para salir, ciérrala.")
-    if not a.sin_navegador:
+    if a.sin_navegador:
+        print("  Para salir, cierra esta ventana o pulsa Ctrl+C.")
+    else:
+        print("  Se cierra solo al cerrar la última pestaña de la app.")
+
+        def salir():
+            print("Última pestaña cerrada: guardando y saliendo.")
+            import threading
+            h = threading.Thread(target=mon.guardar, daemon=True)
+            h.start()
+            h.join(10)  # guarda lo que haya; si una sincronización lo retrasa, sale igual
+            os._exit(0)
+
+        app.vigilar(salir)
         webbrowser.open(url)
     try:
         while True:
@@ -110,18 +151,18 @@ def main():
 
 
 if __name__ == "__main__":
+    if SIN_CONSOLA:
+        _log_a_fichero()
     try:
         main()
     except SystemExit as e:
-        if CONGELADO and e.code not in (0, None):
-            print(e.code if isinstance(e.code, str) else "")
-            input("\nPulsa Intro para cerrar.")
+        if CONGELADO and e.code not in (0, None) and isinstance(e.code, str):
+            _avisar(e.code)
         raise
-    except Exception as e:  # en el .exe, que no se cierre la ventana sin dejar leer el error
+    except Exception as e:  # en el .exe, que el error se vea (no hay consola)
         if not CONGELADO:
             raise
         import traceback
         traceback.print_exc()
-        print("\nEl monitor no ha podido arrancar: %s" % e)
-        input("Pulsa Intro para cerrar.")
+        _avisar("El monitor no ha podido arrancar: %s\n\nEl detalle está en monitor.log, en la carpeta .monitor-pases de tu usuario." % e)
         sys.exit(1)

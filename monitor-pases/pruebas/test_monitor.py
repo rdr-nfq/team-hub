@@ -3,6 +3,7 @@
     python -m unittest discover -s pruebas      (desde monitor-pases/)
 """
 
+import http.client
 import json
 import os
 import shutil
@@ -134,6 +135,39 @@ class TestConGitHubSimulado(unittest.TestCase):
             self.datos.sin_propiedades = False
             os.environ["MONITOR_PASES_DIR"] = antes_env
             shutil.rmtree(dir_, ignore_errors=True)
+
+    def test_se_cierra_al_cerrar_la_ultima_pestana(self):
+        import threading
+        from mp.servidor import App
+        app = App(self.cfg, self.mon, 0)
+        cerrada = threading.Event()
+        app.vigilar(cerrada.set, gracia=1, perdida=600, sin_abrir=600)
+        app.latido("a")
+        app.latido("b")
+        app.adios("a")
+        self.assertFalse(cerrada.wait(3.5))  # queda otra pestaña
+        app.adios("b")
+        app.latido("b2")  # recarga: vuelve antes de la gracia
+        self.assertFalse(cerrada.wait(3.5))
+        app.adios("b2")
+        self.assertTrue(cerrada.wait(6))
+        # Una pestaña que deja de dar señales (el navegador se cerró de golpe) también cuenta como cerrada.
+        app2 = App(self.cfg, self.mon, 0)
+        cerrada2 = threading.Event()
+        app2.vigilar(cerrada2.set, gracia=0, perdida=1, sin_abrir=600)
+        app2.latido("x")
+        self.assertTrue(cerrada2.wait(8))
+
+    def test_adios_por_http_lleva_la_clave_en_la_url(self):
+        host = "127.0.0.1:%d" % self.http.puerto
+        self.http.latido("p1")
+        c = http.client.HTTPConnection("127.0.0.1", self.http.puerto, timeout=5)
+        c.request("POST", "/api/adios?clave=mala", body='{"id":"p1"}', headers={"Host": host})
+        self.assertEqual(c.getresponse().status, 403)
+        c = http.client.HTTPConnection("127.0.0.1", self.http.puerto, timeout=5)
+        c.request("POST", "/api/adios?clave=" + self.http.clave, body='{"id":"p1"}', headers={"Host": host})
+        self.assertEqual(c.getresponse().status, 200)
+        self.assertNotIn("p1", self.http.pestanas)
 
     def test_cuota_pausa_y_sigue_donde_lo_dejo(self):
         from mp.config import Config

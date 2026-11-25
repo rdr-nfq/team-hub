@@ -30,6 +30,8 @@ function propsUtiles(mapa) {
   return Object.keys(vals).filter((k) => vals[k].size > 1).sort();
 }
 const NOMBRE_PROP = { uuaa: "UUAA", lenguaje: "Lenguaje", tecnologia: "Tecnología" };
+/** Propiedades de GitHub que casi nunca hacen falta para filtrar: van al final, plegadas y sin columna. */
+export const PROP_SECUNDARIA = /^(branching[-_ ]?model|bu[-_ ]?kind|kind|stack[-_ ]?id)$/i;
 export const nombreProp = (k) => NOMBRE_PROP[k] || k.charAt(0).toUpperCase() + k.slice(1).replace(/[-_]/g, " ");
 
 /* ── Aplicar ── */
@@ -87,7 +89,7 @@ function contar(items, f, props, sin, valores) {
 export function construirFacetas(items, f, estado, claves = ["proyectos", "repos", "personas", "props"]) {
   const props = propsDeRepos(estado.repos);
   const alias = Object.fromEntries(estado.proyectos.map((p) => [p.feature, p.nombre]));
-  const out = [];
+  const out = [], secundarias = [];
   const opcion = (v, n, extra) => ({ v, n: n[v] || 0, ...extra });
   for (const c of claves) {
     if (c === "proyectos") {
@@ -108,11 +110,12 @@ export function construirFacetas(items, f, estado, claves = ["proyectos", "repos
         const clave = "p:" + k;
         const n = contar(items, f, props, clave, (x) => [(props[x.repo] || {})[k]].filter(Boolean));
         const vals = uniq([...Object.values(props).map((p) => p[k]).filter(Boolean), ...selDe(f, clave)]);
-        out.push({ clave, titulo: nombreProp(k), opciones: vals.map((v) => opcion(v, n, { etiqueta: v, mono: k === "uuaa" })) });
+        const fa = { clave, titulo: nombreProp(k), opciones: vals.map((v) => opcion(v, n, { etiqueta: v, mono: k === "uuaa" })) };
+        if (PROP_SECUNDARIA.test(k)) secundarias.push({ ...fa, secundaria: true }); else out.push(fa);
       }
     }
   }
-  return out;
+  return [...out, ...secundarias];
 }
 
 /** Facetas de la vista: se calculan aquí y las pinta el lateral de App. */
@@ -127,7 +130,7 @@ export function useFacetas(setFacetas, items, f, estado, claves) {
 const MAX_OPCIONES = 8;
 
 function Faceta({ fa, f, setF }) {
-  const [abierta, setAbierta] = useState(() => leerLS("mp-faceta-" + fa.clave, "1") === "1");
+  const [abierta, setAbierta] = useState(() => leerLS("mp-faceta-" + fa.clave, fa.secundaria ? "0" : "1") === "1");
   const [buscar, setBuscar] = useState("");
   const [todas, setTodas] = useState(false);
   const sel = selDe(f, fa.clave);

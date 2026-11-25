@@ -210,6 +210,13 @@ def _sha(*partes):
     return hashlib.sha1("|".join(str(p) for p in partes).encode()).hexdigest()
 
 
+def _props_secundarias(repo):
+    """Propiedades que tienen los repos de verdad y casi nunca sirven para filtrar (deterministas por nombre)."""
+    h = int(hashlib.md5(repo.encode()).hexdigest(), 16)
+    return {"branching-model": ["gitflow", "trunk-based"][h % 2], "bu-kind": ["cib", "global"][h // 2 % 2],
+            "kind": ["library", "service", "batch"][h // 4 % 3], "stack-id": "stk-%02d" % (h // 12 % 9)}
+
+
 class Datos:
     def _run(self, *a):
         return _crear_run(self, *a)
@@ -401,7 +408,7 @@ class Datos:
             self.repos[full] = {"nombre": repo, "full": full, "ramas": ramas, "prs": prs, "runs": runs,
                                 "base_commits": base_commits, "pushed_at": max([c["fecha"] for b in ramas.values() for c in b["commits"]] + [c["fecha"] for c in base_commits]) if feats
                                 else cuando(rnd.randint(6, 300), rnd.randint(0, 20)),
-                                "rel": rel, "lenguaje": leng, "props": {"uuaa": uuaa, "tecnologia": tec},
+                                "rel": rel, "lenguaje": leng, "props": {"uuaa": uuaa, "tecnologia": tec, **_props_secundarias(repo)},
                                 "descripcion": "%s · %s" % (tec, repo.split("-", 1)[-1].replace("-", " "))}
 
         for repo, fuente in REPOS.items():

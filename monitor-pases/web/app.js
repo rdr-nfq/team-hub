@@ -1,7 +1,7 @@
 // Monitor de pases · interfaz. Preact + htm vendorizados: nada se descarga de internet.
 import { html, render, useState, useEffect, useMemo, useRef, useCallback } from "./vendor/preact-htm.mjs";
 import {
-  BotonTema, ChipDP, ESTADO_PR, EstadoRun, FUENTE, Icono, Marca, Rama, api, clonar, colorDe, corto, fCorta, fLarga, hace, leerLS, plural, ponerColores, ponerIr, ponerLS, proximoSabado, uniq,
+  BotonTema, CLAVE, ChipDP, ESTADO_PR, EstadoRun, FUENTE, Icono, Marca, Rama, api, clonar, colorDe, corto, fCorta, fLarga, hace, leerLS, plural, ponerColores, ponerIr, ponerLS, proximoSabado, uniq,
 } from "./comun.js";
 import { VistaCommits, VistaCommit, VistaDiffRama } from "./diffs.js";
 import { PantallaEntrada, FilaSesion } from "./entrada.js";
@@ -773,6 +773,8 @@ function VistaAjustes({ estado, aviso, recargar }) {
       <h2 id="aj-cop">Copilot CLI</h2>
       <p>Lo usan los asistentes de la pestaña Copilot. Se instala y se inicia sesión desde esa pestaña.</p>
       <div class="rejilla">
+        <label class="campo ancho"><span>Ruta de Copilot CLI (si no la encuentra sola)</span><input class="inp mono" value=${cp.entrada || ""} onInput=${(e) => set(["copilot", "entrada"], e.target.value)} placeholder="C:\\Users\\…\\copilot.exe  o  …\\npm\\copilot.cmd" />
+          <small>En una terminal donde «copilot» funcione, ejecuta <span class="mono">where copilot</span> y pega aquí la primera ruta.</small></label>
         <label class="campo"><span>Modelo (opcional)</span><input class="inp mono" value=${cp.modelo || ""} onInput=${(e) => set(["copilot", "modelo"], e.target.value)} placeholder="el que tenga Copilot por defecto" /></label>
         <label class="campo"><span>Opciones extra de copilot</span><input class="inp mono" value=${cp.opciones || ""} onInput=${(e) => set(["copilot", "opciones"], e.target.value)} placeholder="--log-level debug" /></label>
         <label class="campo ancho"><span>Variables de entorno para npm y Copilot (una por línea)</span>
@@ -887,6 +889,19 @@ function App() {
     setTema(t);
   };
   const preparar = (features) => { setPresel(features); setVista("pase"); };
+  // La app (el .exe) vive mientras haya una pestaña abierta: latido cada poco y «adiós» al cerrarla.
+  useEffect(() => {
+    if (window.MP_API) return;  // la demo publicada no tiene servidor
+    const id = Math.random().toString(36).slice(2);
+    const latir = () => api("latido", { id }).catch(() => {});
+    latir();
+    const t = setInterval(latir, 15000);
+    const visible = () => { if (document.visibilityState === "visible") latir(); };
+    const adios = () => { try { navigator.sendBeacon("/api/adios?clave=" + encodeURIComponent(CLAVE), JSON.stringify({ id })); } catch {} };
+    document.addEventListener("visibilitychange", visible);
+    addEventListener("pagehide", adios);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", visible); removeEventListener("pagehide", adios); };
+  }, []);
   // Atajos: Ctrl+K (o ⌘K) «Ir a…»; «/» al buscador de la vista.
   useEffect(() => {
     const t = (e) => {

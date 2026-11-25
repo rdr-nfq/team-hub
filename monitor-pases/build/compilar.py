@@ -48,7 +48,7 @@ def fichero_version(v):
 def main():
     v = version()
     sep = ";" if os.name == "nt" else ":"
-    cmd = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--onefile", "--console",
+    cmd = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--onefile", "--windowed",  # sin ventana de consola: se cierra al cerrar la pestaña
            "--name", "MonitorPases",
            "--icon", str(RAIZ / "build" / "icono.ico"),
            "--version-file", str(fichero_version(v)),

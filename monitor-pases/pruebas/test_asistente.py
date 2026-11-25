@@ -125,3 +125,68 @@ class TestAsistente(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDetectarCopilot(unittest.TestCase):
+    """Copilot CLI se encuentra esté instalado como esté, y siempre se ejecuta sin pasar por cmd."""
+
+    def setUp(self):
+        from mp.asistente import Asistente
+        self.dir = Path(tempfile.mkdtemp(prefix="mp-cop-"))
+        cfg = type("C", (), {"dir": self.dir, "get": lambda s: {"copilot": {"entrada": ""}}})()
+        self.a = Asistente(cfg, None, None)
+        pkg = self.dir / "npm" / "node_modules" / "@github" / "copilot"
+        pkg.mkdir(parents=True)
+        (pkg / "package.json").write_text('{"name": "@github/copilot", "bin": {"copilot": "npm-loader.js"}}', encoding="utf-8")
+        (pkg / "npm-loader.js").write_text("// copilot", encoding="utf-8")
+        self.js = str((pkg / "npm-loader.js").resolve())
+
+    def tearDown(self):
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def test_lanzador_cmd_de_npm(self):
+        cmd = self.dir / "npm" / "copilot.cmd"
+        cmd.write_text('''@ECHO off
+GOTO start
+:find_dp0
+SET dp0=%~dp0
+EXIT /b
+:start
+SETLOCAL
+CALL :find_dp0
+
+IF EXIST "%dp0%\\node.exe" (
+  SET "_prog=%dp0%\\node.exe"
+) ELSE (
+  SET "_prog=node"
+  SET PATHEXT=%PATHEXT:;.JS;=;%
+)
+
+endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\node_modules\\@github\\copilot\\npm-loader.js" %*
+''', encoding="utf-8")
+        r = self.a._resolver(cmd)
+        self.assertIsNotNone(r)
+        self.assertEqual(Path(r[-1]).resolve(), Path(self.js))
+
+    def test_lanzador_ps1_de_npm(self):
+        ps1 = self.dir / "npm" / "copilot.ps1"
+        ps1.write_text('''#!/usr/bin/env pwsh
+$basedir=Split-Path $MyInvocation.MyCommand.Definition -Parent
+$exe=""
+& "$basedir/node$exe"  "$basedir/node_modules/@github/copilot/npm-loader.js" $args
+''', encoding="utf-8")
+        r = self.a._resolver(ps1)
+        self.assertEqual(Path(r[-1]).resolve(), Path(self.js))
+
+    def test_exe_y_carpeta_del_paquete(self):
+        exe = self.dir / "copilot.exe"
+        exe.write_bytes(b"MZ")
+        self.assertEqual(self.a._resolver(exe), [str(exe)])
+        r = self.a._resolver(self.dir / "npm")
+        self.assertEqual(Path(r[-1]).resolve(), Path(self.js))
+
+    def test_un_lanzador_que_no_se_entiende_no_se_ejecuta_con_cmd(self):
+        raro = self.dir / "copilot.bat"
+        raro.write_text("@echo off\ncall algo-desconocido %*\n", encoding="utf-8")
+        self.assertIsNone(self.a._resolver(raro))
+

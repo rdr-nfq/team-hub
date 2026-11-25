@@ -13,6 +13,7 @@ import secrets
 import subprocess
 import sys
 import threading
+import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -60,6 +61,47 @@ class App:
         self.nav = Navegar(config, monitor, self.diffs)
         self.copilot = Asistente(config, monitor, self.ses, demo)
         monitor.despues_de_sincronizar = self.publicar
+        self.pestanas = {}  # id de cada pestaña abierta -> último latido
+        self.tuvo_pestana = False
+        self.vacia_desde = None
+        self._c_pestanas = threading.Lock()
+
+    # ── la app vive mientras haya una pestaña abierta ──────────────────────────
+    def latido(self, pid):
+        with self._c_pestanas:
+            self.pestanas[str(pid)[:64]] = time.time()
+            self.tuvo_pestana = True
+            self.vacia_desde = None
+
+    def adios(self, pid):
+        with self._c_pestanas:
+            self.pestanas.pop(str(pid)[:64], None)
+            if not self.pestanas and self.vacia_desde is None:
+                self.vacia_desde = time.time()
+
+    def vigilar(self, salir, gracia=8, perdida=180, sin_abrir=300):
+        """Llama a `salir` cuando se cierra la última pestaña (con unos segundos por si es una recarga),
+        si las pestañas dejan de dar señales (navegador cerrado de golpe) o si nunca llega a abrirse ninguna."""
+        inicio = time.time()
+
+        def bucle():
+            while True:
+                time.sleep(2)
+                ahora = time.time()
+                with self._c_pestanas:
+                    for k in [k for k, t in self.pestanas.items() if ahora - t > perdida]:
+                        del self.pestanas[k]  # una pestaña que ya no da señales (p. ej. el navegador se cerró)
+                        if not self.pestanas and self.vacia_desde is None:
+                            self.vacia_desde = ahora
+                    if self.tuvo_pestana:
+                        fin = not self.pestanas and self.vacia_desde is not None and ahora - self.vacia_desde >= gracia
+                    else:
+                        fin = ahora - inicio > sin_abrir
+                if fin:
+                    salir()
+                    return
+
+        threading.Thread(target=bucle, name="vigilar-pestanas", daemon=True).start()
 
     def publicar(self, forzar=False):
         if self.demo:
@@ -118,6 +160,9 @@ class App:
         return {"ruta": ruta}
 
     def rutas(self, metodo, ruta, q, cuerpo):
+        if metodo == "POST" and ruta == "/api/latido":
+            self.latido(cuerpo.get("id") or "")
+            return {"ok": True}
         if metodo == "GET" and ruta == "/api/estado":
             c = self.cfg.get()
             n = c["nfq"]
@@ -338,6 +383,19 @@ class App:
             def do_POST(self):
                 if not self._host_ok():
                     return self._enviar(403, {"error": "Host no permitido."})
+                u = urllib.parse.urlparse(self.path)
+                if u.path == "/api/adios":  # sendBeacon al cerrar la pestaña: no puede llevar cabeceras, la clave va en la URL
+                    q = urllib.parse.parse_qs(u.query)
+                    origen = self.headers.get("Origin")
+                    if (q.get("clave") or [""])[0] != app.clave or (origen and urllib.parse.urlparse(origen).netloc not in hosts):
+                        return self._enviar(403, {"error": "No permitido."})
+                    n = min(int(self.headers.get("Content-Length") or 0), 1024)
+                    try:
+                        pid = json.loads(self.rfile.read(n).decode("utf-8") or "{}").get("id") or ""
+                    except ValueError:
+                        pid = ""
+                    app.adios(pid)
+                    return self._enviar(200, {"ok": True})
                 if not self.path.startswith("/api/"):
                     return self._enviar(404, {"error": "No encontrado"})
                 return self._api("POST")

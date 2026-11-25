@@ -51,7 +51,7 @@ export function VistaRepos({ estado, f, setF, setFacetas, ir }) {
     const o = orden[0] === k ? [k, -orden[1]] : [k, k === "nombre" ? 1 : -1];
     setOrden(o); ponerLS("mp-orden-repos", JSON.stringify(o));
   };
-  const columnasProps = useMemo(() => (facetas || []).filter((fa) => fa.clave.startsWith("p:")).map((fa) => fa.clave.slice(2)), [facetas]);
+  const columnasProps = useMemo(() => (facetas || []).filter((fa) => fa.clave.startsWith("p:") && !fa.secundaria).map((fa) => fa.clave.slice(2)), [facetas]);
   const filtroRepos = estado.filtroRepos;
   return html`<div class="contenido">
     <div class="titulo-vista"><h1>Repositorios</h1><p>${visibles.length === items.length ? plural(items.length, "repositorio", "repositorios")

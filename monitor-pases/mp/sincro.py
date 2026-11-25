@@ -103,9 +103,10 @@ class Monitor:
     def guardar(self):
         with self._cerrojo:
             escribir_json(self.ruta, {
-                "repos": self.repos, "ramas": self.ramas, "cacheCompare": self.cache_compare,
-                "cacheRuns": self.cache_runs, "dpsInfo": self.dps_info, "dpsManuales": self.manuales, "borradores": self.borradores,
-                "etags": self.etags, "sincro": self.sincro, "ultimaCompleta": self.ultima_completa,
+                "repos": dict(self.repos), "ramas": dict(self.ramas), "cacheCompare": dict(self.cache_compare),
+                "cacheRuns": dict(self.cache_runs), "dpsInfo": self.dps_info, "dpsManuales": self.manuales, "borradores": self.borradores,
+                # Copia: los hilos de la sincronización añaden ETags sin el cerrojo (dict() copia de una vez).
+                "etags": dict(self.etags), "sincro": dict(self.sincro), "ultimaCompleta": self.ultima_completa,
             })
 
     # ── bucle en segundo plano ──────────────────────────────────────────────

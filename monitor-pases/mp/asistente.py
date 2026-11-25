@@ -7,14 +7,18 @@
   feature. Nada se sube solo: la persona revisa el diff en la app y, si lo
   aprueba, la app hace el commit y el push a la rama.
 
-Copilot CLI se ejecuta con `node <entrada del paquete>` (sin pasar por cmd),
-así el texto de una pregunta nunca se interpreta como comando. Las copias
+Copilot CLI se ejecuta directamente (su .exe, o `node <entrada del paquete>`),
+sin pasar por cmd: así el texto de una pregunta nunca se interpreta como comando.
+Se encuentra esté instalado como esté (npm, winget, instalador, VS Code o una
+ruta puesta en Ajustes). Las copias
 locales se hacen con el git de la VDI y sus credenciales.
 """
 
 import os
 import re
 import shlex
+import glob
+import json
 import shutil
 import subprocess
 import threading
@@ -99,6 +103,7 @@ class Asistente:
         self.tareas = {}
         self._c = threading.Lock()
         self._entrada_cache = None
+        self._buscado = []
 
     # ── entorno: node, npm y Copilot CLI ────────────────────────────────────
     def _env(self):
@@ -110,61 +115,149 @@ class Asistente:
                     env[k.strip()] = v.strip()
         return env
 
-    def _entrada(self):
-        """Fichero .js de Copilot CLI dentro de la instalación global de npm."""
-        propia = str(self.cfg.get()["copilot"].get("entrada") or "").strip()
-        if propia:
-            return propia if Path(propia).exists() else None
-        if self._entrada_cache and Path(self._entrada_cache).exists():
-            return self._entrada_cache
-        npm = shutil.which("npm")
-        if not npm:
-            return None
-        cod, salida = _ejecutar([npm, "root", "-g"], timeout=60, env=self._env())
-        raiz = Path(_primera(salida)) if cod == 0 else None
-        pkg = raiz / "@github" / "copilot" / "package.json" if raiz else None
-        if not pkg or not pkg.exists():
-            return None
-        import json
+    # ── dónde está Copilot CLI ───────────────────────────────────────────────
+    @staticmethod
+    def _de_paquete(carpeta):
+        """Entrada .js del paquete @github/copilot instalado en `carpeta`."""
+        pkg = Path(carpeta) / "package.json"
         try:
             datos = json.loads(pkg.read_text(encoding="utf-8"))
-        except ValueError:
+        except (OSError, ValueError):
             return None
         binario = datos.get("bin")
         if isinstance(binario, dict):
             binario = binario.get("copilot") or next(iter(binario.values()), None)
-        if not binario:
+        f = (pkg.parent / binario).resolve() if binario else None
+        return str(f) if f and f.exists() else None
+
+    def _resolver(self, ruta, profundidad=0):
+        """De un fichero (.exe, .js o un lanzador .cmd/.bat/.ps1/sin extensión) al comando que lo ejecuta
+        directamente: [exe] o [node, js]. None si no se puede sin pasar por cmd."""
+        f = Path(ruta)
+        if not f.exists() or profundidad > 3:
             return None
-        self._entrada_cache = str((pkg.parent / binario).resolve())
-        return self._entrada_cache
+        if f.is_dir():
+            js = self._de_paquete(f) or self._de_paquete(f / "node_modules" / "@github" / "copilot")
+            return self._resolver(js, profundidad + 1) if js else None
+        ext = f.suffix.lower()
+        if ext == ".exe":
+            return [str(f)]
+        if ext in (".js", ".mjs", ".cjs"):
+            node = next((str(c) for c in (f.parent / "node.exe", f.parent.parent / "node.exe") if c.exists()), None) or shutil.which("node")
+            return [node, str(f)] if node else None
+        # Un lanzador: se lee qué programa llama de verdad (los de npm, VS Code o scripts propios).
+        try:
+            texto = f.read_text(encoding="utf-8", errors="replace")[:65536]
+        except OSError:
+            return None
+        if texto.startswith("#!") and "node" in texto.split("\n", 1)[0]:  # script de node sin extensión
+            node = shutil.which("node")
+            return [node, str(f)] if node else None
+        base = str(f.parent)
+        texto = re.sub(r"%~?dp0%?\\?|\$\{?basedir\}?[/\\]?|\$PSScriptRoot[/\\]?|\$\(dirname \"\$0\"\)/?", lambda m: base + os.sep, texto, flags=re.I)
+        for m in re.finditer(r"[\"']?([^\"'\r\n|&<>]+?\.(?:m?js|cjs|exe))[\"']?", texto, flags=re.I):
+            cand = Path(m.group(1).strip().replace("\\", os.sep) if os.sep != "\\" else m.group(1).strip())
+            if not cand.is_absolute():
+                cand = f.parent / cand
+            if cand.name.lower() in ("node.exe", "cmd.exe", "powershell.exe", "pwsh.exe") or not cand.exists():
+                continue
+            if cand.resolve() == f.resolve():
+                continue
+            r = self._resolver(cand, profundidad + 1)
+            if r:
+                return r
+        return None
+
+    def _candidatos(self):
+        """(dónde, ruta) en el orden en que se prueban."""
+        out = []
+        propia = str(self.cfg.get()["copilot"].get("entrada") or "").strip().strip('"')
+        if propia:
+            out.append(("la ruta de Ajustes", propia))
+        for nombre in ("copilot", "copilot.exe", "copilot.cmd"):
+            w = shutil.which(nombre)
+            if w:
+                out.append(("el PATH", w))
+        npm = shutil.which("npm")
+        if npm:
+            cod, salida = _ejecutar([npm, "root", "-g"], timeout=60, env=self._env())
+            if cod == 0 and _primera(salida):
+                out.append(("npm (global)", str(Path(_primera(salida)) / "@github" / "copilot")))
+        e = os.environ.get
+        if os.name == "nt":
+            lista = [
+                ("npm (carpeta por defecto)", os.path.join(e("APPDATA", ""), "npm", "node_modules", "@github", "copilot")),
+                ("npm (carpeta por defecto)", os.path.join(e("APPDATA", ""), "npm", "copilot.cmd")),
+                ("winget", os.path.join(e("LOCALAPPDATA", ""), "Microsoft", "WinGet", "Links", "copilot.exe")),
+                ("Node.js", os.path.join(e("ProgramFiles", r"C:\Program Files"), "nodejs", "node_modules", "@github", "copilot")),
+            ]
+            patrones = [
+                ("winget", os.path.join(e("LOCALAPPDATA", ""), "Microsoft", "WinGet", "Packages", "GitHub.Copilot*", "**", "copilot.exe")),
+                ("instalador", os.path.join(e("LOCALAPPDATA", ""), "Programs", "*opilot*", "**", "copilot.exe")),
+                ("instalador", os.path.join(e("ProgramFiles", r"C:\Program Files"), "*opilot*", "**", "copilot.exe")),
+                ("nvm", os.path.join(e("APPDATA", ""), "nvm", "v*", "node_modules", "@github", "copilot")),
+                ("VS Code", os.path.join(e("APPDATA", ""), "Code*", "User", "globalStorage", "github.copilot*", "**", "copilot*")),
+                ("VS Code", os.path.join(e("USERPROFILE", ""), ".vscode*", "extensions", "github.copilot*", "**", "copilot*")),
+            ]
+        else:
+            casa = str(Path.home())
+            lista = [("~/.local/bin", os.path.join(casa, ".local", "bin", "copilot")), ("/usr/local/bin", "/usr/local/bin/copilot")]
+            patrones = [("nvm", os.path.join(casa, ".nvm", "versions", "node", "*", "lib", "node_modules", "@github", "copilot"))]
+        out += lista
+        for donde, pat in patrones:
+            for r in sorted(glob.glob(pat, recursive=True))[:20]:
+                if Path(r).suffix.lower() in ("", ".exe", ".cmd", ".bat", ".ps1", ".js") or Path(r).is_dir():
+                    out.append((donde, r))
+        return out
+
+    def _lanzador(self):
+        """-> (comando, dónde, ruta) de Copilot CLI, o (None, None, None)."""
+        clave = str(self.cfg.get()["copilot"].get("entrada") or "")
+        if self._entrada_cache and self._entrada_cache[0] == clave and all(Path(x).exists() for x in self._entrada_cache[1]):
+            return self._entrada_cache[1], self._entrada_cache[2], self._entrada_cache[3]
+        self._buscado = []
+        for donde, ruta in self._candidatos():
+            self._buscado.append(donde)
+            cmd = self._resolver(ruta)
+            if cmd:
+                self._entrada_cache = (clave, cmd, donde, ruta)
+                return cmd, donde, ruta
+        return None, None, None
 
     def estado(self):
         if self.demo:
             return {"demo": True, "listo": True, "node": "v22.11.0", "npm": True, "copilot": "demo", "git": "git version 2.47",
-                    "problemas": []}
+                    "problemas": [], "donde": "demo", "ruta": ""}
         node = shutil.which("node")
         v_node = _primera(_ejecutar([node, "--version"], timeout=20)[1]) if node else None
         git = shutil.which("git")
         v_git = _primera(_ejecutar([git, "--version"], timeout=20)[1]) if git else None
         npm = bool(shutil.which("npm"))
-        entrada = self._entrada() if node else None
-        v_cop = None
-        if node and entrada:
-            cod, sal = _ejecutar([node, entrada, "--version"], timeout=60, env=self._env())
+        self._entrada_cache = None  # «Comprobar de nuevo» vuelve a buscar
+        cmd, donde, ruta = self._lanzador()
+        v_cop, fallo = None, ""
+        if cmd:
+            cod, sal = _ejecutar(cmd + ["--version"], timeout=60, env=self._env())
             v_cop = _primera(sal) if cod == 0 else None
+            fallo = "" if cod == 0 else _primera(sal)[:300]
         problemas = []
-        if not node:
-            problemas.append("No se encuentra Node.js (hace falta la versión %d o superior)." % NODE_MINIMO)
-        else:
+        usa_node = bool(cmd) and len(cmd) > 1
+        if usa_node or not cmd:
             m = re.match(r"v(\d+)", v_node or "")
-            if m and int(m.group(1)) < NODE_MINIMO:
+            if not node and usa_node:
+                problemas.append("No se encuentra Node.js (hace falta la versión %d o superior)." % NODE_MINIMO)
+            elif m and int(m.group(1)) < NODE_MINIMO and usa_node:
                 problemas.append("Tienes Node.js %s y Copilot CLI necesita la %d o superior." % (v_node, NODE_MINIMO))
-        if node and not npm:
-            problemas.append("No se encuentra npm para instalar Copilot CLI.")
+        if not cmd:
+            problemas.append("No se encuentra Copilot CLI. Se ha buscado en: %s. Si en una terminal te funciona «copilot», ejecuta "
+                             "«where copilot» y pega esa ruta en Ajustes → Copilot → Ruta de Copilot CLI."
+                             % ", ".join(dict.fromkeys(self._buscado or ["el PATH"])))
+        elif not v_cop:
+            problemas.append("Copilot CLI está en %s, pero no arranca%s." % (ruta, (": " + fallo) if fallo else ""))
         if not git:
             problemas.append("No se encuentra Git (hace falta para las copias locales de las ramas).")
-        return {"demo": False, "listo": bool(node and entrada and v_cop and git), "node": v_node, "npm": npm,
-                "copilot": v_cop, "instalado": bool(entrada), "git": v_git, "problemas": problemas}
+        return {"demo": False, "listo": bool(cmd and v_cop and git), "node": v_node, "usaNode": usa_node, "npm": npm,
+                "copilot": v_cop, "instalado": bool(cmd), "donde": donde, "ruta": ruta, "git": v_git, "problemas": problemas}
 
     def instalar(self):
         npm = shutil.which("npm")
@@ -178,12 +271,12 @@ class Asistente:
         """Abre Copilot CLI en una ventana propia para iniciar sesión (/login)."""
         if self.demo:
             return {"ok": True}
-        node, entrada = shutil.which("node"), self._entrada()
-        if not (node and entrada):
-            raise ValueError("Primero instala Copilot CLI.")
+        cmd = self._lanzador()[0]
+        if not cmd:
+            raise ValueError("Primero instala Copilot CLI o indica dónde está en Ajustes.")
         if os.name != "nt":
             raise ValueError("Abre una terminal y ejecuta: copilot  (después escribe /login).")
-        subprocess.Popen([node, entrada], cwd=str(Path.home()), env=self._env(), creationflags=NUEVA_CONSOLA)
+        subprocess.Popen(cmd, cwd=str(Path.home()), env=self._env(), creationflags=NUEVA_CONSOLA)
         return {"ok": True}
 
     # ── tareas ──────────────────────────────────────────────────────────────
@@ -352,7 +445,7 @@ class Asistente:
 
     def _argumentos(self, t, prompt):
         c = self.cfg.get()["copilot"]
-        args = [shutil.which("node") or "node", self._entrada(), "-p", prompt, "--add-dir", str(t["_ctxdir"])]
+        args = list(self._lanzador()[0] or ["copilot"]) + ["-p", prompt, "--add-dir", str(t["_ctxdir"])]
         if t["modo"] == "consultar":
             args += ["--deny-tool", "write"]
             for x in LECTURA:
@@ -398,8 +491,8 @@ class Asistente:
             wt = self._preparar(t)
             fichero = t["_ctxdir"] / "contexto-monitor.md"
             fichero.write_text(self._contexto(t), encoding="utf-8")
-            if not self._entrada():
-                raise RuntimeError("Copilot CLI no está instalado.")
+            if not self._lanzador()[0]:
+                raise RuntimeError("No se encuentra Copilot CLI: mira la pestaña Copilot.")
             self._anadir(t, "Preguntando a Copilot…\n\n")
             self._proceso(t, self._argumentos(t, self._prompt(t, fichero)), str(wt or t["_ctxdir"]), self._env(), terminar=False)
             if t["estado"] != "en curso":  # error o cancelada
