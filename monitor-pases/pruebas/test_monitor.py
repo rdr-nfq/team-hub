@@ -9,6 +9,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -66,8 +67,10 @@ class TestConGitHubSimulado(unittest.TestCase):
         from mp.sincro import Monitor
         cls.pedidas = []
         cls.srv_ghe, puerto, cls.datos = demo.arrancar(pedidas=cls.pedidas)
+        from mp import demo_jira
+        cls.srv_jira, url_jira, cls.datos_jira = demo_jira.arrancar(cls.datos)
         cfg = Config()
-        c = demo.config_demo(puerto)
+        c = demo.config_demo(puerto, url_jira)
         c["bbva"]["token"] = "demo"
         c["nfq"] = {"api": "http://127.0.0.1:%d" % puerto, "repo": "rdr-nfq/pases-datos", "token": "demo", "rama": "main", "carpeta": "pases"}
         cfg.actualizar(c)
@@ -82,7 +85,7 @@ class TestConGitHubSimulado(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        for srv in (cls.srv, cls.srv_ghe):
+        for srv in (cls.srv, cls.srv_ghe, cls.srv_jira):
             srv.shutdown()
             srv.server_close()
         shutil.rmtree(cls.dir, ignore_errors=True)
@@ -135,6 +138,51 @@ class TestConGitHubSimulado(unittest.TestCase):
             self.datos.sin_propiedades = False
             os.environ["MONITOR_PASES_DIR"] = antes_env
             shutil.rmtree(dir_, ignore_errors=True)
+
+    def test_jira_historias_features_y_releases(self):
+        from mp.ghe import ErrorGHE
+        from mp.demo_jira import RESUMENES
+        j = self.app.jira
+        with self.assertRaises(ErrorGHE):
+            j.conectar(token="mal")
+        j.conectar(token="un-token")
+        for _ in range(200):  # conectar sincroniza en segundo plano
+            if j.sincro.get("estado") in ("ok", "error") and not j._en_curso:
+                break
+            time.sleep(0.1)
+        self.assertEqual(j.sincro["estado"], "ok", j.sincro)
+        self.assertEqual(j.campos["feature"]["nombre"], "Feature Link")
+        self.assertEqual(j.campos["techVersion"]["nombre"], "tech-version")
+        v = j.vista()
+        # Historias citadas en los commits, con su feature.
+        _, historias = j.claves_de_github()
+        self.assertTrue(historias and all(k.startswith("RDR-") for k in historias))  # sin las de los DPs (DP-KYTL-…)
+        self.assertTrue(all(k in v["issues"] for k in historias))
+        self.assertEqual(v["issues"]["RDR-1000"]["f"], "CIBRDR-2311")
+        # Features: nombre, historias y SDATOOL (en un enlace, en un enlace remoto o ninguno).
+        f = v["features"]["CIBRDR-2311"]
+        self.assertTrue(f["s"] and f["h"])
+        donde = {x.get("sdDonde") or "" for x in v["features"].values()}
+        self.assertIn("enlace «relates to»", donde)
+        self.assertIn("enlace remoto", donde)
+        self.assertIn("", donde)
+        self.assertTrue(all(x["sd"][0].startswith("SDATOOL-") for x in v["features"].values() if x.get("sd")))
+        # Releases de RDR con sus historias por tech-version (y la que no tiene commits).
+        r = next(x for x in v["releases"] if x["nombre"] == "2.108.0")
+        self.assertFalse(r["publicada"])
+        self.assertIn("RDR-999", v["relHistorias"][r["id"]])
+        # Una clave que no existe en Jira se apunta y no rompe la consulta del resto.
+        res = j._por_claves(j._cliente(), ["RDR-1000", "XYZ-1"], ["summary"])
+        self.assertEqual([i["key"] for i in res], ["RDR-1000"])
+        self.assertIn("XYZ-1", j.no_existen)
+        # El diagnóstico no lleva contenido de Jira: ni títulos ni descripciones.
+        d = j.diagnostico()
+        texto = json.dumps(d["informe"], ensure_ascii=False)
+        self.assertFalse([x for x in RESUMENES if x in texto])
+        self.assertNotIn("Descripción de", texto)
+        self.assertNotIn("Usuario demo", texto)
+        self.assertEqual(d["informe"]["releases"]["proyecto"], "RDR")
+        self.assertGreater(d["informe"]["sdatool"]["conSdatool"], 0)
 
     def test_se_cierra_al_cerrar_la_ultima_pestana(self):
         import threading

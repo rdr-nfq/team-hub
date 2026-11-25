@@ -2,6 +2,7 @@
 // del gestor de credenciales de Git: la misma sesión que usa git pull).
 import { html, useState, useEffect } from "./vendor/preact-htm.mjs";
 import { api, BotonTema, Icono, Marca } from "./comun.js";
+import { ConectarJira } from "./jira.js";
 
 const NOMBRE = { bbva: "GitHub BBVA", nfq: "GitHub NFQ" };
 const PARA = {
@@ -28,7 +29,7 @@ export function FilaSesion({ quien, s, host, onIniciar, onCerrar }) {
   </div>`;
 }
 
-export function PantallaEntrada({ estado, entrar, tema, cambiarTema }) {
+export function PantallaEntrada({ estado, entrar, tema, cambiarTema, jira, recargarJira }) {
   const [ses, setSes] = useState(estado.sesion);
   const [hosts, setHosts] = useState({ bbva: "bbva.ghe.com", nfq: "github.com" });
   useEffect(() => { api("config").then((c) => setHosts({ bbva: c.bbva.host, nfq: c.nfq.host || "github.com" }), () => {}); }, []);
@@ -49,6 +50,7 @@ export function PantallaEntrada({ estado, entrar, tema, cambiarTema }) {
         si ya la tienes iniciada en Git, entra directamente.</p>
       <${FilaSesion} quien="bbva" s=${ses?.bbva} host=${hosts.bbva} onIniciar=${() => iniciar("bbva")} />
       <${FilaSesion} quien="nfq" s=${ses?.nfq} host=${hosts.nfq} onIniciar=${() => iniciar("nfq")} />
+      ${jira?.url ? html`<${ConectarJira} estado=${{ sesion: ses }} jira=${jira} recargar=${() => { recargarJira(); api("sesion").then(setSes, () => {}); }} compacto />` : ""}
       <div class="pie-entrada">
         <button class="btn btn-pri" disabled=${!bbva} onClick=${entrar}>${nfq || !bbva ? "Entrar" : "Entrar sin GitHub NFQ"}</button>
         ${bbva && !nfq ? html`<span class="tenue">Sin NFQ no se publican los DPs ni los pases.</span>` : ""}

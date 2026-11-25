@@ -1,20 +1,28 @@
 // Monitor de pases · «Ir a…» (Ctrl+K): salta a cualquier repositorio, rama,
 // proyecto, DP o commit escribiendo un trozo de su nombre.
 import { html, useState, useEffect, useMemo, useRef } from "./vendor/preact-htm.mjs";
-import { Icono, Rama, colorDe, corto, hace } from "./comun.js";
+import { Icono, Rama, colorDe, corto, hace, jira, urlJira } from "./comun.js";
 import { propsDeRepos } from "./filtros.js";
 
 const PESTANAS = [["ramas", "Ramas"], ["actividad", "Actividad"], ["commits", "Commits"], ["dps", "DPs"], ["repos", "Repos"],
   ["copilot", "Copilot"], ["pase", "Pase"], ["ajustes", "Ajustes"]];
-const TIPO = { repo: "Repositorio", rama: "Rama", release: "Release", proyecto: "Proyecto", dp: "DP", commit: "Commit", vista: "Pestaña" };
-const ICONO = { repo: "repo", rama: "rama", release: "paquete", proyecto: "marcador", dp: "paquete", commit: "commit", vista: "ir" };
-const ORDEN = { proyecto: 0, repo: 1, release: 2, rama: 3, dp: 4, commit: 5, vista: 6 };
+const TIPO = { historia: "Historia de Jira", repo: "Repositorio", rama: "Rama", release: "Release", proyecto: "Proyecto", dp: "DP", commit: "Commit", vista: "Pestaña" };
+const ICONO = { historia: "externo", repo: "repo", rama: "rama", release: "paquete", proyecto: "marcador", dp: "paquete", commit: "commit", vista: "ir" };
+const ORDEN = { proyecto: 0, repo: 1, release: 2, rama: 3, dp: 4, historia: 5, commit: 6, vista: 7 };
 
 function indice(estado) {
   const props = propsDeRepos(estado.repos);
   const out = PESTANAS.map(([v, t]) => ({ tipo: "vista", titulo: t, texto: t, accion: { vista: v } }));
-  for (const p of estado.proyectos) if (p.feature)
-    out.push({ tipo: "proyecto", titulo: p.feature, sub: p.nombre || "", color: colorDe(p.feature), texto: `${p.feature} ${p.nombre || ""}`, accion: { proyecto: p.feature } });
+  const j = jira();
+  const feats = new Set([...estado.proyectos.map((p) => p.feature).filter(Boolean), ...Object.keys(j?.features || {})]);
+  for (const k of feats) {
+    const p = estado.proyectos.find((x) => x.feature === k), f = j?.features?.[k];
+    const nombre = f?.s || p?.nombre || "";
+    out.push({ tipo: "proyecto", titulo: k, sub: [nombre, ...(f?.sd || [])].filter(Boolean).join(" · "), color: colorDe(k),
+      texto: `${k} ${nombre} ${(f?.sd || []).join(" ")}`, accion: { vista: "proyecto", feature: k } });
+  }
+  for (const [k, x] of Object.entries(j?.issues || {})) if (!j.features?.[k])
+    out.push({ tipo: "historia", titulo: k, sub: `${x.s} · ${x.e}`, texto: `${k} ${x.s}`, accion: { externo: urlJira(k) } });
   for (const r of estado.repos)
     out.push({ tipo: "repo", titulo: corto(r.nombre), sub: Object.values(props[r.nombre] || {}).join(" · "), texto: `${r.nombre} ${r.descripcion || ""} ${Object.values(props[r.nombre] || {}).join(" ")}`,
       accion: { vista: "repo", repo: r.nombre, sub: "codigo" } });
@@ -70,7 +78,8 @@ export function Paleta({ estado, cerrar, ir, abrirRama, filtrarProyecto }) {
     if (!x) return;
     cerrar();
     const a = x.accion;
-    if (a.abrir) abrirRama(a.abrir);
+    if (a.externo) window.open(a.externo, "_blank", "noopener");
+    else if (a.abrir) abrirRama(a.abrir);
     else if (a.proyecto) filtrarProyecto(a.proyecto);
     else ir(a);
   };
@@ -83,7 +92,7 @@ export function Paleta({ estado, cerrar, ir, abrirRama, filtrarProyecto }) {
   return html`<div class="dialogo-velo velo-paleta" onMouseDown=${(e) => e.target === e.currentTarget && cerrar()}>
     <div class="paleta" role="dialog" aria-modal="true" aria-label="Ir a…">
       <label class="buscar buscar-paleta"><span class="sr">Ir a</span><${Icono} n="buscar" />
-        <input ref=${ref} class="inp" placeholder="Repositorio, rama, proyecto, DP o SHA de un commit" value=${q}
+        <input ref=${ref} class="inp" placeholder="Repositorio, rama, proyecto, historia, DP o SHA de un commit" value=${q}
           onInput=${(e) => setQ(e.target.value)} onKeyDown=${tecla} role="combobox" aria-expanded="true" aria-controls="res-paleta"
           aria-activedescendant=${res.length ? "op-paleta-" + i : undefined} autocomplete="off" spellcheck=${false} /></label>
       <ul class="res-paleta" id="res-paleta" role="listbox" ref=${lista}>

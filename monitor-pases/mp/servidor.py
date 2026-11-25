@@ -22,6 +22,7 @@ from . import pase as P
 from .clasificar import clasificar
 from .config import recurso
 from .asistente import Asistente
+from .jira import Jira
 from .diffs import Diffs
 from .ghe import ErrorGHE, api_de_host
 from .navegar import Navegar
@@ -60,7 +61,8 @@ class App:
         self.diffs = Diffs(config, monitor)
         self.nav = Navegar(config, monitor, self.diffs)
         self.copilot = Asistente(config, monitor, self.ses, demo)
-        monitor.despues_de_sincronizar = self.publicar
+        self.jira = Jira(config, monitor, demo)
+        monitor.despues_de_sincronizar = self.tras_sincronizar
         self.pestanas = {}  # id de cada pestaña abierta -> último latido
         self.tuvo_pestana = False
         self.vacia_desde = None
@@ -102,6 +104,12 @@ class App:
                     return
 
         threading.Thread(target=bucle, name="vigilar-pestanas", daemon=True).start()
+
+    def tras_sincronizar(self):
+        try:
+            self.publicar()
+        finally:
+            self.jira.sincronizar()  # con lo nuevo de GitHub (claves de los commits, features, releases)
 
     def publicar(self, forzar=False):
         if self.demo:
@@ -160,13 +168,26 @@ class App:
         return {"ruta": ruta}
 
     def rutas(self, metodo, ruta, q, cuerpo):
+        if metodo == "GET" and ruta == "/api/jira":
+            return self.jira.vista()
+        if metodo == "POST" and ruta == "/api/jira/conectar":
+            return self.jira.conectar(cuerpo.get("token"), cuerpo.get("usuario"), cuerpo.get("clave"))
+        if metodo == "POST" and ruta == "/api/jira/cerrar":
+            return self.jira.cerrar()
+        if metodo == "POST" and ruta == "/api/jira/sincronizar":
+            threading.Thread(target=self.jira.sincronizar, kwargs={"completa": True}, name="jira", daemon=True).start()
+            return {"pedida": True}
+        if metodo == "POST" and ruta == "/api/jira/diagnostico":
+            return self.jira.diagnostico()
+        if metodo == "POST" and ruta == "/api/jira/diagnostico/enviar":
+            return self.jira.enviar_diagnostico(cuerpo.get("id") or "")
         if metodo == "POST" and ruta == "/api/latido":
             self.latido(cuerpo.get("id") or "")
             return {"ok": True}
         if metodo == "GET" and ruta == "/api/estado":
             c = self.cfg.get()
             n = c["nfq"]
-            return dict(self.mon.resumen(), version=VERSION, demo=self.demo, carpeta=str(self.cfg.dir), sesion=self.ses.publica(),
+            return dict(self.mon.resumen(), version=VERSION, demo=self.demo, carpeta=str(self.cfg.dir), sesion=dict(self.ses.publica(), jira=self.jira.publica()),
                         dias=int(c["bbva"].get("diasActividad") or 45), filtroRepos=c["bbva"].get("filtroRepos") or "",
                         nfq={"repo": n.get("repo"), "rama": n.get("rama") or "main", "carpeta": n.get("carpeta") or "",
                              "listo": bool(n.get("repo") and n.get("token")) and not self.demo},
@@ -180,7 +201,7 @@ class App:
             return d
         # Sesiones (Git Credential Manager)
         if metodo == "GET" and ruta == "/api/sesion":
-            return self.ses.publica()
+            return dict(self.ses.publica(), jira=self.jira.publica())
         if metodo == "POST" and ruta == "/api/sesion/iniciar":
             self.ses.iniciar_en_segundo_plano(cuerpo.get("quien"), True, self.tras_iniciar)
             return {"ok": True}

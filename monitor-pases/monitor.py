@@ -86,9 +86,11 @@ def main():
     if a.demo:
         from mp import demo
         os.environ["MONITOR_PASES_DIR"] = os.path.join(tempfile.gettempdir(), "monitor-pases-demo")
-        _, puerto_ghe, _ = demo.arrancar()
+        _, puerto_ghe, datos_gh = demo.arrancar()
+        from mp import demo_jira
+        _, url_jira, _ = demo_jira.arrancar(datos_gh)
         cfg = Config()
-        cfg.actualizar(demo.config_demo(puerto_ghe))
+        cfg.actualizar(demo.config_demo(puerto_ghe, url_jira))
     else:
         cfg = Config()
 
@@ -120,6 +122,8 @@ def main():
     # Sesión guardada en Git (si la hay): sin abrir ventanas. Si no, la página pide iniciarla.
     for quien in ("bbva", "nfq"):
         ses.iniciar_en_segundo_plano(quien, interactiva=False, despues=app.tras_iniciar)
+    import threading
+    threading.Thread(target=lambda: app.jira.iniciar_guardada() and app.jira.sincronizar(), name="jira", daemon=True).start()
     mon.arrancar()
     url = "http://127.0.0.1:%d/" % app.puerto
     print("Monitor de pases %s%s" % (VERSION, " · DEMO con datos inventados" if a.demo else ""))

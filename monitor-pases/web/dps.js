@@ -1,7 +1,8 @@
 // Monitor de pases · DPs: cada release (release/x.y.z) es una subida y su
 // Action genera el DP. Qué componentes lleva cada DP y qué modificaciones.
 import { html, useState, useEffect, useMemo, useRef } from "./vendor/preact-htm.mjs";
-import { api, Icono, Rama, hace, fLarga, corto, plural, colorDe, leerLS, ponerLS, uniq } from "./comun.js";
+import { api, Icono, Rama, hace, fLarga, fCorta, corto, plural, colorDe, leerLS, ponerLS, uniq, jira } from "./comun.js";
+import { PanelRelease } from "./jira.js";
 import { BarraFiltros, pasa, propsDeRepos, useFacetas } from "./filtros.js";
 import { Diferencias, Cargando, Volver } from "./diffs.js";
 
@@ -41,7 +42,15 @@ function agruparDPs(lista, modo, alias) {
   return grupos;
 }
 
-function CabGrupoDP({ g, alias, ir }) {
+function ReleaseJira({ num }) {
+  const j = jira();
+  if (!j || j.sesion?.estado !== "iniciada" || !num) return null;
+  const v = (j.releases || []).find((x) => x.num === num);
+  if (!v) return html`<span class="chip chip-borde" title="La rama existe; la release aún no está en Jira">aún no está en Jira</span>`;
+  return html`<span class=${"chip " + (v.publicada ? "chip-ok" : "chip-curso")} title=${"Release de Jira " + v.nombre}>Jira: ${v.publicada ? "publicada" : "sin publicar"}${v.fecha ? " · " + fCorta(v.fecha) : ""}</span>`;
+}
+
+function CabGrupoDP({ g, alias, ir, verHistorias, historiasAbiertas }) {
   if (g.feature !== undefined) return html`<div class="grupo-cab">
     <span class="barra" style=${{ background: colorDe(g.feature) }} />
     <h2>${g.feature ? html`<span class="mono">${g.feature}</span> ${g.nombre || html`<span class="tenue">Sin nombre</span>`}` : "Sin proyecto"}</h2>
@@ -56,7 +65,10 @@ function CabGrupoDP({ g, alias, ir }) {
     <h2>${g.release ? html`Release <span class="mono">${g.release}</span>` : html`<span class="mono"><${Rama} nombre=${g.rama} /></span>`}
       <span class="tenue" style="font-weight:400">${corto(g.repo)}</span></h2>
     <span class="feats">${uniq(g.dps.flatMap((d) => d.features)).map((f) => html`<${ChipFeature} key=${f} f=${f} alias=${alias} />`)}</span>
-    <div class="acc"><button class="btn btn-s" onClick=${() => ir({ vista: "repo", repo: g.repo, sub: "codigo", ref: g.rama })}><${Icono} n="repo" /> Ver la rama</button></div></div>`;
+    ${g.release ? html`<${ReleaseJira} num=${g.release} />` : ""}
+    <div class="acc">
+      ${g.release && jira()?.sesion?.estado === "iniciada" ? html`<button class="btn btn-s" aria-expanded=${!!historiasAbiertas} onClick=${verHistorias}><${Icono} n="marcador" /> Historias</button>` : ""}
+      <button class="btn btn-s" onClick=${() => ir({ vista: "repo", repo: g.repo, sub: "codigo", ref: g.rama })}><${Icono} n="repo" /> Ver la rama</button></div></div>`;
 }
 
 export function VistaDPs({ estado, f, setF, setFacetas, ir, aviso }) {
@@ -66,6 +78,7 @@ export function VistaDPs({ estado, f, setF, setFacetas, ir, aviso }) {
   const [soloReleases, setSoloReleases] = useState(false);
   const [modo, setModo] = useState(() => leerLS("mp-agrupar-dps", "release"));
   const [nGrupos, setNGrupos] = useState(MAX_GRUPOS_DPS);
+  const [conHistorias, setConHistorias] = useState(() => new Set());
   const cargar = () => api("dps").then(setDatos, (e) => setErr(e.message));
   useEffect(() => { cargar(); }, [estado.sincro?.fin]);
   const alias = useMemo(() => Object.fromEntries(estado.proyectos.map((p) => [p.feature, p.nombre])), [estado]);
@@ -105,7 +118,9 @@ export function VistaDPs({ estado, f, setF, setFacetas, ir, aviso }) {
     </div>
     ${!(datos.dps || []).length ? html`<div class="vacio-mini">Todavía no se ha detectado ningún DP en las Actions.</div>` : ""}
     ${grupos.slice(0, nGrupos).map((g) => html`<section class="grupo" key=${g.k}>
-      <${CabGrupoDP} g=${g} alias=${alias} ir=${ir} />
+      <${CabGrupoDP} g=${g} alias=${alias} ir=${ir} historiasAbiertas=${conHistorias.has(g.k)}
+        verHistorias=${() => setConHistorias((x) => { const n = new Set(x); n.has(g.k) ? n.delete(g.k) : n.add(g.k); return n; })} />
+      ${g.release && conHistorias.has(g.k) ? html`<${PanelRelease} num=${g.release} estado=${estado} jira=${jira()} soloRepo=${g.repo} />` : ""}
       <ul class="lista-dps">${g.dps.map((d) => html`<li key=${d.cod}>
         <span class="cod-dp-c"><button class="cod-dp" onClick=${() => ir({ vista: "dp", repo: d.repo, cod: d.cod })}>${d.cod}</button>
           ${modo !== "release" ? html`<span class="donde-dp" title=${d.repo + " · " + d.rama}>${g.porRepo ? "" : corto(d.repo) + " · "}${d.release ? "release " + d.release : d.rama}</span>` : ""}</span>

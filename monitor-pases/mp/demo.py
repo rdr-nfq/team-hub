@@ -210,6 +210,13 @@ def _sha(*partes):
     return hashlib.sha1("|".join(str(p) for p in partes).encode()).hexdigest()
 
 
+def historias_de(feat):
+    """Claves (inventadas) de las historias de Jira de una feature: RDR-1xxx."""
+    todas = sorted({**PROYECTOS, **PROYECTOS_EXTRA})
+    i = todas.index(feat)
+    return ["RDR-%d" % (1000 + i * 20 + j) for j in range(4 + i % 3)]
+
+
 def _props_secundarias(repo):
     """Propiedades que tienen los repos de verdad y casi nunca sirven para filtrar (deterministas por nombre)."""
     h = int(hashlib.md5(repo.encode()).hexdigest(), 16)
@@ -286,6 +293,9 @@ class Datos:
                                         "%s: ajustes tras revisión" % feat, "%s: pruebas unitarias" % feat,
                                         "%s: renombra campos del informe" % feat, "%s: añade parámetros de entorno" % feat])})
                 commits.sort(key=lambda c: c["fecha"])
+                for c in commits:  # cada commit cita la historia de Jira en la que se trabaja
+                    hs = historias_de(feat)
+                    c["mensaje"] = "%s %s" % (hs[int(c["sha"][:6], 16) % len(hs)], c["mensaje"])
                 files = []
                 if not mergeada:
                     rutas = _rutas(tipo, rnd, feat)
@@ -377,6 +387,7 @@ class Datos:
                 for i, (n, b) in enumerate(ramas_feat):
                     sha_m = _sha(full, "release-" + rel[1], i)
                     vers.update(self.versiones.get((full, b["sha"])) or {})
+                    rcommits.extend(b["commits"])  # como en GitHub: la release trae los commits de cada feature mezclada
                     rcommits.append({"sha": sha_m, "fecha": cuando(max(0, 3 - i), 2), "autor": rnd.choice(autores),
                                      "mensaje": "Merge pull request #%d from %s/%s" % (pr_n[0], ORG, n), "files": b["files"], "padre": padre})
                     prs.append({"number": pr_n[0], "title": "%s a la release %s" % (n.split("/")[-1][:11], rel[1]), "state": "closed",
@@ -773,8 +784,9 @@ REGLAS_DEMO = [
 ]
 
 
-def config_demo(puerto_ghe):
+def config_demo(puerto_ghe, url_jira=""):
     return {
+        "jira": {"url": url_jira, "token": "", "proyectoReleases": "RDR"},
         "bbva": {"host": "demo.invalid", "api": "http://127.0.0.1:%d" % puerto_ghe, "token": "",
                  "organizaciones": [ORG], "filtroRepos": "props.uuaa:KYTL0000", "refrescoMin": 60, "proxy": "", "ca": ""},
         "nfq": {"host": "github.com", "repo": "rdr-nfq/pases-datos", "token": "", "publicarDPs": False},

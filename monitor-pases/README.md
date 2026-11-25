@@ -71,6 +71,19 @@ Las ramas `release/x.y.z` (configurable) son subidas. La Action de la release ge
 
 **En `rdr-nfq/pases-datos`** se publica `dps/<repositorio>/<DP>.json` con release, features y componentes (nombre, tipo y subida). **Sin código ni rutas.** Se hace automáticamente en cada sincronización si tienes la sesión de NFQ, o con *Publicar* en la pestaña DPs. Un DP ya publicado por otra persona del equipo no se vuelve a subir.
 
+### Jira
+
+La app une GitHub con vuestro Jira (`jira.globaldevtools.bbva.com`):
+
+- **Historias de cada commit:** las claves de Jira del mensaje (`RDR-1234 …`), con su título y estado, en Commits y en el detalle de cada rama. Las de los DPs (`DP-KYTL-…`) no cuentan.
+- **Proyectos** (pestaña nueva): cada feature (las `CIBRDR-…` de las ramas) con su nombre en Jira, estado, **SDATOOL**, enlace a Jira, cuántas de sus historias están hechas y qué tiene en GitHub (ramas, repos, DPs). Al abrir una, sus historias (las que cuelgan de ella por *Feature Link* y las que se citan en sus ramas) y en qué repos tienen commits.
+- **Releases** del proyecto RDR (todas, con buscador): sus historias (campo *tech-version*) frente a las de los commits de las ramas `release/x.y.z`, marcando las que están en Jira sin commits y las que están en la rama sin la release en Jira. Como la rama se crea antes que la release en Jira, mientras tanto se ve con las historias de sus commits. También en la pestaña DPs, botón *Historias* de cada release.
+- El SDATOOL se busca solo en la feature: enlaces entre issues, campos, enlaces remotos y descripción.
+
+**Conectar:** en la entrada, en *Proyectos* o en *Ajustes → Jira*: *Abrir Jira y crear un token* (entras con tu SSO de siempre y en *Tokens de acceso personal* creas uno), lo pegas y *Conectar*. Se guarda como las sesiones de Git, en el almacén de credenciales de Windows: solo se pide una vez. Si los tokens estuvieran desactivados, vale usuario y contraseña.
+
+**Si algo no cuadra** (un campo con otro nombre, releases con otro formato…): *Ajustes → Jira → Generar diagnóstico*. Prueba cómo está montado vuestro Jira y prepara un informe **sin contenido** (nombres de campos, cifras y formas como `9.999.9`; ni títulos, ni descripciones, ni personas). Lo revisas en pantalla y, si quieres, se envía a `pases-datos/diagnostico/` para ajustar la app. Los campos también se pueden indicar a mano en Ajustes.
+
 ### Asistentes con Copilot CLI
 
 Usan [GitHub Copilot CLI](https://github.com/github/copilot-cli) con tu cuenta de Copilot de BBVA.
@@ -115,7 +128,7 @@ GitHub da a cada persona un número de llamadas por hora (normalmente 5.000).
 - **Nada se descarga de internet:** la interfaz va dentro.
 - **Los tokens no se guardan:** los gestiona Git. Si pones uno a mano, queda en `%USERPROFILE%\.monitor-pases\config.json`.
 - **Copilot CLI se ejecuta con Node directamente,** sin pasar por `cmd`, para que el texto de una pregunta no pueda colarse como comando.
-- **De BBVA solo sale lo que se publica en `pases-datos`:** DPs, releases, features y nombres de componentes.
+- **De BBVA solo sale lo que se publica en `pases-datos`:** DPs, releases, features y nombres de componentes. Y, si lo envías tú tras revisarlo, el diagnóstico de Jira (sin contenido).
 
 ## Configuración del equipo
 
@@ -136,9 +149,10 @@ python build/compilar.py                   # el .exe (en Windows, con pip instal
   - `navegar.py`: repositorios como en GitHub.
   - `diffs.py`: commits y diferencias.
   - `asistente.py`: Copilot CLI.
+  - `jira.py`: Jira (sesión, historias, features, releases y diagnóstico).
   - `ghe.py`: cliente de la API.
   - `servidor.py`: HTTP local.
-  - `demo.py`: GitHub simulado.
+  - `demo.py` y `demo_jira.py`: GitHub y Jira simulados.
 - `web/` es la interfaz, con Preact + htm vendorizados y sin compilar:
   - `app.js`: pestañas y Ajustes.
   - `entrada.js`: inicio de sesión.
@@ -148,5 +162,6 @@ python build/compilar.py                   # el .exe (en Windows, con pip instal
   - `copilot.js`: asistentes.
   - `filtros.js`: filtros comunes (facetas, chips, vistas guardadas).
   - `paleta.js`: «Ir a…» (`Ctrl K`).
+  - `jira.js`: Proyectos, Releases y la conexión con Jira.
 - `mp/demo.py` simula unos 170 repositorios (157 con `uuaa=KYTL0000` y otros de otra UUAA que el filtro deja fuera).
 - Al cambiar algo, sube `VERSION` en `mp/__init__.py`. Al subir a `main`, el workflow publica el `.exe` nuevo en el mismo enlace.

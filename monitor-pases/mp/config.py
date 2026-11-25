@@ -50,6 +50,7 @@ POR_DEFECTO = {
     },
     "nfq": {"host": "github.com", "api": "", "repo": "rdr-nfq/pases-datos", "rama": "main", "carpeta": "pases", "token": "",
             "proxy": "", "ca": "", "transporte": "python", "usuario": "", "publicarDPs": True},
+    "jira": {"url": "", "token": "", "proyectoReleases": "RDR", "campoFeature": "", "campoTechVersion": "", "proxy": "", "ca": ""},
     "copilot": {"entrada": "", "modelo": "", "opciones": "", "permitirComandos": False, "urlRepo": "https://{host}/{repo}.git"},
     "proyectos": {},
     "reglas": REGLAS_POR_DEFECTO,
@@ -57,7 +58,7 @@ POR_DEFECTO = {
     "puerto": 8765,
 }
 
-SECRETOS = (("bbva", "token"), ("nfq", "token"))
+SECRETOS = (("bbva", "token"), ("nfq", "token"), ("jira", "token"))
 
 
 def carpeta_datos():
@@ -114,6 +115,7 @@ CAMPOS_EQUIPO = {
     "bbva": ("host", "organizaciones", "filtroRepos", "repos", "excluirRepos", "patronRama", "patronRelease", "soloRamasDeProyecto",
              "baseProduccion", "basesRepo", "patronDP", "workflowsDP", "leerLogs", "refrescoMin", "diasActividad", "releasesPorRepo"),
     "nfq": ("host", "repo", "rama", "carpeta", "publicarDPs"),
+    "jira": ("url", "proyectoReleases", "campoFeature", "campoTechVersion"),
 }
 
 

@@ -1,0 +1,629 @@
+"""Jira (Data Center, p. ej. jira.globaldevtools.bbva.com) integrado con GitHub:
+
+- Historias de usuario de cada commit: las claves de Jira de su mensaje.
+- Features (las CIBRDR-… de las ramas): su nombre, estado, SDATOOL y las
+  historias que cuelgan de ellas (campo Feature/Epic Link).
+- Releases del proyecto (RDR por defecto): sus versiones y las historias de
+  cada una (campo tech-version). La rama release/x.y.z suele existir antes que
+  la release en Jira: entonces se ve con las historias de sus commits.
+
+Sesión: token personal de Jira (se crea en la web de Jira, con el SSO de
+siempre) o usuario y contraseña. Se guarda con Git (Git Credential Manager →
+almacén de credenciales de Windows), como las de GitHub: la app no lo escribe
+en disco. Todo lo de Jira se queda en la VDI; solo sale el diagnóstico que la
+persona revisa y envía, que lleva estructura (nombres de campos, cifras y
+formas como «9.999.9»), nunca títulos, descripciones ni personas.
+"""
+
+import base64
+import collections
+import datetime as dt
+import json
+import re
+import ssl
+import threading
+import time
+import traceback
+import urllib.error
+import urllib.parse
+import urllib.request
+
+from . import VERSION
+from .config import escribir_json, leer_json
+from .ghe import ErrorGHE, _diagnostico
+from .sesion import _git_credencial
+
+# Clave de Jira (PROYECTO-123) que no sea parte de otra (DP-KYTL-123 no da KYTL-123).
+RE_CLAVE = re.compile(r"(?<![A-Za-z0-9_-])([A-Z][A-Z0-9_]{1,15}-\d{1,7})(?![A-Za-z0-9])")
+RE_SDATOOL = re.compile(r"\bSDATOOL-\d{2,7}\b", re.I)
+RE_VERSION = re.compile(r"(?<![\d.])(\d+\.\d+(?:\.\d+){0,2})(?![\d])")
+MARCA_TOKEN = "token-monitor-pases"  # «usuario» con el que se guarda un token en Git
+CAMPOS_BASE = ["summary", "status", "issuetype", "assignee", "fixVersions", "updated", "project"]
+TROZO = 80          # claves por consulta (key in (...))
+REFRESCO_MIN = 30   # cada cuánto se vuelven a pedir las ya conocidas
+PAGINA_PATS = "/secure/ViewProfile.jspa?selectedTab=com.atlassian.pats.pats-plugin:jira-user-personal-access-tokens"
+
+
+def _ahora():
+    return dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def claves_en(texto):
+    return RE_CLAVE.findall(texto or "")
+
+
+def forma(valor):
+    """La forma de un valor sin el valor: los dígitos pasan a 9 (2.108.0 → 9.999.9)."""
+    return re.sub(r"\d", "9", str(valor))[:60]
+
+
+def _texto_valor(v):
+    """Un valor de campo de Jira como texto (cadena, opción, versión, lista…)."""
+    if v is None:
+        return ""
+    if isinstance(v, list):
+        return ", ".join(t for t in (_texto_valor(x) for x in v) if t)
+    if isinstance(v, dict):
+        return str(v.get("name") or v.get("value") or v.get("key") or v.get("displayName") or "")
+    return str(v)
+
+
+def _tipo_valor(v):
+    if isinstance(v, list):
+        return "lista de " + (_tipo_valor(v[0]) if v else "nada")
+    if isinstance(v, dict):
+        return "objeto(" + ",".join(k for k in ("id", "key", "name", "value") if k in v) + ")"
+    return type(v).__name__
+
+
+class ClienteJira:
+    """REST de Jira Data Center (/rest/api/2) con la sesión de la persona."""
+
+    def __init__(self, url, auth, proxy="", ca="", timeout=30):
+        self.url = str(url or "").rstrip("/")
+        self.auth = auth  # ("token", token) o ("usuario", usuario, clave)
+        self.timeout = timeout
+        ctx = ssl.create_default_context(cafile=ca) if ca else ssl.create_default_context()
+        manejadores = [urllib.request.HTTPSHandler(context=ctx)]
+        if proxy:
+            manejadores.append(urllib.request.ProxyHandler({"https": proxy, "http": proxy}))
+        self._abrir = urllib.request.build_opener(*manejadores)
+        self.llamadas = 0
+        self.registro = []  # (método, forma de la ruta, estado, ms): para el diagnóstico
+
+    def _cabeceras(self):
+        h = {"Accept": "application/json", "User-Agent": "monitor-pases/" + VERSION, "X-Atlassian-Token": "no-check"}
+        if self.auth and self.auth[0] == "token":
+            h["Authorization"] = "Bearer " + self.auth[1]
+        elif self.auth and self.auth[0] == "usuario":
+            h["Authorization"] = "Basic " + base64.b64encode(("%s:%s" % (self.auth[1], self.auth[2])).encode()).decode()
+        return h
+
+    def pedir(self, metodo, ruta, params=None, cuerpo=None):
+        u = self.url + "/" + ruta.lstrip("/")
+        if params:
+            u += "?" + urllib.parse.urlencode(params)
+        h = self._cabeceras()
+        datos = None
+        if cuerpo is not None:
+            datos = json.dumps(cuerpo).encode("utf-8")
+            h["Content-Type"] = "application/json"
+        req = urllib.request.Request(u, data=datos, headers=h, method=metodo)
+        t0 = time.time()
+        try:
+            with self._abrir.open(req, timeout=self.timeout) as r:
+                estado, cab, b = r.status, {k.lower(): v for k, v in r.headers.items()}, r.read()
+        except urllib.error.HTTPError as e:
+            estado, cab = e.code, {k.lower(): v for k, v in (e.headers.items() if e.headers else [])}
+            try:
+                b = e.read()
+            except Exception:
+                b = b""
+        except (urllib.error.URLError, OSError, ssl.SSLError) as e:
+            msg, pista = _diagnostico(e)
+            raise ErrorGHE(msg.replace("GitHub", "Jira"), url=u, pista=pista)
+        self.llamadas += 1
+        self.registro.append((metodo, re.sub(r"[A-Z][A-Z0-9_]+-\d+|\d{3,}", "N", ruta.split("?")[0]), estado, int((time.time() - t0) * 1000)))
+        if "text/html" in cab.get("content-type", "") and estado < 300:
+            # Una página de inicio de sesión (SSO) en lugar de datos: la sesión no vale para la API.
+            raise ErrorGHE("Jira ha contestado con una página de inicio de sesión en vez de datos.", 401, u,
+                           "Usa un token personal de Jira (se crea en tu perfil de Jira).")
+        if estado >= 300:
+            raise self._error(estado, cab, b, u)
+        return json.loads(b.decode("utf-8") or "null") if b else None
+
+    def _error(self, estado, cab, b, u):
+        try:
+            d = json.loads(b.decode("utf-8") or "{}")
+            msgs = list(d.get("errorMessages") or []) + ["%s: %s" % kv for kv in (d.get("errors") or {}).items()]
+        except Exception:
+            msgs = []
+        motivo = cab.get("x-authentication-denied-reason", "")
+        if estado == 401:
+            return ErrorGHE("Jira no acepta la sesión (token caducado o incorrecto).", 401, u,
+                            "Vuelve a conectar Jira con un token nuevo.")
+        if estado == 403 and "CAPTCHA" in motivo.upper():
+            return ErrorGHE("Jira pide un CAPTCHA por demasiados intentos fallidos.", 403, u,
+                            "Entra una vez en la web de Jira con tu usuario y vuelve a probar.")
+        if estado == 403:
+            return ErrorGHE("Jira no te deja ver eso (sin permiso).", 403, u, None)
+        if estado == 404:
+            return ErrorGHE("No existe en Jira.", 404, u, None)
+        e = ErrorGHE("Jira ha contestado %s%s" % (estado, (": " + "; ".join(msgs)[:400]) if msgs else ""), estado, u, None)
+        e.mensajes = msgs
+        return e
+
+    def get(self, ruta, params=None):
+        return self.pedir("GET", ruta, params)
+
+    def buscar(self, jql, campos, maximo=1000):
+        """Issues de una JQL (paginando)."""
+        out, inicio = [], 0
+        while inicio < maximo:
+            d = self.pedir("POST", "rest/api/2/search", cuerpo={"jql": jql, "startAt": inicio, "maxResults": min(100, maximo - inicio),
+                                                                 "fields": campos, "validateQuery": "warn"}) or {}
+            lote = d.get("issues") or []
+            out += lote
+            inicio += len(lote)
+            if not lote or inicio >= (d.get("total") or 0):
+                break
+        return out
+
+
+class Jira:
+    def __init__(self, config, monitor, demo=False):
+        self.cfg, self.mon, self.demo = config, monitor, demo
+        self.ruta = config.dir / "jira.json"
+        d = leer_json(self.ruta, {}) or {}
+        self.issues = d.get("issues", {})       # clave -> issue (compacto)
+        self.features = d.get("features", {})   # clave -> feature (compacto, con SDATOOL e historias)
+        self.releases = d.get("releases", [])   # versiones del proyecto de releases
+        self.rel_historias = d.get("relHistorias", {})  # id de versión -> claves de historias (tech-version)
+        self.campos = d.get("campos", {})       # feature / techVersion / sdatool detectados
+        self.no_existen = set(d.get("noExisten", []))
+        self.ultima_completa = d.get("ultimaCompleta", 0)
+        self.sincro = d.get("sincro") or {"estado": "nunca"}
+        if self.sincro.get("estado") == "en curso":
+            self.sincro["estado"] = "interrumpida"
+        self.sesion = {"estado": "sin sesión"}
+        self._auth = None
+        self._c = threading.RLock()
+        self._en_curso = False
+        self._informes = {}
+
+    # ── sesión ──────────────────────────────────────────────────────────────
+    def _host(self):
+        return urllib.parse.urlparse(self.cfg.get()["jira"].get("url") or "").netloc
+
+    def _cliente(self, auth=None):
+        j = self.cfg.get()["jira"]
+        b = self.cfg.get()["bbva"]
+        return ClienteJira(j.get("url"), auth or self._auth, j.get("proxy") or b.get("proxy"), j.get("ca") or b.get("ca"))
+
+    def publica(self):
+        with self._c:
+            return dict(self.sesion)
+
+    def _probar(self, auth):
+        return self._cliente(auth).get("rest/api/2/myself") or {}
+
+    def _iniciada(self, auth, yo):
+        with self._c:
+            self._auth = auth
+            self.sesion = {"estado": "iniciada", "usuario": yo.get("name") or yo.get("key") or "", "nombre": yo.get("displayName") or "",
+                           "metodo": auth[0], "desde": time.strftime("%H:%M")}
+
+    def iniciar_guardada(self):
+        """Al arrancar: la sesión guardada en Git (si la hay), sin abrir nada."""
+        j = self.cfg.get()["jira"]
+        if not j.get("url"):
+            return False
+        try:
+            if j.get("token"):
+                auth = ("token", j["token"])
+            elif self.demo:
+                return False  # en la demo se enseña cómo se conecta
+            else:
+                d = _git_credencial("fill", self._host(), None, interactiva=False, timeout=30)
+                auth = ("token", d["password"]) if d.get("username") == MARCA_TOKEN else ("usuario", d.get("username", ""), d["password"])
+            self._iniciada(auth, self._probar(auth))
+            return True
+        except ErrorGHE as e:
+            with self._c:
+                self.sesion = {"estado": "sin sesión", "aviso": str(e) if e.estado == 401 else ""}
+            return False
+
+    def conectar(self, token=None, usuario=None, clave=None):
+        """Con un token personal (recomendado) o usuario y contraseña. Se guarda con Git si se puede."""
+        token = str(token or "").strip()
+        if token:
+            auth = ("token", token)
+        elif usuario and clave:
+            auth = ("usuario", str(usuario).strip(), str(clave))
+        else:
+            raise ValueError("Pega el token de Jira (o pon usuario y contraseña).")
+        yo = self._probar(auth)
+        guardado = False
+        if not self.demo:
+            try:
+                _git_credencial("approve", self._host(), MARCA_TOKEN if auth[0] == "token" else auth[1], auth[-1], timeout=30)
+                guardado = True
+            except ErrorGHE:
+                guardado = False
+        self._iniciada(auth, yo)
+        with self._c:
+            self.sesion["guardada"] = guardado or self.demo
+        threading.Thread(target=self.sincronizar, name="jira", daemon=True).start()
+        return self.publica()
+
+    def cerrar(self):
+        with self._c:
+            auth, self._auth = self._auth, None
+            self.sesion = {"estado": "sin sesión"}
+        if auth and not self.demo:
+            try:
+                _git_credencial("reject", self._host(), MARCA_TOKEN if auth[0] == "token" else auth[1], auth[-1], timeout=30)
+            except ErrorGHE:
+                pass
+        return self.publica()
+
+    # ── campos ──────────────────────────────────────────────────────────────
+    def _detectar_campos(self, cli, forzar=False):
+        j = self.cfg.get()["jira"]
+        if self.campos.get("_fecha", 0) > time.time() - 86400 and not forzar and \
+                self.campos.get("_config") == [j.get("campoFeature"), j.get("campoTechVersion")]:
+            return self.campos
+        todos = cli.get("rest/api/2/field") or []
+
+        def buscar(propio, patrones):
+            if propio:
+                for f in todos:
+                    if propio.lower() in (str(f.get("id")).lower(), str(f.get("name")).lower()):
+                        return f
+            for pat in patrones:
+                for f in todos:
+                    if re.fullmatch(pat, str(f.get("name") or ""), re.I):
+                        return f
+            return None
+
+        def resumen(f):
+            if not f:
+                return None
+            sch = f.get("schema") or {}
+            return {"id": f.get("id"), "nombre": f.get("name"), "tipo": sch.get("type"), "items": sch.get("items"),
+                    "custom": (sch.get("custom") or "").split(":")[-1], "jql": "cf[%s]" % f["id"].split("_")[-1]
+                    if str(f.get("id", "")).startswith("customfield_") else '"%s"' % f.get("name")}
+
+        campos = {
+            "feature": resumen(buscar(j.get("campoFeature"), [r"feature[ _-]?link", r"epic[ _-]?link", r"parent[ _-]?link", r"feature"])),
+            "techVersion": resumen(buscar(j.get("campoTechVersion"), [r"tech[ _-]?version", r"technical[ _-]?version", r"tech.*version"])),
+            "sdatool": [resumen(f) for f in todos if re.search(r"sdatool", str(f.get("name") or ""), re.I)],
+            "_fecha": time.time(), "_config": [j.get("campoFeature"), j.get("campoTechVersion")],
+            "_interesantes": [resumen(f) for f in todos if re.search(
+                r"feature|epic|tech|version|sdatool|release|deploy|parent|traspaso|link", str(f.get("name") or ""), re.I)][:60],
+        }
+        with self._c:
+            self.campos = campos
+        return campos
+
+    def _lista_campos(self):
+        out = list(CAMPOS_BASE)
+        for k in ("feature", "techVersion"):
+            if self.campos.get(k):
+                out.append(self.campos[k]["id"])
+        return out
+
+    # ── issues ──────────────────────────────────────────────────────────────
+    def _compacta(self, i):
+        f = i.get("fields") or {}
+        cf, ct = self.campos.get("feature"), self.campos.get("techVersion")
+        feat = f.get(cf["id"]) if cf else None
+        if feat is None and isinstance(f.get("parent"), dict):
+            feat = f["parent"].get("key")
+        st = f.get("status") or {}
+        return {"k": i.get("key"), "s": (f.get("summary") or "")[:200], "e": st.get("name") or "",
+                "c": ((st.get("statusCategory") or {}).get("key") or ""), "t": (f.get("issuetype") or {}).get("name") or "",
+                "a": (f.get("assignee") or {}).get("displayName") or "", "f": _texto_valor(feat) if not isinstance(feat, dict) else feat.get("key") or "",
+                "tv": _texto_valor(f.get(ct["id"])) if ct else "", "fv": [v.get("name") for v in f.get("fixVersions") or [] if v.get("name")],
+                "u": f.get("updated") or "", "p": (f.get("project") or {}).get("key") or (i.get("key") or "").split("-")[0]}
+
+    def _por_claves(self, cli, claves, campos):
+        """Issues de esas claves; las que no existen se apuntan y no se vuelven a pedir."""
+        out = []
+        claves = [c for c in claves if c not in self.no_existen]
+        for n in range(0, len(claves), TROZO):
+            lote = claves[n:n + TROZO]
+            for _ in range(6):  # quita las claves que Jira no reconoce y repite
+                if not lote:
+                    break
+                try:
+                    out += cli.buscar("key in (%s)" % ",".join(lote), campos, maximo=len(lote))
+                    break
+                except ErrorGHE as e:
+                    if e.estado != 400:
+                        raise
+                    malas = {c for m in getattr(e, "mensajes", []) for c in claves_en(m)} & set(lote)
+                    if not malas:  # no dice cuáles: se piden de una en una para separar las buenas
+                        buenas = []
+                        for c in lote:
+                            try:
+                                buenas += cli.buscar("key = %s" % c, campos, maximo=1)
+                            except ErrorGHE as e2:
+                                if e2.estado != 400:
+                                    raise
+                                self.no_existen.add(c)
+                        out += buenas
+                        break
+                    self.no_existen |= malas
+                    lote = [c for c in lote if c not in malas]
+        return out
+
+    def claves_de_github(self):
+        """Claves de Jira que aparecen en GitHub: features de las ramas y claves de los mensajes de commit."""
+        feats, historias = set(), collections.Counter()
+        patron_dp = (self.cfg.get()["bbva"].get("patronDP") or "")
+        with self.mon._cerrojo:
+            ramas = list(self.mon.ramas.values())
+        for r in ramas:
+            if r.get("feature"):
+                feats.add(r["feature"])
+            for f in r.get("features") or []:
+                feats.add(f)
+            for c in r.get("commits") or []:
+                texto = c.get("mensaje") or ""
+                if patron_dp:
+                    texto = re.sub(patron_dp, " ", texto)
+                for k in claves_en(texto):
+                    historias[k] += 1
+        for k in feats:  # la feature citada en un mensaje es la feature, no una historia
+            historias.pop(k, None)
+        return feats, historias
+
+    def _sdatool(self, cli, i):
+        """SDATOOL de una feature y dónde está: enlaces, campos, enlaces remotos o descripción."""
+        f = i.get("fields") or {}
+        for l in f.get("issuelinks") or []:
+            otro = l.get("outwardIssue") or l.get("inwardIssue") or {}
+            if RE_SDATOOL.fullmatch(otro.get("key") or ""):
+                return [otro["key"].upper()], "enlace «%s»" % ((l.get("type") or {}).get("name") or "?")
+        for k, v in f.items():
+            if k in ("description", "issuelinks", "comment") or v in (None, "", [], {}):
+                continue
+            m = RE_SDATOOL.findall(json.dumps(v, ensure_ascii=False))
+            if m:
+                return sorted({x.upper() for x in m}), "campo %s" % k
+        try:
+            remotos = cli.get("rest/api/2/issue/%s/remotelink" % i["key"]) or []
+        except ErrorGHE:
+            remotos = []
+        m = RE_SDATOOL.findall(json.dumps(remotos, ensure_ascii=False))
+        if m:
+            return sorted({x.upper() for x in m}), "enlace remoto"
+        m = RE_SDATOOL.findall(f.get("description") or "")
+        if m:
+            return sorted({x.upper() for x in m}), "descripción"
+        return [], ""
+
+    def _consulta_release(self, v):
+        """JQL de las historias de una versión según el tipo del campo tech-version."""
+        ct = self.campos.get("techVersion")
+        if not ct:
+            return 'fixVersion = %s' % v["id"]
+        tipo, items, custom = ct.get("tipo"), ct.get("items"), ct.get("custom") or ""
+        if tipo == "version" or items == "version":
+            return "%s = %s" % (ct["jql"], v["id"])
+        if tipo == "option" or items == "option" or "select" in custom or "multicheckboxes" in custom:
+            return '%s = "%s"' % (ct["jql"], v["nombre"].replace('"', ""))
+        num = (RE_VERSION.findall(v["nombre"]) or [v["nombre"]])[0]
+        return '%s ~ "\\"%s\\""' % (ct["jql"], num.replace('"', ""))
+
+    # ── sincronización ──────────────────────────────────────────────────────
+    def sincronizar(self, completa=False):
+        with self._c:
+            if self._en_curso or self.sesion.get("estado") != "iniciada":
+                return False
+            self._en_curso = True
+        j = self.cfg.get()["jira"]
+        inicio = time.time()
+        self.sincro = {"estado": "en curso", "inicio": _ahora()}
+        cli = self._cliente()
+        try:
+            self._detectar_campos(cli)
+            campos = self._lista_campos()
+            feats, historias = self.claves_de_github()
+            refresco = completa or time.time() - self.ultima_completa > REFRESCO_MIN * 60
+            pedir = [k for k in historias if refresco or k not in self.issues]
+            nuevos = {}
+            for i in self._por_claves(cli, sorted(pedir), campos):
+                x = self._compacta(i)
+                nuevos[x["k"]] = x
+            with self._c:
+                self.issues.update(nuevos)
+            # Features: las de las ramas y las de las historias.
+            feats |= {x["f"] for x in self.issues.values() if x.get("f")}
+            feats = sorted(k for k in feats if RE_CLAVE.fullmatch(k))
+            pedir_f = [k for k in feats if refresco or k not in self.features]
+            if pedir_f:
+                completos = self._por_claves(cli, pedir_f, ["*all"])
+                for i in completos:
+                    x = self._compacta(i)
+                    x["sd"], x["sdDonde"] = self._sdatool(cli, i)
+                    x["h"] = (self.features.get(x["k"]) or {}).get("h", [])
+                    x["links"] = collections.Counter(((l.get("type") or {}).get("name") or "?") for l in (i.get("fields") or {}).get("issuelinks") or [])
+                    with self._c:
+                        self.features[x["k"]] = x
+            # Historias de cada feature (aunque no tengan commits).
+            cf = self.campos.get("feature")
+            if cf and feats and refresco:
+                hijas = collections.defaultdict(list)
+                for n in range(0, len(feats), 40):
+                    lote = [k for k in feats[n:n + 40] if k not in self.no_existen]
+                    if not lote:
+                        continue
+                    try:
+                        res = cli.buscar("%s in (%s)" % (cf["jql"], ",".join(lote)), campos, maximo=2000)
+                    except ErrorGHE as e:
+                        if e.estado != 400:
+                            raise
+                        res = []
+                    for i in res:
+                        x = self._compacta(i)
+                        with self._c:
+                            self.issues[x["k"]] = x
+                        if x.get("f"):
+                            hijas[x["f"]].append(x["k"])
+                with self._c:
+                    for k in feats:
+                        if k in self.features:
+                            self.features[k]["h"] = sorted(set(hijas.get(k, [])) | {h for h, x in self.issues.items() if x.get("f") == k})
+            # Releases del proyecto y sus historias (tech-version).
+            proy = str(j.get("proyectoReleases") or "").strip()
+            if proy and refresco:
+                vs = cli.get("rest/api/2/project/%s/versions" % urllib.parse.quote(proy)) or []
+                rel = [{"id": str(v.get("id")), "nombre": v.get("name") or "", "publicada": bool(v.get("released")),
+                        "archivada": bool(v.get("archived")), "fecha": v.get("releaseDate") or "", "inicio": v.get("startDate") or "",
+                        "num": (RE_VERSION.findall(v.get("name") or "") or [""])[0]} for v in vs]
+                rel.sort(key=lambda v: (v["fecha"] or "9999", v["nombre"]), reverse=True)
+                versiones_gh = {r.get("release") for r in self.mon.ramas.values() if r.get("release")}
+                interesan = [v for v in rel if not v["archivada"] and (not v["publicada"] or v["num"] in versiones_gh
+                             or (v["fecha"] and v["fecha"] >= (dt.date.today() - dt.timedelta(days=120)).isoformat()))][:40]
+                rh = dict(self.rel_historias)
+                for v in interesan:
+                    try:
+                        res = cli.buscar(self._consulta_release(v), campos, maximo=1000)
+                    except ErrorGHE as e:
+                        if e.estado != 400:
+                            raise
+                        res = []
+                    for i in res:
+                        x = self._compacta(i)
+                        with self._c:
+                            self.issues[x["k"]] = x
+                    rh[v["id"]] = sorted(i["key"] for i in res)
+                with self._c:
+                    self.releases, self.rel_historias = rel, rh
+            if refresco:
+                self.ultima_completa = time.time()
+            self.sincro = {"estado": "ok", "fin": _ahora(), "segundos": round(time.time() - inicio, 1), "llamadas": cli.llamadas}
+        except ErrorGHE as e:
+            self.sincro = {"estado": "error", "fin": _ahora(), "error": e.como_dict()}
+            if e.estado == 401:
+                with self._c:
+                    self.sesion = {"estado": "sin sesión", "aviso": str(e)}
+        except Exception as e:  # nunca tumbar la app por Jira
+            traceback.print_exc()
+            self.sincro = {"estado": "error", "fin": _ahora(), "error": {"mensaje": "Error al leer Jira: %s" % e}}
+        finally:
+            with self._c:
+                self._en_curso = False
+            self.guardar()
+        return True
+
+    def guardar(self):
+        with self._c:
+            escribir_json(self.ruta, {"issues": dict(self.issues), "features": dict(self.features), "releases": list(self.releases),
+                                      "relHistorias": dict(self.rel_historias), "campos": dict(self.campos),
+                                      "noExisten": sorted(self.no_existen), "ultimaCompleta": self.ultima_completa, "sincro": self.sincro})
+
+    # ── para la página ──────────────────────────────────────────────────────
+    def vista(self):
+        j = self.cfg.get()["jira"]
+        with self._c:
+            return {"sesion": dict(self.sesion), "url": (j.get("url") or "").rstrip("/"), "pats": PAGINA_PATS,
+                    "proyectoReleases": j.get("proyectoReleases") or "", "sincro": dict(self.sincro, enCurso=self._en_curso),
+                    "issues": dict(self.issues), "features": {k: {kk: vv for kk, vv in v.items() if kk != "links"} for k, v in self.features.items()},
+                    "releases": list(self.releases), "relHistorias": dict(self.rel_historias),
+                    "campos": {k: v for k, v in self.campos.items() if not k.startswith("_")}}
+
+    # ── diagnóstico (lo único de Jira que puede salir, y solo si la persona lo envía) ──
+    def diagnostico(self):
+        cli = self._cliente()
+        pruebas = []
+
+        def probar(nombre, f):
+            t0 = time.time()
+            try:
+                r = f()
+                pruebas.append({"prueba": nombre, "ok": True, "ms": int((time.time() - t0) * 1000)})
+                return r
+            except ErrorGHE as e:
+                pruebas.append({"prueba": nombre, "ok": False, "estado": e.estado, "error": str(e)[:160]})
+                return None
+
+        info = probar("serverInfo", lambda: cli.get("rest/api/2/serverInfo")) or {}
+        probar("myself", lambda: cli.get("rest/api/2/myself"))
+        campos = probar("campos", lambda: self._detectar_campos(cli, forzar=True)) or self.campos
+        feats, historias = self.claves_de_github()
+        por_proy = collections.Counter(k.split("-")[0] for k in historias)
+        with self._c:
+            issues, features = dict(self.issues), dict(self.features)
+        conocidas = [issues[k] for k in historias if k in issues]
+        hist_feature = [x for x in issues.values() if x.get("f")]
+        tvs = [x["tv"] for x in issues.values() if x.get("tv")]
+        # Prueba de las consultas de release con la primera versión de cada tipo.
+        proy = str(self.cfg.get()["jira"].get("proyectoReleases") or "").strip()
+        vs = probar("versiones de %s" % proy, lambda: cli.get("rest/api/2/project/%s/versions" % urllib.parse.quote(proy))) if proy else None
+        versiones_gh = sorted({r.get("release") for r in self.mon.ramas.values() if r.get("release")})
+        consultas = []
+        for v in [x for x in (vs or []) if not x.get("archived")][-3:]:
+            vv = {"id": str(v.get("id")), "nombre": v.get("name") or ""}
+            jql = self._consulta_release(vv)
+            n = probar("historias de una versión", lambda: len(cli.buscar(jql, ["summary"], maximo=200)))
+            consultas.append({"jql": re.sub(r'= \d+|"[^"]*"', lambda m: "= <id>" if m.group().startswith("=") else '"<versión>"', jql),
+                              "resultados": n})
+            # Alternativa por fixVersion, para comparar.
+            n2 = probar("historias por fixVersion", lambda: len(cli.buscar("fixVersion = %s" % vv["id"], ["summary"], maximo=200)))
+            consultas.append({"jql": "fixVersion = <id>", "resultados": n2})
+        nombres_v = [v.get("name") or "" for v in vs or []]
+        nums_jira = {(RE_VERSION.findall(n) or [""])[0] for n in nombres_v}
+        sincro_log = []
+        try:
+            with open(self.cfg.dir / "sincro.log", encoding="utf-8") as f:
+                sincro_log = [l.rstrip("\n") for l in f.readlines()[-30:]]
+        except OSError:
+            pass
+        informe = {
+            "formato": "monitor-pases/diagnostico-jira-1", "app": VERSION, "fecha": _ahora(),
+            "servidor": {"version": info.get("version"), "tipo": info.get("deploymentType")},
+            "sesion": {"metodo": (self.sesion or {}).get("metodo"), "estado": (self.sesion or {}).get("estado")},
+            "pruebas": pruebas,
+            "llamadas": [{"metodo": m, "ruta": r, "estado": e, "ms": ms} for m, r, e, ms in cli.registro[-40:]] if hasattr(cli, "registro") else [],
+            "campos": {"feature": campos.get("feature"), "techVersion": campos.get("techVersion"), "sdatool": campos.get("sdatool"),
+                       "otrosQuePuedenServir": campos.get("_interesantes")},
+            "claves": {"enCommits": len(historias), "porProyecto": dict(por_proy.most_common(15)), "existen": len(conocidas),
+                       "noExisten": len([k for k in historias if k in self.no_existen]), "featuresEnRamas": len(feats)},
+            "tipos": dict(collections.Counter(x["t"] for x in issues.values()).most_common(12)),
+            "estados": dict(collections.Counter(x["c"] for x in issues.values())),
+            "feature": {"historiasConFeature": len(hist_feature), "historias": len(issues),
+                        "formas": dict(collections.Counter(forma(x["f"]) for x in hist_feature).most_common(5))},
+            "techVersion": {"historiasConValor": len(tvs), "formas": dict(collections.Counter(forma(t) for t in tvs).most_common(10))},
+            "sdatool": {"features": len(features), "conSdatool": len([f for f in features.values() if f.get("sd")]),
+                        "donde": dict(collections.Counter(f.get("sdDonde") or "no encontrado" for f in features.values())),
+                        "tiposDeEnlaceEnFeatures": dict(sum((collections.Counter(f.get("links") or {}) for f in features.values()), collections.Counter()).most_common(10))},
+            "releases": {"proyecto": proy, "versiones": len(vs or []), "publicadas": len([v for v in vs or [] if v.get("released")]),
+                         "formasNombre": dict(collections.Counter(forma(n) for n in nombres_v).most_common(10)),
+                         "versionesGitHub": len(versiones_gh), "formasGitHub": dict(collections.Counter(forma(v) for v in versiones_gh).most_common(5)),
+                         "coincidenConGitHub": len(set(versiones_gh) & nums_jira), "consultas": consultas},
+            "github": {"sincroLog": sincro_log},
+        }
+        ident = "%d" % (time.time() * 1000)
+        self._informes = {ident: informe}
+        return {"id": ident, "informe": informe}
+
+    def enviar_diagnostico(self, ident, usuario=""):
+        """Sube el informe que la persona ha visto (por su id) a pases-datos/diagnostico/."""
+        informe = self._informes.get(ident)
+        if not informe:
+            raise ValueError("Vuelve a generar el diagnóstico antes de enviarlo.")
+        if self.demo:
+            return {"ok": True, "fichero": "(en la demo no se envía)"}
+        from .pase import cliente_nfq
+        cfg = self.cfg.get()
+        n = cfg["nfq"]
+        cli = cliente_nfq(cfg)
+        destino = "diagnostico/jira-%s.json" % time.strftime("%Y%m%d-%H%M%S")
+        contenido = json.dumps(informe, ensure_ascii=False, indent=1) + "\n"
+        r = cli.escribir("PUT", "repos/%s/contents/%s" % (n["repo"], destino), {
+            "message": "Diagnóstico de Jira (monitor-pases %s)" % VERSION, "branch": n.get("rama") or "main",
+            "content": base64.b64encode(contenido.encode("utf-8")).decode("ascii")})
+        return {"ok": True, "fichero": ((r or {}).get("content") or {}).get("html_url") or destino}

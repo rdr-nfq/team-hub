@@ -191,3 +191,26 @@ export function Rama({ nombre }) {
   return m ? html`<span class="pre">${m[1]}</span>${m[2]}` : nombre;
 }
 
+
+/* ── Jira: lo último leído (lo pone App) y la etiqueta de una historia o feature ── */
+let JIRA = null;
+export const ponerJira = (d) => { JIRA = d; };
+export const jira = () => JIRA;
+export const issueJira = (k) => JIRA?.issues?.[k] || JIRA?.features?.[k] || null;
+export const urlJira = (k) => (JIRA?.url && k ? `${JIRA.url}/browse/${k}` : null);
+const RE_CLAVE_JIRA = /(?<![A-Za-z0-9_-])([A-Z][A-Z0-9_]{1,15}-\d{1,7})(?![A-Za-z0-9])/g;
+/** Claves de Jira de un texto (sin las de los DPs, que van como DP-KYTL-…). */
+export const clavesJira = (texto) => uniq([...String(texto || "").matchAll(RE_CLAVE_JIRA)].map((m) => m[1]));
+/** Historias citadas en un texto: las claves que Jira conoce y no son features. */
+export const historiasEn = (texto) => clavesJira(texto).filter((k) => JIRA?.issues?.[k] && !JIRA?.features?.[k]);
+export const CATEGORIA = { new: "Pendiente", indeterminate: "En curso", done: "Hecho" };
+
+export function ChipJira({ k, conTitulo }) {
+  const x = issueJira(k);
+  const url = urlJira(k);
+  const titulo = x ? `${x.t ? x.t + " · " : ""}${x.s} · ${x.e}${x.a ? " · " + x.a : ""}` : "Abrir en Jira";
+  const cuerpo = html`<span class="punto-cat" aria-hidden="true" /><span class="mono">${k}</span>${conTitulo && x?.s ? html`<span class="tit-jira">${x.s}</span>` : ""}`;
+  const cls = `chip-jira cat-${x?.c || "nada"}`;
+  return url ? html`<a class=${cls} href=${url} target="_blank" rel="noopener noreferrer" title=${titulo} onClick=${(e) => e.stopPropagation()}>${cuerpo}</a>`
+    : html`<span class=${cls} title=${titulo}>${cuerpo}</span>`;
+}

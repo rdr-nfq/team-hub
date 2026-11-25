@@ -1,7 +1,7 @@
 // Monitor de pases · commits y diferencias: la lista de todos los commits, el
 // detalle de un commit, una rama frente a producción y el visor de diffs.
 import { html, useState, useEffect, useMemo, useRef } from "./vendor/preact-htm.mjs";
-import { api, Icono, Rama, ChipDP, hace, fLarga, corto, plural, colorDe, leerLS, ponerLS, uniq } from "./comun.js";
+import { api, Icono, Rama, ChipDP, ChipJira, historiasEn, hace, fLarga, corto, plural, colorDe, leerLS, ponerLS, uniq } from "./comun.js";
 import { BarraFiltros, pasa, propsDeRepos, useFacetas } from "./filtros.js";
 
 const ESTADO_F = {
@@ -310,7 +310,7 @@ export function VistaCommits({ estado, f, setF, setFacetas, ir }) {
         <td class="c-hora num">${new Date(c.fecha).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}</td>
         <td class="c-repo">${corto(c.repo)}</td>
         <td class="c-msg"><button class="lnk" onClick=${(e) => { e.stopPropagation(); ir({ vista: "commit", repo: c.repo, sha: c.sha }); }}>${c.mensaje}</button>
-          <div class="ramas-c">${c.features.map((f) => html`<span class="punto" key=${f} style=${{ background: colorDe(f), borderRadius: "3px" }} title=${f} />`)}
+          <div class="ramas-c">${historiasEn(c.mensaje).map((k) => html`<${ChipJira} key=${k} k=${k} />`)}${c.features.map((f) => html`<span class="punto" key=${f} style=${{ background: colorDe(f), borderRadius: "3px" }} title=${f} />`)}
             ${c.ramas.slice(0, 2).map((r) => html`<span class="mono tenue" key=${r}>${r}</span>`)}${c.ramas.length > 2 ? html`<span class="tenue">+${c.ramas.length - 2}</span>` : ""}
             ${c.produccion ? html`<span class="chip chip-merg">producción</span>` : ""}</div></td>
         <td class="c-autor">${c.autor}</td>

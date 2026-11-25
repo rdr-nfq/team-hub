@@ -1,7 +1,7 @@
 // Monitor de pases · interfaz. Preact + htm vendorizados: nada se descarga de internet.
 import { html, render, useState, useEffect, useMemo, useRef, useCallback } from "./vendor/preact-htm.mjs";
 import {
-  BotonTema, CLAVE, ChipDP, ESTADO_PR, EstadoRun, FUENTE, Icono, Marca, Rama, api, clonar, colorDe, corto, fCorta, fLarga, hace, leerLS, plural, ponerColores, ponerIr, ponerLS, proximoSabado, uniq,
+  BotonTema, CLAVE, ChipDP, ponerJira, ESTADO_PR, EstadoRun, FUENTE, Icono, Marca, Rama, api, clonar, colorDe, corto, fCorta, fLarga, hace, leerLS, plural, ponerColores, ponerIr, ponerLS, proximoSabado, uniq,
 } from "./comun.js";
 import { VistaCommits, VistaCommit, VistaDiffRama } from "./diffs.js";
 import { PantallaEntrada, FilaSesion } from "./entrada.js";
@@ -10,6 +10,7 @@ import { VistaRepos, VistaRepo, VistaPR } from "./repos.js";
 import { VistaCopilot } from "./copilot.js";
 import { BarraFiltros, LateralFiltros, guardarFiltros, leerFiltros, pasa, propsDeRepos, useFacetas } from "./filtros.js";
 import { Paleta } from "./paleta.js";
+import { ConectarJira, DiagnosticoJira, SeccionJiraRama, VistaProyecto, VistaProyectos } from "./jira.js";
 
 /* ── Cabecera ── */
 function EstadoSincro({ s, cuota }) {
@@ -31,10 +32,10 @@ function EstadoSincro({ s, cuota }) {
 
 const hora = (iso) => (iso ? new Date(iso).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }) : "");
 
-const VISTAS = ["ramas", "actividad", "commits", "dps", "repos", "copilot", "pase", "ajustes"];
+const VISTAS = ["ramas", "proyectos", "actividad", "commits", "dps", "repos", "copilot", "pase", "ajustes"];
 
 function Cabecera({ estado, vista, setVista, onSync, tema, cambiarTema, abrirPaleta }) {
-  const vistas = [["ramas", "Ramas"], ["actividad", "Actividad"], ["commits", "Commits"], ["dps", "DPs"], ["repos", "Repos"],
+  const vistas = [["ramas", "Ramas"], ["proyectos", "Proyectos"], ["actividad", "Actividad"], ["commits", "Commits"], ["dps", "DPs"], ["repos", "Repos"],
     ["copilot", "Copilot"], ["pase", "Pase"], ["ajustes", "Ajustes"]];
   const ses = estado?.sesion || {};
   const enCurso = estado?.sincro?.enCurso;
@@ -248,7 +249,7 @@ function VistaRamas({ estado, f, setF, setFacetas, abierta, setAbierta, preparar
 }
 
 /* ── Detalle de una rama ── */
-function Detalle({ id, onCerrar, aviso, recargar, ir }) {
+function Detalle({ id, onCerrar, aviso, recargar, ir, jira }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState(null);
   const [nuevoDP, setNuevoDP] = useState("");
@@ -316,6 +317,8 @@ function Detalle({ id, onCerrar, aviso, recargar, ir }) {
               <button class="btn btn-s" type="submit" disabled=${!nuevoDP.trim()}>Añadir a mano</button>
             </form>
           </section>
+
+          <${SeccionJiraRama} d=${d} jira=${jira} />
 
           ${!d.esBase && html`<section class="seccion" aria-labelledby="s-comp">
             <h3 id="s-comp">Componentes <span class="chip">${d.componentes.length}</span></h3>
@@ -616,7 +619,7 @@ function Resultado({ r }) {
   return html`<div class="resultado ${r.ok ? "ok" : "mal"}" role="status">${r.texto}${r.pista ? html`<small>${r.pista}</small>` : ""}${r.extra ? html`<small>${r.extra}</small>` : ""}</div>`;
 }
 
-function VistaAjustes({ estado, aviso, recargar }) {
+function VistaAjustes({ estado, aviso, recargar, jira, recargarJira }) {
   const [cfg, setCfg] = useState(null);
   const [orig, setOrig] = useState("");
   const [res, setRes] = useState({});
@@ -769,6 +772,25 @@ function VistaAjustes({ estado, aviso, recargar }) {
         <datalist id="dl-sub-aj">${(estado.subidas || []).map((s) => html`<option value=${s} />`)}</datalist></details>` : ""}
     </section>
 
+    <section class="caja" aria-labelledby="aj-jira">
+      <h2 id="aj-jira">Jira</h2>
+      <p>Historias de cada commit, features con su SDATOOL y releases. Lo de Jira se queda en la VDI.</p>
+      <${ConectarJira} estado=${estado} jira=${jira} recargar=${recargarJira} aviso=${aviso} />
+      <div class="rejilla" style="margin-top:14px">
+        <label class="campo"><span>Dirección de Jira</span><input class="inp mono" value=${cfg.jira?.url || ""} onInput=${(e) => set(["jira", "url"], e.target.value)} placeholder="https://jira.globaldevtools.bbva.com" /></label>
+        <label class="campo"><span>Proyecto de las releases</span><input class="inp mono" value=${cfg.jira?.proyectoReleases || ""} onInput=${(e) => set(["jira", "proyectoReleases"], e.target.value)} placeholder="RDR" /></label>
+        <label class="campo"><span>Campo que une historia y feature</span><input class="inp mono" value=${cfg.jira?.campoFeature || ""} onInput=${(e) => set(["jira", "campoFeature"], e.target.value)}
+          placeholder=${jira?.campos?.feature ? `${jira.campos.feature.nombre} (encontrado solo)` : "Feature Link / Epic Link"} />
+          <small>Vacío = lo busca solo por el nombre. Vale el nombre o el id (customfield_…).</small></label>
+        <label class="campo"><span>Campo de la release de una historia</span><input class="inp mono" value=${cfg.jira?.campoTechVersion || ""} onInput=${(e) => set(["jira", "campoTechVersion"], e.target.value)}
+          placeholder=${jira?.campos?.techVersion ? `${jira.campos.techVersion.nombre} (encontrado solo)` : "tech-version"} /></label>
+      </div>
+      ${jira?.sesion?.estado === "iniciada" ? html`<div class="prueba"><button class="btn" onClick=${() => api("jira/sincronizar", {}).then(() => { aviso("Leyendo Jira…"); setTimeout(recargarJira, 1500); }, (e) => aviso(e.message, "mal"))}><${Icono} n="actualizar" /> Leer Jira ahora</button>
+        ${jira?.sincro?.fin ? html`<span class="tenue">Última lectura ${hace(jira.sincro.fin)}${jira.sincro.estado === "error" ? " · " + (jira.sincro.error?.mensaje || "con error") : ""}</span>` : ""}</div>
+        <h3 class="h-sub">Diagnóstico</h3>
+        <${DiagnosticoJira} aviso=${aviso} nfq=${estado.nfq} />` : ""}
+    </section>
+
     <section class="caja" aria-labelledby="aj-cop">
       <h2 id="aj-cop">Copilot CLI</h2>
       <p>Lo usan los asistentes de la pestaña Copilot. Se instala y se inicia sesión desde esa pestaña.</p>
@@ -832,6 +854,7 @@ function App() {
   const [filtros, setFiltrosBase] = useState(leerFiltros);
   const setFiltros = useCallback((f) => { setFiltrosBase(f); guardarFiltros(f); }, []);
   const [facetas, setFacetas] = useState(null);
+  const [jiraDatos, setJiraDatos] = useState(null);
   const [paleta, setPaleta] = useState(false);
   const [abierta, setAbierta] = useState(null);
   const [tostadas, setTostadas] = useState([]);
@@ -873,6 +896,13 @@ function App() {
     const t = setTimeout(cargar, estado?.sincro?.enCurso ? 2000 : 30000);
     return () => clearTimeout(t);
   }, [estado, cargar]);
+  // Jira: lo último leído (historias, features, releases). Se vuelve a pedir tras cada sincronización.
+  const cargarJira = useCallback(() => api("jira").then((d) => { ponerJira(d); setJiraDatos(d); }, () => {}), []);
+  useEffect(() => { cargarJira(); }, [estado?.sincro?.fin, estado?.sesion?.jira?.estado]);
+  useEffect(() => {
+    const t = setTimeout(cargarJira, jiraDatos?.sincro?.enCurso ? 2500 : 60000);
+    return () => clearTimeout(t);
+  }, [jiraDatos, cargarJira]);
   if (estado) ponerColores(estado.proyectos.map((p) => p.feature));
 
   const sincronizar = async () => {
@@ -917,7 +947,7 @@ function App() {
   }, []);
 
   if (!estado) return html`<p class="arranque" role=${errorCarga ? "alert" : "status"}>${errorCarga ? "No se puede hablar con la app: " + errorCarga : "Cargando el monitor…"}</p>`;
-  if (!dentro) return html`<${PantallaEntrada} estado=${estado} tema=${tema} cambiarTema=${cambiarTema} entrar=${() => { setDentro(true); cargar(); }} />`;
+  if (!dentro) return html`<${PantallaEntrada} estado=${estado} jira=${jiraDatos} recargarJira=${cargarJira} tema=${tema} cambiarTema=${cambiarTema} entrar=${() => { setDentro(true); cargar(); }} />`;
   const conLateral = ["ramas", "actividad", "commits", "dps", "repos"].includes(vista);
   const comun = { estado, f: filtros, setF: setFiltros, setFacetas, ir };
   return html`<div class="marco">
@@ -928,6 +958,9 @@ function App() {
       <main class="principal" id="principal">
         ${estado.sincro?.primeraCarga && estado.configurado && ["ramas", "actividad", "commits", "dps", "repos"].includes(vista) && html`<div class="contenido-pc"><${PrimeraCarga} s=${estado.sincro} /></div>`}
         ${vista === "ramas" && html`<${VistaRamas} ...${comun} abierta=${abierta} setAbierta=${setAbierta} preparar=${preparar} setVista=${setVista} />`}
+        ${vista === "proyectos" && html`<${VistaProyectos} estado=${estado} jira=${jiraDatos} ir=${ir} preparar=${preparar} recargarJira=${cargarJira} aviso=${aviso} />`}
+        ${vista === "proyecto" && html`<${VistaProyecto} key=${ruta.feature} feature=${ruta.feature} estado=${estado} jira=${jiraDatos} ir=${ir} volver=${volver}
+          preparar=${preparar} setF=${setFiltros} f=${filtros} setAbierta=${setAbierta} />`}
         ${vista === "actividad" && html`<${VistaActividad} ...${comun} setAbierta=${setAbierta} />`}
         ${vista === "commits" && html`<${VistaCommits} ...${comun} />`}
         ${vista === "dps" && html`<${VistaDPs} ...${comun} aviso=${aviso} />`}
@@ -939,12 +972,12 @@ function App() {
         ${vista === "commit" && html`<${VistaCommit} key=${ruta.repo + ruta.sha} repo=${ruta.repo} sha=${ruta.sha} volver=${volver} ir=${ir} aviso=${aviso} />`}
         ${vista === "diff" && html`<${VistaDiffRama} key=${ruta.id} id=${ruta.id} foco=${ruta.foco} volver=${volver} ir=${ir} />`}
         ${vista === "pase" && html`<${VistaPase} estado=${estado} aviso=${aviso} preseleccion=${presel} limpiarPreseleccion=${() => setPresel(null)} />`}
-        ${vista === "ajustes" && html`<${VistaAjustes} estado=${estado} aviso=${aviso} recargar=${cargar} />`}
+        ${vista === "ajustes" && html`<${VistaAjustes} estado=${estado} aviso=${aviso} recargar=${cargar} jira=${jiraDatos} recargarJira=${cargarJira} />`}
       </main>
     </div>
     ${paleta && html`<${Paleta} estado=${estado} cerrar=${() => setPaleta(false)} ir=${ir} abrirRama=${(id) => setAbierta(id)}
       filtrarProyecto=${(p) => { setFiltros({ ...filtros, proyectos: [p] }); if (!["ramas", "actividad", "commits", "dps"].includes(vista)) ir({ vista: "ramas" }); }} />`}
-    ${abierta && html`<${Detalle} id=${abierta} onCerrar=${() => setAbierta(null)} aviso=${aviso} recargar=${cargar} ir=${ir} />`}
+    ${abierta && html`<${Detalle} id=${abierta} onCerrar=${() => setAbierta(null)} aviso=${aviso} recargar=${cargar} ir=${ir} jira=${jiraDatos} />`}
     <div class="tostadas" aria-live="polite">${tostadas.map((t) => html`<div class="tostada ${t.tipo === "mal" ? "mal" : ""}" key=${t.id} role=${t.tipo === "mal" ? "alert" : "status"}>
       <span>${t.texto}${t.enlace ? html` <a href=${t.enlace} target="_blank" rel="noopener noreferrer">Abrir</a>` : ""}</span></div>`)}</div>
   </div>`;

@@ -36,5 +36,9 @@
    "tipo": "Java",
    "subida": "Java"
   }
- ]
+ ],
+ "jira": {
+  "url": "https://jira.globaldevtools.bbva.com",
+  "proyectoReleases": "RDR"
+ }
 }
