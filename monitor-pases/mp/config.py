@@ -33,7 +33,9 @@ POR_DEFECTO = {
         "repos": [],
         "excluirRepos": [],
         "patronRama": r"CIBRDR-\d+",
-        "soloRamasDeProyecto": True,
+        "soloRamasDeProyecto": False,
+        "maxRamasSinCodigo": 40,
+        "patronIntegracion": r"^(develop|development|dev|integration|integracion|qa|uat|pre|preprod|staging|test)(/|$)",
         "baseProduccion": "master",
         "basesRepo": {},
         "patronRelease": r"^release/v?(?P<version>\d+(?:\.\d+)+)",
@@ -51,7 +53,7 @@ POR_DEFECTO = {
     "nfq": {"host": "github.com", "api": "", "repo": "rdr-nfq/pases-datos", "rama": "main", "carpeta": "pases", "token": "",
             "proxy": "", "ca": "", "transporte": "python", "usuario": "", "publicarDPs": True},
     "jira": {"url": "", "token": "", "proyectoReleases": "CIBRDR", "campoFeature": "", "campoTechVersion": "", "proxy": "", "ca": "", "navegador": "",
-             "proyectoProyectos": "", "tiposProyecto": "Feature, Task", "estadoFin": "Deployed"},
+             "proyectoProyectos": "", "tiposProyecto": "Feature, Task", "estadoFin": "Deployed, Discarded"},
     "copilot": {"entrada": "", "modelo": "", "opciones": "", "permitirComandos": False, "urlRepo": "https://{host}/{repo}.git"},
     "proyectos": {},
     "reglas": REGLAS_POR_DEFECTO,
@@ -113,7 +115,7 @@ def recurso(nombre):
 # Lo que se comparte con el equipo (config-equipo.json): todo menos tokens,
 # proxy, certificados y transporte, que son de cada equipo.
 CAMPOS_EQUIPO = {
-    "bbva": ("host", "organizaciones", "filtroRepos", "repos", "excluirRepos", "patronRama", "patronRelease", "soloRamasDeProyecto",
+    "bbva": ("host", "organizaciones", "filtroRepos", "repos", "excluirRepos", "patronRama", "patronRelease", "soloRamasDeProyecto", "maxRamasSinCodigo", "patronIntegracion",
              "baseProduccion", "basesRepo", "patronDP", "workflowsDP", "leerLogs", "refrescoMin", "diasActividad", "releasesPorRepo"),
     "nfq": ("host", "repo", "rama", "carpeta", "publicarDPs"),
     "jira": ("url", "proyectoReleases", "campoFeature", "campoTechVersion", "proyectoProyectos", "tiposProyecto", "estadoFin"),

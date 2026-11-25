@@ -97,7 +97,7 @@ class TestConGitHubSimulado(unittest.TestCase):
         r = self.mon.resumen()
         feats = {p["feature"] for p in r["proyectos"]}
         self.assertTrue({"CIBRDR-2311", "CIBRDR-2405", "CIBRDR-2442", "CIBRDR-2470", "CIBRDR-2488"} <= feats)
-        merg = [x for x in r["ramas"] if x["mergeada"] and not x.get("release")]
+        merg = [x for x in r["ramas"] if x["mergeada"] and not x.get("release") and x.get("featureRama")]
         self.assertEqual([x["id"] for x in merg], ["equipo-demo/rdr-cadenas:feature/CIBRDR-2405-informe-regulatorio"])
 
     def test_repos_filtrados_por_propiedad(self):
@@ -179,7 +179,7 @@ class TestConGitHubSimulado(unittest.TestCase):
         llama tech-version: se encuentran el proyecto por sus versiones y el campo por sus valores."""
         from mp.jira import Jira
         d = self.datos_jira
-        d.nombre_tv = "Release BBVA"
+        d.release_en_fixversion = True  # sin tech-version: la release va en Fix Version/s (y en JQL es «fixVersion»)
         self.cfg.actualizar({"jira": {"proyectoReleases": "RDR"}})
         try:
             j = Jira(self.cfg, self.mon)
@@ -188,7 +188,8 @@ class TestConGitHubSimulado(unittest.TestCase):
             j._iniciada(("token", "un-token"), {"name": "u"})
             self.assertTrue(j.sincronizar(completa=True))
             self.assertEqual(j.sincro["estado"], "ok", j.sincro)
-            self.assertEqual(j.campos["techVersion"]["nombre"], "Release BBVA")
+            self.assertEqual(j.campos["techVersion"]["id"], "fixVersions")
+            self.assertEqual(j.campos["techVersion"]["jql"], "fixVersion")
             self.assertEqual(j.campos["techVersion"]["detectado"], "por valores")
             v = j.vista()
             self.assertEqual(v["proyectoReleases"], "CIBRDR")
@@ -199,7 +200,7 @@ class TestConGitHubSimulado(unittest.TestCase):
             self.assertTrue(any(p["proyecto"] == "RDR" and not p["existe"] for p in inf["releases"]["probados"]))
             self.assertTrue(any(x["prueba"] == "buscar una clave" and x["ok"] for x in inf["pruebas"]))
         finally:
-            d.nombre_tv = "tech-version"
+            d.release_en_fixversion = False
             self.cfg.actualizar({"jira": {"proyectoReleases": "CIBRDR"}})
 
     def test_jira_proyectos_en_desarrollo_y_los_de_nfq(self):
@@ -213,10 +214,13 @@ class TestConGitHubSimulado(unittest.TestCase):
         v = j.vista()
         des = {x["k"]: x for x in v["desarrollo"]}
         self.assertEqual(v["desarrolloInfo"]["consulta"], "completa")
-        self.assertTrue(des and all(x["t"] in ("Feature", "Task") and x["e"] != "Deployed" for x in des.values()))
+        self.assertTrue(des and all(x["t"] in ("Feature", "Task") for x in des.values()))
+        # Deployed y Discarded están, pero en el histórico.
+        self.assertTrue(all(x["fin"] == (x["e"] in ("Deployed", "Discarded")) for x in des.values()))
+        self.assertTrue(des["CIBRDR-2628"]["fin"] and des["CIBRDR-2621"]["e"] == "Discarded")
         self.assertIn("Task", {x["t"] for x in des.values()})
         self.assertIn("CIBRDR-2600", des)          # en desarrollo aunque no tenga ramas
-        self.assertNotIn("CIBRDR-2628", des)       # desplegado
+
         # Marcar los de NFQ: se guardan (solo claves válidas) y sus datos se leen aunque no tengan ramas.
         r = j.guardar_nfq(["CIBRDR-2600", "cibrdr-2311", "no vale"], "alguien")
         self.assertEqual(r["claves"], ["CIBRDR-2311", "CIBRDR-2600"])
@@ -256,9 +260,15 @@ class TestConGitHubSimulado(unittest.TestCase):
         self.assertTrue(f["s"] and f["h"])
         donde = {x.get("sdDonde") or "" for x in v["features"].values()}
         self.assertIn("enlace «relates to»", donde)
+        self.assertIn("enlace «SDA project - Feature»", donde)  # como en el Jira de BBVA
+        # Una rama sin el código en el nombre: su proyecto sale de las historias de sus commits (Feature Link).
+        rama = self.mon.ramas["equipo-demo/rdr-workstation:feature/carga-nocturna"]
+        self.assertEqual(rama["featureRama"], "")
+        self.assertEqual(rama["feature"], "CIBRDR-2470")
+        self.assertIn("CIBRDR-2470", {p["feature"] for p in self.mon.resumen()["proyectos"]})
         self.assertIn("enlace remoto", donde)
         self.assertIn("", donde)
-        self.assertTrue(all(x["sd"][0].startswith("SDATOOL-") for x in v["features"].values() if x.get("sd")))
+        self.assertTrue(all(x["sd"][0].startswith(("SDATOOL-", "SDAPRJ-")) for x in v["features"].values() if x.get("sd")))
         # Releases de RDR con sus historias por tech-version (y la que no tiene commits).
         r = next(x for x in v["releases"] if x["nombre"] == "2.108.0")
         self.assertFalse(r["publicada"])

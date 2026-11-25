@@ -40,6 +40,7 @@ class DatosJira:
     def __init__(self, datos_gh):
         self.sesiones = set()
         self.proyecto_rel = "CIBRDR"     # proyecto con las versiones (releases)
+        self.release_en_fixversion = False  # como en el Jira de BBVA: sin tech-version, la release va en Fix Version/s
         self.nombre_tv = "tech-version"  # nombre del campo que une historia y release
         self.sso_automatico = False
         hoy = dt.date.today()
@@ -76,6 +77,9 @@ class DatosJira:
                 sd = "SDATOOL-%d" % (50000 + _h(feat) % 9000)
                 if i % 5 == 3:
                     self.remotos[feat] = [{"object": {"url": "https://jira.invalid/browse/" + sd, "title": sd}}]
+                elif i % 5 == 1:  # como en el Jira de BBVA: enlace «SDA project - Feature» a un issue de otro proyecto
+                    enlaces.append({"type": {"name": "SDA project - Feature"},
+                                    "inwardIssue": {"key": "SDAPRJ-%d" % (700 + i), "fields": {"summary": "Proyecto SDA"}}})
                 else:
                     enlaces.append({"type": {"name": "relates to"}, "outwardIssue": {"key": sd, "fields": {"summary": "Solicitud"}}})
             self.issues[feat] = self._issue(feat, nombre or slug.replace("-", " ").capitalize(), "Feature", ESTADOS[1 + i % 2], "CIBRDR",
@@ -95,7 +99,7 @@ class DatosJira:
         for n, nombre in enumerate(otros):
             k = "CIBRDR-%d" % (2600 + n * 7)
             tipo = "Task" if n % 3 == 2 else "Feature"
-            est = ("Deployed", "done") if n % 5 == 4 else ESTADOS[n % 3]
+            est = ("Deployed", "done") if n % 5 == 4 else ("Discarded", "done") if n % 7 == 3 else ESTADOS[n % 3]
             self.issues[k] = self._issue(k, nombre, tipo, est, "CIBRDR")
         for n, feat in enumerate(sorted(todas)):
             if n % 6 == 5:  # algunas features de las ramas ya están desplegadas
@@ -119,8 +123,20 @@ class DatosJira:
             f[CAMPO_TV] = tv
         return {"key": k, "fields": f}
 
-    # Un subconjunto de JQL: lo que pide la app.
+    def _vista(self, i):
+        """El issue como lo devuelve el Jira de la variante (release en Fix Version/s en vez de tech-version)."""
+        if not self.release_en_fixversion:
+            return i
+        f = dict(i["fields"])
+        f["fixVersions"] = f.pop(CAMPO_TV, None) or []
+        return {"key": i["key"], "fields": f}
+
     def buscar(self, jql):
+        st, res = self._buscar(jql)
+        return (st, [self._vista(i) for i in res]) if st == 200 else (st, res)
+
+    # Un subconjunto de JQL: lo que pide la app.
+    def _buscar(self, jql):
         jql = jql.strip()
         m = re.fullmatch(r"key in \(([^)]*)\)", jql) or re.fullmatch(r"key = (\S+)", jql)
         if m:
@@ -136,15 +152,18 @@ class DatosJira:
         m = re.fullmatch(r"cf\[20500\] = (\d+)", jql)
         if m:
             return 200, [i for i in self.issues.values() if any(v["id"] == m.group(1) for v in i["fields"].get(CAMPO_TV) or [])]
-        m = re.fullmatch(r'project = "(\w+)" AND (?:issuetype in \(([^)]*)\) AND )?(?:status != "([^"]+)"|statusCategory != Done) ORDER BY updated DESC', jql)
+        m = re.fullmatch(r'project = "(\w+)"(?: AND issuetype in \(([^)]*)\))? ORDER BY updated DESC', jql)
         if m:
             tipos = {t.strip().strip('"') for t in (m.group(2) or "").split(",") if t.strip()}
-            res = [i for i in self.issues.values() if i["fields"]["project"]["key"] == m.group(1)
-                   and (not tipos or i["fields"]["issuetype"]["name"] in tipos)
-                   and (i["fields"]["status"]["name"] != m.group(3) if m.group(3) else i["fields"]["status"]["statusCategory"]["key"] != "done")]
-            return 200, res
-        if re.fullmatch(r"fixVersion = \d+", jql):
-            return 200, []
+            return 200, [i for i in self.issues.values() if i["fields"]["project"]["key"] == m.group(1)
+                         and (not tipos or i["fields"]["issuetype"]["name"] in tipos)]
+        m = re.fullmatch(r"fixVersion = (\d+)", jql)
+        if m:
+            if not self.release_en_fixversion:
+                return 200, []
+            return 200, [i for i in self.issues.values() if any(v["id"] == m.group(1) for v in i["fields"].get(CAMPO_TV) or [])]
+        if jql.startswith('"Fix Version/s"'):
+            return 400, {"errorMessages": ["Field 'Fix Version/s' does not exist or you do not have permission to view it."]}
         return 400, {"errorMessages": ["La consulta JQL no es válida: %s" % jql]}
 
 
@@ -156,7 +175,7 @@ def campos(nombre_tv="tech-version"):
             {"id": CAMPO_TV, "name": nombre_tv, "custom": True,
              "schema": {"type": "array", "items": "version", "custom": "com.atlassian.jira.plugin.system.customfieldtypes:multiversion"}},
             {"id": "customfield_10007", "name": "Epic Name", "custom": True, "schema": {"type": "string"}},
-            {"id": "fixVersions", "name": "Fix Version/s", "schema": {"type": "array", "items": "version"}}]
+            {"id": "fixVersions", "name": "Fix Version/s", "clauseNames": ["fixVersion"], "schema": {"type": "array", "items": "version"}}]
 
 
 class _H(BaseHTTPRequestHandler):
@@ -231,7 +250,7 @@ class _H(BaseHTTPRequestHandler):
         if p == "/rest/api/2/serverInfo":
             return self._json(200, {"version": "9.12.15", "deploymentType": "Server"})
         if p == "/rest/api/2/field":
-            return self._json(200, campos(d.nombre_tv))
+            return self._json(200, [c for c in campos(d.nombre_tv) if not (d.release_en_fixversion and c["id"] == CAMPO_TV)])
         if p == "/rest/api/2/project":
             return self._json(200, [{"key": k, "name": "Proyecto %s" % k} for k in sorted({"CIBRDR", "CIRDR", "OTRO", d.proyecto_rel})])
         m = re.fullmatch(r"/rest/api/2/project/([A-Z0-9_]+)/versions", p)

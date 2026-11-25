@@ -31,6 +31,14 @@ La primera vez descarga la información de todos los repositorios (los de `props
 
 La pestaña principal: todas las ramas de proyecto y las **releases** (cada `release/x.y.z` es una subida).
 
+### De qué proyecto es cada rama
+La app lo deduce sola, en este orden:
+1. El código `CIBRDR-…` del **nombre de la rama**.
+2. Si el nombre no lo lleva (p. ej. `feature/carga-nocturna`), las claves `CIBRDR-…` de **sus commits**: la que más se repite.
+3. Si esa clave es una **historia**, cuenta como su **feature** en Jira (*Feature Link*).
+
+> **Consejo:** las ramas de integración (`develop`, `qa`, `uat`…) mezclan commits de muchos proyectos, así que no se asignan a ninguno. Si una rama mezcla varios sin que ninguno domine, sale en *Sin proyecto*.
+
 ### Qué se ve en cada rama
 - **Repo** y **nombre de la rama**, con su PR si lo tiene.
 - **Último commit**: mensaje, autor y cuándo. Pulsa el mensaje para ver sus cambios.
@@ -63,21 +71,28 @@ Botones del panel:
 Une GitHub con Jira. Necesita Jira conectado (si no, la pestaña te enseña cómo).
 
 ### Qué es un proyecto
-Un proyecto es una **Feature o Task de `CIBRDR` que no está en *Deployed***. En *Proyectos → En desarrollo (elegir)* salen todos los de Jira:
-- Marca los que son **de NFQ** (clic en la fila o en la casilla) y pulsa **Guardar**. *Marcar los que tienen ramas* marca de golpe los que tienen ramas abiertas en vuestros repos.
-- La selección se **comparte con el equipo** en `pases-datos` (solo las claves, como `CIBRDR-1234`) si tienes la sesión de GitHub NFQ: cuando otra persona abre la app, ve la misma.
-- Filtros: tipo (Feature, Task), marcados / sin marcar y buscador.
+Un proyecto es una **Feature o Task de `CIBRDR`**. Su nombre es siempre **el de Jira**. Los que están en **Deployed** o **Discarded** pasan al **histórico**: no se ven de primeras, pero están a un clic.
 
-Los tipos, el estado «desplegado» y el proyecto se cambian en *Ajustes → Jira*.
+En *Proyectos → En desarrollo (elegir)* salen todos los de Jira:
+1. Marca los que son **de NFQ** (clic en la fila o en la casilla).
+2. Si quieres, *Marcar los que tienen ramas* marca de golpe los que tienen ramas abiertas en vuestros repos.
+3. Pulsa **Guardar**.
+
+> **Importante:** la selección se **comparte con el equipo** en `pases-datos` (solo las claves, como `CIBRDR-1234`) si tienes la sesión de GitHub NFQ. Cuando otra persona abre la app, ve la misma.
+
+Filtros: *En desarrollo* / *Histórico*, tipo (Feature, Task), marcados / sin marcar y buscador. Los tipos, los estados terminados y el proyecto se cambian en *Ajustes → Jira*.
+
+### El histórico
+Arriba de *De NFQ* y de *En desarrollo (elegir)* está el selector **En desarrollo | Histórico**. En el histórico salen los proyectos en **Deployed** y **Discarded**, con sus ramas, historias y DPs como cualquier otro.
 
 ### Proyectos de NFQ
-Una fila por cada proyecto marcado como de NFQ (los ya desplegados se ocultan; *También los ya desplegados* los enseña). Mientras no hay ninguno marcado, salen todos los que tienen ramas. Cada fila tiene:
+Una fila por cada proyecto marcado como de NFQ que sigue en desarrollo (los terminados, en *Histórico*). Mientras no hay ninguno marcado, salen todos los que tienen ramas. Cada fila tiene:
 - **Estado en Jira**.
-- **SDATOOL**, que se busca solo en la feature: en enlaces, campos, enlaces remotos o la descripción. *sin SDATOOL* = no aparece en ninguno.
+- **SDATOOL**, que se busca solo en la feature: en el enlace *SDA project - Feature*, en las etiquetas (*labels*), en otros enlaces y campos, en los enlaces remotos o en la descripción. *sin SDATOOL* = no aparece en ninguno.
 - **Historias hechas** (barra: verde hechas, azul en curso).
 - Ramas abiertas, repos, DPs y último cambio en GitHub.
 
-Filtros: buscador, *También los ya desplegados* y *Solo sin SDATOOL* (para detectar las que falta pedir).
+Filtros: buscador, *En desarrollo* / *Histórico* y *Solo sin SDATOOL* (para detectar las que falta pedir).
 
 Al pulsar una feature ves su ficha:
 - botones *Abrir en Jira*, *Ver sus ramas* y *Preparar pase*;
@@ -204,7 +219,7 @@ Ruta de Copilot CLI, modelo, opciones y variables de entorno (proxy).
 ## Jira {#jira}
 
 ### Conectar (iniciar sesión)
-1. En la entrada, en Proyectos o en *Ajustes → Jira*, pulsa **Iniciar sesión en Jira**.
+1. En la entrada (o con **Conectar todo**), en Proyectos o en *Ajustes → Jira*, pulsa **Iniciar sesión en Jira**.
 2. Se abre Jira en **Chrome** (en **Edge** si no tienes Chrome). Entra como siempre, con tu usuario de BBVA.
 3. En cuanto estás dentro, la ventana **se cierra sola** y la app queda conectada.
 
@@ -218,9 +233,11 @@ Esa ventana usa un perfil de Chrome propio de la app: tu Chrome de siempre, con 
 *Desconectar* (en *Ajustes → Jira*) borra la sesión guardada en ese perfil.
 
 ### Qué saca de Jira
-- **Historias de los commits**: las claves de Jira de cada mensaje (`RDR-1234 …`). Las de los DPs (`DP-KYTL-…`) no cuentan.
-- **Features**: nombre, estado, SDATOOL y sus historias (campo *Feature Link* / *Epic Link*).
-- **Releases** del proyecto CIBRDR y sus historias (campo *tech-version*: si en vuestro Jira se llama de otra forma, la app lo encuentra por sus valores).
+- **Historias de los commits**: las claves de Jira de cada mensaje (`CIBRDR-1234 …`). Las de los DPs (`DP-KYTL-…`) no cuentan.
+- **Proyectos**: las Features y Tasks de CIBRDR con su nombre, estado, SDATOOL y sus historias (campo *Feature Link*).
+- **Releases** de CIBRDR (`tech-kytl-…`) y sus historias. En vuestro Jira la release de una historia está en **Fix Version/s**; la app lo encuentra sola por sus valores.
+
+> **Consejo:** la app no escribe nada en Jira: solo lee.
 
 ### Diagnóstico
 Si algo no cuadra (un campo con otro nombre, releases con otro formato…), usa *Ajustes → Jira → Generar diagnóstico*:
@@ -267,16 +284,37 @@ Escribe un trozo del nombre de un repositorio, una rama, una release, un proyect
 
 ## Problemas frecuentes {#problemas}
 
-- **«Primera carga en pausa»**: normal. GitHub limita las consultas por hora y la app sigue sola a la hora indicada.
-- **No me deja iniciar sesión en GitHub**: comprueba que Git tiene el gestor de credenciales (`git config --get credential.helper`). Si no, pon un token personal en *Ajustes*.
-- **No encuentra Copilot CLI**: si en una terminal te funciona `gh copilot`, escribe `gh copilot` en *Ajustes → Copilot → Ruta de Copilot CLI*; si te funciona `copilot`, pega ahí la ruta de `where copilot`. La pestaña Copilot dice qué ha encontrado y por qué lo ha descartado.
-- **Copilot o npm no conectan**: casi siempre es el proxy (`HTTPS_PROXY`, `HTTP_PROXY`, `NODE_EXTRA_CA_CERTS`).
-- **No se abre la ventana de Jira o no conecta**: puede que una política de la empresa no deje a la app leer la sesión del navegador. Usa *Otras formas de entrar* (sección *Jira*).
-- **«La sesión de Jira ha caducado»**: pulsa otra vez *Iniciar sesión en Jira*.
-- **Un proyecto sale *sin SDATOOL***: la feature de Jira no lo tiene en enlaces, campos ni descripción. Añádelo en Jira.
-- **Una historia sale *sin tech-version***: está en la rama de release, pero en Jira no tiene esa release. Revísalo en Jira.
-- **Windows bloquea el .exe**: es un ejecutable sin firma digital. SmartScreen pide «Más información → Ejecutar de todas formas»; si lo frena el antivirus, hay que pedir a sistemas que lo permita.
-- **La app se ha cerrado sola**: se cierra al cerrar su última pestaña. Vuelve a abrir el .exe.
+Pulsa cada problema para ver cómo se arregla.
+
+### «Primera carga en pausa»
+Es normal. GitHub limita las consultas por hora y la app sigue sola a la hora indicada.
+
+### No me deja iniciar sesión en GitHub
+Comprueba que Git tiene el gestor de credenciales (`git config --get credential.helper`). Si no, pon un token personal en *Ajustes*.
+
+### No encuentra Copilot CLI
+Si en una terminal te funciona `gh copilot`, escribe `gh copilot` en *Ajustes → Copilot → Ruta de Copilot CLI*; si te funciona `copilot`, pega ahí la ruta de `where copilot`. La pestaña Copilot dice qué ha encontrado y por qué lo ha descartado.
+
+### Copilot o npm no conectan
+Casi siempre es el proxy (`HTTPS_PROXY`, `HTTP_PROXY`, `NODE_EXTRA_CA_CERTS`).
+
+### No se abre la ventana de Jira o no conecta
+Puede que una política de la empresa no deje a la app leer la sesión del navegador. Usa *Otras formas de entrar* (sección *Jira*).
+
+### «La sesión de Jira ha caducado»
+Pulsa otra vez *Iniciar sesión en Jira*.
+
+### Un proyecto sale «sin SDATOOL»
+La feature de Jira no lo tiene en enlaces, campos ni descripción. Añádelo en Jira.
+
+### Una historia sale «sin release»
+Está en la rama de release, pero en Jira no tiene esa release en *Fix Version/s*. Revísalo en Jira.
+
+### Windows bloquea el .exe
+Es un ejecutable sin firma digital. SmartScreen pide «Más información → Ejecutar de todas formas»; si lo frena el antivirus, hay que pedir a sistemas que lo permita.
+
+### La app se ha cerrado sola
+Se cierra al cerrar su última pestaña. Vuelve a abrir el .exe.
 
 ## Atajos de teclado {#atajos}
 

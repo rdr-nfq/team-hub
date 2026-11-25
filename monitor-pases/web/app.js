@@ -733,7 +733,8 @@ function VistaAjustes({ estado, aviso, recargar, jira, recargarJira }) {
         <label class="campo"><span>Días de actividad</span><input class="inp" type="number" min="7" max="180" value=${b.diasActividad} onInput=${(e) => set(["bbva", "diasActividad"], Number(e.target.value) || 45)} /></label>
         <label class="campo"><span>Releases que se siguen por repositorio</span><input class="inp" type="number" min="1" max="20" value=${b.releasesPorRepo ?? 3} onInput=${(e) => set(["bbva", "releasesPorRepo"], Number(e.target.value) || 3)} />
           <small>Las más recientes. Las anteriores ya están en producción y leerlas gasta cuota de GitHub.</small></label>
-        <label class="interruptor"><input type="checkbox" checked=${b.soloRamasDeProyecto} onChange=${(e) => set(["bbva", "soloRamasDeProyecto"], e.target.checked)} /> Solo ramas con código de proyecto</label>
+        <label class="interruptor"><input type="checkbox" checked=${b.soloRamasDeProyecto} onChange=${(e) => set(["bbva", "soloRamasDeProyecto"], e.target.checked)} /> Solo ramas con el código del proyecto en el nombre (ahorra cuota; sin marcar, el proyecto de las demás sale de sus commits)</label>
+        ${!b.soloRamasDeProyecto ? html`<label class="campo"><span>Ramas sin código por repositorio (máximo)</span><input class="inp" type="number" min="0" value=${b.maxRamasSinCodigo ?? 40} onInput=${(e) => set(["bbva", "maxRamasSinCodigo"], Number(e.target.value) || 0)} /></label>` : ""}
         <label class="interruptor"><input type="checkbox" checked=${b.leerLogs} onChange=${(e) => set(["bbva", "leerLogs"], e.target.checked)} /> Buscar el DP en los logs si no está en el resumen</label>
       </div>
     </section>
@@ -793,7 +794,7 @@ function VistaAjustes({ estado, aviso, recargar, jira, recargarJira }) {
           placeholder=${jira?.campos?.techVersion ? `${jira.campos.techVersion.nombre} (encontrado solo)` : "tech-version"} /></label>
         <label class="campo"><span>Proyecto de los proyectos (features)</span><input class="inp mono" value=${cfg.jira?.proyectoProyectos || ""} onInput=${(e) => set(["jira", "proyectoProyectos"], e.target.value)} placeholder="Vacío = el de las releases" /></label>
         <label class="campo"><span>Tipos que son proyecto</span><input class="inp" value=${cfg.jira?.tiposProyecto || ""} onInput=${(e) => set(["jira", "tiposProyecto"], e.target.value)} placeholder="Feature, Task" /></label>
-        <label class="campo"><span>Estado de «ya desplegado»</span><input class="inp" value=${cfg.jira?.estadoFin || ""} onInput=${(e) => set(["jira", "estadoFin"], e.target.value)} placeholder="Deployed" /></label>
+        <label class="campo"><span>Estados terminados (van al histórico)</span><input class="inp" value=${cfg.jira?.estadoFin || ""} onInput=${(e) => set(["jira", "estadoFin"], e.target.value)} placeholder="Deployed, Discarded" /></label>
         <label class="campo ancho"><span>Navegador para entrar en Jira (si no lo encuentra solo)</span><input class="inp mono" value=${cfg.jira?.navegador || ""} onInput=${(e) => set(["jira", "navegador"], e.target.value)}
           placeholder="Vacío = Chrome (o Edge si no hay Chrome). Ruta de chrome.exe o msedge.exe" /></label>
       </div>
@@ -855,9 +856,17 @@ function VistaAjustes({ estado, aviso, recargar, jira, recargarJira }) {
   </div></div>`;
 }
 
+/* El nombre de cada proyecto es el de Jira (resumen de la feature o task); el de Ajustes solo si Jira no lo tiene. */
+function conNombresJira(e, j) {
+  if (!e || !j) return e;
+  const des = Object.fromEntries((j.desarrollo || []).map((x) => [x.k, x.s]));
+  const nom = (k) => (k && (j.features?.[k]?.s || des[k])) || "";
+  return { ...e, proyectos: e.proyectos.map((p) => ({ ...p, nombre: nom(p.feature) || p.nombre })) };
+}
+
 /* ── App ── */
 function App() {
-  const [estado, setEstado] = useState(null);
+  const [estadoBase, setEstado] = useState(null);
   const [errorCarga, setErrorCarga] = useState(null);
   const leerHash = () => { const v = location.hash.slice(1); return { vista: VISTAS.includes(v) ? v : "ramas" }; };
   const [ruta, setRuta] = useState(leerHash);
@@ -867,6 +876,7 @@ function App() {
   const setFiltros = useCallback((f) => { setFiltrosBase(f); guardarFiltros(f); }, []);
   const [facetas, setFacetas] = useState(null);
   const [jiraDatos, setJiraDatos] = useState(null);
+  const estado = useMemo(() => conNombresJira(estadoBase, jiraDatos), [estadoBase, jiraDatos]);
   const [paleta, setPaleta] = useState(false);
   const [ayuda, setAyuda] = useState(false);
   const [abierta, setAbierta] = useState(null);
@@ -961,7 +971,7 @@ function App() {
   }, []);
 
   if (!estado) return html`<p class="arranque" role=${errorCarga ? "alert" : "status"}>${errorCarga ? "No se puede hablar con la app: " + errorCarga : "Cargando el monitor…"}</p>`;
-  if (!dentro) return html`${ayuda && html`<${Ayuda} cerrar=${() => setAyuda(false)} vista="inicio" estado=${estado} jira=${jiraDatos} />`}<${PantallaEntrada} abrirAyuda=${() => setAyuda(true)} estado=${estado} jira=${jiraDatos} recargarJira=${cargarJira} tema=${tema} cambiarTema=${cambiarTema} entrar=${() => { setDentro(true); cargar(); }} />`;
+  if (!dentro) return html`${ayuda && html`<${Ayuda} cerrar=${() => setAyuda(false)} vista="portada" estado=${estado} jira=${jiraDatos} />`}<${PantallaEntrada} abrirAyuda=${() => setAyuda(true)} estado=${estado} jira=${jiraDatos} recargarJira=${cargarJira} tema=${tema} cambiarTema=${cambiarTema} entrar=${() => { setDentro(true); cargar(); }} />`;
   const conLateral = ["ramas", "actividad", "commits", "dps", "repos"].includes(vista);
   const comun = { estado, f: filtros, setF: setFiltros, setFacetas, ir };
   return html`<div class="marco">
@@ -989,7 +999,7 @@ function App() {
         ${vista === "ajustes" && html`<${VistaAjustes} estado=${estado} aviso=${aviso} recargar=${cargar} jira=${jiraDatos} recargarJira=${cargarJira} />`}
       </main>
     </div>
-    ${ayuda && html`<${Ayuda} cerrar=${() => setAyuda(false)} vista=${vista} estado=${estado} jira=${jiraDatos} />`}
+    ${ayuda && html`<${Ayuda} cerrar=${() => setAyuda(false)} vista=${vista} estado=${estado} jira=${jiraDatos} irVista=${(v) => ir({ vista: v })} />`}
     ${paleta && html`<${Paleta} estado=${estado} cerrar=${() => setPaleta(false)} ir=${ir} abrirRama=${(id) => setAbierta(id)}
       filtrarProyecto=${(p) => { setFiltros({ ...filtros, proyectos: [p] }); if (!["ramas", "actividad", "commits", "dps"].includes(vista)) ir({ vista: "ramas" }); }} />`}
     ${abierta && html`<${Detalle} id=${abierta} onCerrar=${() => setAbierta(null)} aviso=${aviso} recargar=${cargar} ir=${ir} jira=${jiraDatos} />`}

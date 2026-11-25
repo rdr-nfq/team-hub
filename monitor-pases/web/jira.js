@@ -170,10 +170,11 @@ export function VistaProyectos({ estado, jira, ir, preparar, recargarJira, aviso
 
 function ListaProyectos({ estado, jira, ir, preparar, elegir }) {
   const [q, setQ] = useState("");
-  const [todos, setTodos] = useState(false);  // sin marcas: también sin ramas abiertas; con marcas: también los desplegados
+  const [todos, setTodos] = useState(false);  // sin marcas: también sin ramas abiertas
+  const [hist, setHist] = useState(false);    // también los terminados (Deployed, Discarded)
   const [sinSd, setSinSd] = useState(false);
   const nfq = jira?.nfq?.claves || [];
-  const enDes = useMemo(() => new Set((jira?.desarrollo || []).map((x) => x.k)), [jira]);
+  const finDe = useMemo(() => Object.fromEntries((jira?.desarrollo || []).map((x) => [x.k, !!x.fin])), [jira]);
   const filas = useMemo(() => {
     const gh = Object.fromEntries(estado.proyectos.filter((p) => p.feature).map((p) => [p.feature, p]));
     const des = Object.fromEntries((jira?.desarrollo || []).map((x) => [x.k, x]));
@@ -183,8 +184,9 @@ function ListaProyectos({ estado, jira, ir, preparar, elegir }) {
       (b.gh?.ultima || "").localeCompare(a.gh?.ultima || "") || a.k.localeCompare(b.k, "es", { numeric: true }));
   }, [estado, jira]);
   const pq = q.trim().toLowerCase();
-  const desplegado = (x) => enDes.size && !enDes.has(x.k);
-  const visibles = filas.filter((x) => (nfq.length ? todos || !desplegado(x) : todos || x.gh?.abiertas) && (!sinSd || (x.f && !x.f.sd?.length)) &&
+  const terminado = (x) => !!finDe[x.k];
+  const nHist = filas.filter(terminado).length;
+  const visibles = filas.filter((x) => (hist ? terminado(x) : !terminado(x)) && (nfq.length || hist || todos || x.gh?.abiertas) && (!sinSd || (x.f && !x.f.sd?.length)) &&
     (!pq || [x.k, x.f?.s, x.gh?.nombre, ...(x.f?.sd || []), ...(x.gh?.repos || [])].join(" ").toLowerCase().includes(pq)));
   return html`<div>
     ${!nfq.length ? html`<p class="nota nota-nfq"><${Icono} n="marcador" /> <span>Aún no habéis marcado qué proyectos son de NFQ: ahora se ven todos los que tienen ramas.</span>
@@ -192,7 +194,11 @@ function ListaProyectos({ estado, jira, ir, preparar, elegir }) {
     <div class="filtros">
       <label class="buscar"><span class="sr">Buscar proyecto</span><${Icono} n="buscar" />
         <input class="inp" type="search" placeholder="Código, nombre, SDATOOL o repositorio" value=${q} onInput=${(e) => setQ(e.target.value)} /></label>
-      <label class="interruptor"><input type="checkbox" checked=${todos} onChange=${(e) => setTodos(e.target.checked)} /> ${nfq.length ? "También los ya desplegados" : "También sin ramas abiertas"}</label>
+      <div class="segmento" role="group" aria-label="Estado">
+        <button aria-pressed=${!hist} onClick=${() => setHist(false)}>En desarrollo</button>
+        <button aria-pressed=${hist} onClick=${() => setHist(true)} title="Deployed y Discarded">Histórico${nHist ? ` (${nHist})` : ""}</button>
+      </div>
+      ${!nfq.length && !hist ? html`<label class="interruptor"><input type="checkbox" checked=${todos} onChange=${(e) => setTodos(e.target.checked)} /> También sin ramas abiertas</label>` : ""}
       <label class="interruptor"><input type="checkbox" checked=${sinSd} onChange=${(e) => setSinSd(e.target.checked)} /> Solo sin SDATOOL</label>
       <span class="tenue">${plural(visibles.length, "proyecto", "proyectos")}</span>
     </div>
@@ -283,18 +289,21 @@ function ElegirNFQ({ estado, jira, ir, recargar, aviso }) {
   const [q, setQ] = useState("");
   const [tipo, setTipo] = useState("");
   const [ver, setVer] = useState("todos");  // todos | marcados | sin
+  const [hist, setHist] = useState(false);   // los terminados (Deployed, Discarded)
   const [guardando, setGuardando] = useState(false);
   useEffect(() => { setSel(new Set(jira?.nfq?.claves || [])); }, [jira?.nfq?.fecha]);
   const info = jira?.desarrolloInfo || {};
   const gh = useMemo(() => Object.fromEntries(estado.proyectos.filter((p) => p.feature).map((p) => [p.feature, p])), [estado]);
-  const lista = jira?.desarrollo || [];
+  const todosJira = jira?.desarrollo || [];
+  const lista = todosJira.filter((x) => !!x.fin === hist);
+  const nHist = todosJira.filter((x) => x.fin).length, nAct = todosJira.length - nHist;
   const tipos = uniq(lista.map((x) => x.t)).sort();
   const pq = q.trim().toLowerCase();
   const visibles = lista.filter((x) => (!tipo || x.t === tipo) && (ver === "todos" || (ver === "marcados") === sel.has(x.k)) &&
     (!pq || [x.k, x.s, x.e, x.a].join(" ").toLowerCase().includes(pq)));
   const cambiado = sel.size !== guardadas.length || guardadas.some((k) => !sel.has(k));
   const alternar = (k) => setSel((s0) => { const s1 = new Set(s0); s1.has(k) ? s1.delete(k) : s1.add(k); return s1; });
-  const conRamas = lista.filter((x) => gh[x.k]?.abiertas).map((x) => x.k);
+  const conRamas = hist ? [] : lista.filter((x) => gh[x.k]?.abiertas).map((x) => x.k);
   const guardar = async () => {
     setGuardando(true);
     try {
@@ -306,13 +315,18 @@ function ElegirNFQ({ estado, jira, ir, recargar, aviso }) {
   };
   if (jira?.sesion?.estado !== "iniciada" && !lista.length) return html`<div class="vacio-mini">Conecta Jira para ver los proyectos en desarrollo.</div>`;
   return html`<div>
-    <p class="suave" style="margin:0 0 12px;max-width:820px">Las <b>${(info.tipos || ["Feature", "Task"]).join(" y ")}</b> de <b class="mono">${info.proyecto || "CIBRDR"}</b>${" "}que no están en <b>${info.fin || "Deployed"}</b>. Marca las que son de NFQ: son las que se ven en <i>Proyectos</i>
+    <p class="suave" style="margin:0 0 12px;max-width:820px">Las <b>${(info.tipos || ["Feature", "Task"]).join(" y ")}</b> de <b class="mono">${info.proyecto || "CIBRDR"}</b>.${" "}
+      Las que están en <b>${info.fin || "Deployed, Discarded"}</b> van al <b>histórico</b>. Marca las que son de NFQ: son las que se ven en <i>Proyectos</i>
       ${jira?.nfq?.compartido ? html`· <span class="tenue">la selección se comparte con el equipo (pases-datos${jira.nfq.por ? ", último cambio de " + jira.nfq.por : ""}${jira.nfq.fecha ? " " + hace(jira.nfq.fecha) : ""})</span>` : ""}.</p>
     ${info.error && !lista.length ? html`<p class="nota" role="alert">Jira no acepta la consulta de proyectos: ${info.error}</p>` : ""}
-    ${info.consulta && info.consulta !== "completa" ? html`<p class="nota">Jira no reconoce ${info.consulta === "sin el estado" ? `el estado «${info.fin}»: se quitan los terminados` : "los tipos ni el estado"}. Revisa los nombres en Ajustes → Jira.</p>` : ""}
+    ${info.consulta && info.consulta !== "completa" ? html`<p class="nota">Jira no reconoce los tipos «${(info.tipos || []).join(", ")}». Revisa los nombres en Ajustes → Jira.</p>` : ""}
     <div class="filtros">
       <label class="buscar"><span class="sr">Buscar</span><${Icono} n="buscar" />
         <input class="inp" type="search" placeholder="Código, nombre, estado o responsable" value=${q} onInput=${(e) => setQ(e.target.value)} /></label>
+      <div class="segmento" role="group" aria-label="Estado">
+        <button aria-pressed=${!hist} onClick=${() => setHist(false)}>En desarrollo (${nAct})</button>
+        <button aria-pressed=${hist} onClick=${() => setHist(true)} title=${"Terminados: " + (info.fin || "Deployed, Discarded")}>Histórico (${nHist})</button>
+      </div>
       <div class="segmento" role="group" aria-label="Tipo">
         <button aria-pressed=${!tipo} onClick=${() => setTipo("")}>Todos</button>
         ${tipos.map((t) => html`<button key=${t} aria-pressed=${tipo === t} onClick=${() => setTipo(t)}>${t}</button>`)}
@@ -340,7 +354,7 @@ function ElegirNFQ({ estado, jira, ir, recargar, aviso }) {
           <span><a class="lnk mono" href=${urlJira(x.k)} target="_blank" rel="noopener noreferrer" onClick=${(e) => e.stopPropagation()}><b>${x.k}</b></a>
           <span class="nombre-proy">${x.s}</span></span></td>
         <td>${x.t}</td>
-        <td><span class=${"chip-jira cat-" + x.c}><span class="punto-cat" />${x.e}</span></td>
+        <td><span class=${"chip-jira cat-" + (/discard|descart|cancel/i.test(x.e) ? "nada" : x.c)}><span class="punto-cat" />${x.e}</span></td>
         <td class="tenue">${x.a || "—"}</td>
         <td class="c-num num">${gh[x.k]?.abiertas ? html`<button class="lnk" onClick=${(e) => { e.stopPropagation(); ir({ vista: "proyecto", feature: x.k }); }}>${gh[x.k].abiertas}</button>` : html`<span class="tenue">0</span>`}</td>
         <td class="tenue">${x.u ? hace(x.u) : "—"}</td>

@@ -56,8 +56,19 @@ La app pide a GitHub las propiedades personalizadas de esos repos (UUAA y las de
 
 El botón **?** de la cabecera (también en la entrada) abre el manual sin salir de lo que estás viendo:
 
-- **Manual:** todas las funciones explicadas, con buscador. Se abre por la sección de la pestaña en la que estás y avisa de lo que falta ahora mismo (sin sesión de NFQ, Jira sin conectar, sincronización en pausa…). Está en `web/manual.md`: al cambiar la app, se actualiza ahí.
-- **Pregúntale:** un chat que responde con **Copilot CLI** leyendo solo el manual y un resumen de la situación de la app (pestaña, sesiones, cuántos repos; nunca tokens ni código). Copilot no puede escribir ficheros ni ejecutar comandos. Sin Copilot, contesta con el trozo del manual que más se parece a la pregunta.
+- **Portada:** lo que falta ahora mismo en tu app, **recorridos guiados** («Mi primer día», «Preparar un pase», «Algo no va bien») y todas las secciones en tarjetas de color agrupadas por tema. Buscador arriba.
+- **Cada sección:** cabecera con su color e icono, botón *Ir a la pestaña*, apartados plegables con índice, pasos numerados, avisos destacados y anterior / siguiente. Se abre por la sección de la pestaña en la que estás.
+- **Pregúntale:** un chat que responde con **Copilot CLI** leyendo solo el manual y un resumen de la situación de la app (nunca tokens ni código). Copilot no puede escribir ficheros ni ejecutar comandos. Sin Copilot, contesta con el trozo del manual que más se parece.
+
+El texto está en `web/manual.md` (`## Sección {#id}`, `### Apartado`, `> **Consejo:** …` para los avisos); el color, el icono, el grupo y el resumen de cada sección, en `META` de `web/ayuda.js`.
+
+### De qué proyecto es cada rama
+
+1. El código `CIBRDR-…` del nombre de la rama.
+2. Si no lo lleva, la clave `CIBRDR-…` más citada en sus commits (por eso se leen también las ramas sin código en el nombre: primero las que tienen PR o Actions recientes, hasta `maxRamasSinCodigo` por repositorio; `soloRamasDeProyecto` lo desactiva).
+3. Si esa clave es una historia, su feature en Jira (*Feature Link*). Así Ramas, Proyectos, DPs y Pase agrupan por la feature real.
+
+Las ramas de integración (`patronIntegracion`: `develop`, `qa`, `uat`…) y las que mezclan varios proyectos sin que ninguno domine quedan *sin proyecto*.
 
 ### Filtros y navegación (pensado para 150+ repositorios)
 
@@ -83,8 +94,8 @@ Las ramas `release/x.y.z` (configurable) son subidas. La Action de la release ge
 La app une GitHub con vuestro Jira (`jira.globaldevtools.bbva.com`):
 
 - **Historias de cada commit:** las claves de Jira del mensaje (`RDR-1234 …`), con su título y estado, en Commits y en el detalle de cada rama. Las de los DPs (`DP-KYTL-…`) no cuentan.
-- **Proyectos**: un proyecto es una **Feature o Task de `CIBRDR` que no está en *Deployed*** (`project = CIBRDR AND issuetype in (Feature, Task) AND status != Deployed`; tipos, estado y proyecto se cambian en Ajustes). En *En desarrollo (elegir)* se marcan los de NFQ; la selección se guarda y, con la sesión de NFQ, se comparte en `pases-datos/equipo/proyectos-nfq.json` (solo claves). La pestaña enseña los de NFQ con su nombre en Jira, estado, **SDATOOL**, enlace a Jira, cuántas historias están hechas y qué tienen en GitHub (ramas, repos, DPs). Al abrir uno, sus historias (*Feature Link* y las citadas en sus ramas) y en qué repos tienen commits.
-- **Releases** del proyecto CIBRDR (todas, con buscador): sus historias (campo *tech-version*; si se llama de otra forma, la app lo encuentra por sus valores) frente a las de los commits de las ramas `release/x.y.z`, marcando las que están en Jira sin commits y las que están en la rama sin la release en Jira. Como la rama se crea antes que la release en Jira, mientras tanto se ve con las historias de sus commits. También en la pestaña DPs, botón *Historias* de cada release.
+- **Proyectos**: un proyecto es una **Feature o Task de `CIBRDR`**, con el nombre de Jira. Los que están en *Deployed* o *Discarded* van al **histórico** (selector *En desarrollo | Histórico*). En *En desarrollo (elegir)* se marcan los de NFQ; la selección se guarda y, con la sesión de NFQ, se comparte en `pases-datos/equipo/proyectos-nfq.json` (solo claves). La pestaña enseña los de NFQ con su estado, **SDATOOL** (enlace *SDA project - Feature*, *labels*, otros enlaces, campos o descripción), enlace a Jira, historias hechas y qué tienen en GitHub.
+- **Releases** del proyecto CIBRDR (todas, con buscador): sus historias (campo *tech-version*; en el Jira de BBVA es *Fix Version/s*, que la app encuentra sola por sus valores y consulta como `fixVersion`) frente a las de los commits de las ramas `release/x.y.z`, marcando las que están en Jira sin commits y las que están en la rama sin la release en Jira. Como la rama se crea antes que la release en Jira, mientras tanto se ve con las historias de sus commits. También en la pestaña DPs, botón *Historias* de cada release.
 - El SDATOOL se busca solo en la feature: enlaces entre issues, campos, enlaces remotos y descripción.
 
 **Conectar:** *Iniciar sesión en Jira* (en la entrada, en *Proyectos* o en *Ajustes → Jira*) abre Jira en Chrome (Edge si no hay Chrome) con un perfil propio de la app; entras con el SSO de BBVA y la app recoge la sesión por el protocolo de DevTools (solo en `127.0.0.1`) y cierra la ventana (`mp/navegador.py`). El perfil recuerda el SSO: en los siguientes arranques, y cuando la sesión caduca, entra sola sin ventana. Como alternativas: usuario y contraseña, el valor de `JSESSIONID` copiado del navegador o un token personal (en el Jira de BBVA están desactivados). Si una política impide leer la sesión del navegador, la app lo dice y ofrece esas alternativas.

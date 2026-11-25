@@ -39,6 +39,7 @@ from . import navegador
 # Clave de Jira (PROYECTO-123) que no sea parte de otra (DP-KYTL-123 no da KYTL-123).
 RE_CLAVE = re.compile(r"(?<![A-Za-z0-9_-])([A-Z][A-Z0-9_]{1,15}-\d{1,7})(?![A-Za-z0-9])")
 RE_SDATOOL = re.compile(r"\bSDATOOL-\d{2,7}\b", re.I)
+RE_ENLACE_SDA = re.compile(r"\bsda\b|sdatool", re.I)  # p. ej. «SDA project - Feature»
 RE_VERSION = re.compile(r"(?<![\d.])(\d+\.\d+(?:\.\d+){0,2})(?![\d])")
 MARCA_TOKEN = "token-monitor-pases"  # «usuario» con el que se guarda un token en Git
 CAMPOS_BASE = ["summary", "status", "issuetype", "assignee", "fixVersions", "updated", "project"]
@@ -75,9 +76,16 @@ def _resumen_campo(f):
     if not f:
         return None
     sch = f.get("schema") or {}
+    fid = str(f.get("id", ""))
+    # En JQL, los campos propios van por id (cf[123]); los de Jira, por su cláusula (fixVersion, no «Fix Version/s»).
+    clausula = next((c for c in f.get("clauseNames") or [] if not str(c).startswith("cf[")), None) or SISTEMA_JQL.get(fid)
     return {"id": f.get("id"), "nombre": f.get("name"), "tipo": sch.get("type"), "items": sch.get("items"),
-            "custom": (sch.get("custom") or "").split(":")[-1], "jql": "cf[%s]" % f["id"].split("_")[-1]
-            if str(f.get("id", "")).startswith("customfield_") else '"%s"' % f.get("name")}
+            "custom": (sch.get("custom") or "").split(":")[-1],
+            "jql": "cf[%s]" % fid.split("_")[-1] if fid.startswith("customfield_") else clausula or '"%s"' % f.get("name")}
+
+
+SISTEMA_JQL = {"fixVersions": "fixVersion", "versions": "affectedVersion", "issuelinks": "issueLink", "labels": "labels",
+               "components": "component", "parent": "parent"}
 
 
 def _tipo_valor(v):
@@ -534,18 +542,19 @@ class Jira:
         if not proy:
             return []
         tipos = [t.strip() for t in str(j.get("tiposProyecto") or "Feature, Task").split(",") if t.strip()]
-        fin = str(j.get("estadoFin") or "Deployed").strip()
+        fines = [t.strip() for t in str(j.get("estadoFin") or "Deployed, Discarded").split(",") if t.strip()]
+        fin = ", ".join(fines)
         campos = list(CAMPOS_BASE) + ([self.campos["feature"]["id"]] if self.campos.get("feature") else [])
         lista_tipos = ", ".join('"%s"' % t.replace('"', "") for t in tipos)
-        consultas = [  # de la más precisa a la más general (si Jira no conoce un tipo o estado, da 400)
-            ('project = "%s" AND issuetype in (%s) AND status != "%s" ORDER BY updated DESC' % (proy, lista_tipos, fin), "completa"),
-            ('project = "%s" AND issuetype in (%s) AND statusCategory != Done ORDER BY updated DESC' % (proy, lista_tipos), "sin el estado"),
-            ('project = "%s" AND statusCategory != Done ORDER BY updated DESC' % proy, "sin tipos ni estado"),
+        # Todos (también los terminados, para el histórico): de la consulta más precisa a la más general.
+        consultas = [
+            ('project = "%s" AND issuetype in (%s) ORDER BY updated DESC' % (proy, lista_tipos), "completa"),
+            ('project = "%s" ORDER BY updated DESC' % proy, "sin tipos"),
         ]
         res, usada, error = None, "", ""
         for jql, nombre in consultas:
             try:
-                res = cli.buscar(jql, campos, maximo=3000)
+                res = cli.buscar(jql, campos, maximo=2000)
                 usada = nombre
                 break
             except ErrorGHE as e:
@@ -556,17 +565,20 @@ class Jira:
             with self._c:
                 self.desarrollo_info = {"proyecto": proy, "error": error, "fecha": _ahora()}
             return []
-        tl, fl = {t.lower() for t in tipos}, fin.lower()
+        tl, fl = {t.lower() for t in tipos}, {x.lower() for x in fines}
         out = []
         for i in res:
             x = self._compacta(i)
-            if x["e"].lower() == fl or (usada == "sin tipos ni estado" and x["t"].lower() not in tl):
+            if usada == "sin tipos" and x["t"].lower() not in tl:
                 continue
-            out.append({k: x[k] for k in ("k", "s", "e", "c", "t", "a", "u")})
+            y = {k: x[k] for k in ("k", "s", "e", "c", "t", "a", "u")}
+            y["fin"] = x["e"].lower() in fl  # Deployed / Discarded: van al histórico
+            out.append(y)
         with self._c:
             self.desarrollo = out
-            self.desarrollo_info = {"proyecto": proy, "tipos": tipos, "fin": fin, "consulta": usada, "fecha": _ahora(), "total": len(out)}
-        return out
+            self.desarrollo_info = {"proyecto": proy, "tipos": tipos, "fin": fin, "fines": fines, "consulta": usada, "fecha": _ahora(),
+                                    "total": len(out), "activos": len([y for y in out if not y["fin"]])}
+        return [y for y in out if not y["fin"]]
 
     RUTA_NFQ = "equipo/proyectos-nfq.json"
 
@@ -688,8 +700,9 @@ class Jira:
         with self.mon._cerrojo:
             ramas = list(self.mon.ramas.values())
         for r in ramas:
-            if r.get("feature"):
-                feats.add(r["feature"])
+            for k in (r.get("feature"), r.get("featureRama")):
+                if k:
+                    feats.add(k)
             for f in r.get("features") or []:
                 feats.add(f)
             for c in r.get("commits") or []:
@@ -707,8 +720,9 @@ class Jira:
         f = i.get("fields") or {}
         for l in f.get("issuelinks") or []:
             otro = l.get("outwardIssue") or l.get("inwardIssue") or {}
-            if RE_SDATOOL.fullmatch(otro.get("key") or ""):
-                return [otro["key"].upper()], "enlace «%s»" % ((l.get("type") or {}).get("name") or "?")
+            tipo = (l.get("type") or {}).get("name") or "?"
+            if RE_SDATOOL.fullmatch(otro.get("key") or "") or RE_ENLACE_SDA.search(tipo):
+                return [otro["key"].upper()], "enlace «%s»" % tipo
         for k, v in f.items():
             if k in ("description", "issuelinks", "comment") or v in (None, "", [], {}):
                 continue
@@ -733,6 +747,7 @@ class Jira:
         if not ct:
             return 'fixVersion = %s' % v["id"]
         tipo, items, custom = ct.get("tipo"), ct.get("items"), ct.get("custom") or ""
+        ct = dict(ct, jql=SISTEMA_JQL.get(ct.get("id")) or ct["jql"])  # p. ej. un «"Fix Version/s"» guardado por la 1.7.0
         if tipo == "version" or items == "version":
             return "%s = %s" % (ct["jql"], v["id"])
         if tipo == "option" or items == "option" or "select" in custom or "multicheckboxes" in custom:
@@ -767,8 +782,22 @@ class Jira:
             feats |= set(self.nfq.get("claves") or [])  # los de NFQ, aunque no tengan ramas
             feats = sorted(k for k in feats if RE_CLAVE.fullmatch(k))
             pedir_f = [k for k in feats if refresco or k not in self.features]
-            if pedir_f:
+            tipos_proy = {t.strip().lower() for t in str(j.get("tiposProyecto") or "Feature, Task").split(",") if t.strip()}
+            for _ in range(2):  # una clave de rama que resulta ser una historia: se pide también su feature
+                if not pedir_f:
+                    break
                 completos = self._por_claves(cli, pedir_f, ["*all"])
+                pedir_f = []
+                for i in list(completos):
+                    x = self._compacta(i)
+                    if x["t"].lower() not in tipos_proy and x.get("f"):
+                        completos.remove(i)
+                        with self._c:
+                            self.issues[x["k"]] = x
+                            self.features.pop(x["k"], None)
+                        if x["f"] not in self.features and x["f"] not in feats:
+                            pedir_f.append(x["f"])
+                            feats.append(x["f"])
                 for i in completos:
                     x = self._compacta(i)
                     x["sd"], x["sdDonde"] = self._sdatool(cli, i)
@@ -832,6 +861,11 @@ class Jira:
                     rh[v["id"]] = sorted(i["key"] for i in res)
                 with self._c:
                     self.releases, self.rel_historias = rel, rh
+            # Historia -> feature: con esto la app agrupa las ramas y los commits por su feature real.
+            with self._c:
+                mapa = {k: x["f"] for k, x in self.issues.items() if x.get("f") and RE_CLAVE.fullmatch(x["f"])
+                        and (x.get("t") or "").lower() not in tipos_proy}
+            self.mon.aplicar_mapa_feature(mapa)
             if refresco:
                 self._leer_nfq_equipo()
                 self._proyectos_en_desarrollo(cli)
@@ -924,7 +958,7 @@ class Jira:
         except OSError:
             pass
         informe = {
-            "formato": "monitor-pases/diagnostico-jira-2", "app": VERSION, "fecha": _ahora(),
+            "formato": "monitor-pases/diagnostico-jira-3", "app": VERSION, "fecha": _ahora(),
             "servidor": {"version": info.get("version"), "tipo": info.get("deploymentType")},
             "sesion": {"metodo": (self.sesion or {}).get("metodo"), "estado": (self.sesion or {}).get("estado")},
             "pruebas": pruebas,
@@ -940,6 +974,9 @@ class Jira:
             "techVersion": {"historiasConValor": len(tvs), "formas": dict(collections.Counter(forma(t) for t in tvs).most_common(10))},
             "sdatool": {"features": len(features), "conSdatool": len([f for f in features.values() if f.get("sd")]),
                         "donde": dict(collections.Counter(f.get("sdDonde") or "no encontrado" for f in features.values())),
+                        "formas": dict(collections.Counter(forma(f["sd"][0]) for f in features.values() if f.get("sd")).most_common(8)),
+                        "ramasPorCommits": len([r for r in self.mon.ramas.values() if r.get("feature") and not r.get("featureRama")
+                                                and not r.get("release") and not r.get("esBase")]),
                         "tiposDeEnlaceEnFeatures": dict(sum((collections.Counter(f.get("links") or {}) for f in features.values()), collections.Counter()).most_common(10))},
             "techVersionPorValores": campos.get("_tvPuntos"),
             "desarrollo": {k: v for k, v in self._diag_desarrollo(cli, probar).items()},
@@ -954,10 +991,12 @@ class Jira:
         return {"id": ident, "informe": informe}
 
     def _diag_desarrollo(self, cli, probar):
-        out = probar("proyectos en desarrollo", lambda: self._proyectos_en_desarrollo(cli))
+        probar("proyectos en desarrollo", lambda: self._proyectos_en_desarrollo(cli))
+        out = list(self.desarrollo)
         info = dict(self.desarrollo_info)
         return {"proyecto": info.get("proyecto"), "consulta": info.get("consulta"), "error": info.get("error"), "total": len(out or []),
                 "tipos": dict(collections.Counter(x["t"] for x in out or [])), "estados": dict(collections.Counter(x["e"] for x in out or [])),
+                "historico": len([x for x in out if x.get("fin")]),
                 "marcadosNFQ": len(self.nfq.get("claves") or [])}
 
     def enviar_diagnostico(self, ident, usuario=""):

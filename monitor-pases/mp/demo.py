@@ -281,6 +281,9 @@ class Datos:
                 if feat not in feats:
                     continue
                 nombre = "feature/%s-%s" % (feat, slug)
+                sin_codigo = feat == "CIBRDR-2470" and repo == "rdr-workstation"
+                if sin_codigo:  # una rama sin el código en el nombre: su proyecto sale de las historias de sus commits
+                    nombre = "feature/carga-nocturna"
                 mergeada = (feat == "CIBRDR-2405" and repo == "rdr-cadenas")
                 n_commits = 0 if mergeada else rnd.randint(2, 7)
                 inicio = rnd.randint(8, 38)
@@ -295,7 +298,7 @@ class Datos:
                 commits.sort(key=lambda c: c["fecha"])
                 for c in commits:  # cada commit cita la historia de Jira en la que se trabaja
                     hs = historias_de(feat)
-                    c["mensaje"] = "%s %s" % (hs[int(c["sha"][:6], 16) % len(hs)], c["mensaje"])
+                    c["mensaje"] = "%s %s" % (hs[int(c["sha"][:6], 16) % len(hs)], c["mensaje"].replace(feat + ": ", "") if sin_codigo else c["mensaje"])
                 files = []
                 if not mergeada:
                     rutas = _rutas(tipo, rnd, feat)

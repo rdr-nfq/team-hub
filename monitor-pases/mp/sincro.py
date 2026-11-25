@@ -14,7 +14,7 @@ import threading
 import time
 import traceback
 import urllib.parse
-from collections import defaultdict
+from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 
 from .clasificar import buscar_dps, clave_version, componentes, feature_de_rama, features_en, version_release
@@ -64,6 +64,10 @@ def _repo_de_clave(k):
     return k.replace("#", "|").split("|")[0]
 
 
+# Una clave de Jira (PROYECTO-123) que no sea parte de otra.
+RE_CLAVE_JIRA = re.compile(r"(?<![A-Za-z0-9_-])([A-Z][A-Z0-9_]{1,15}-\d{1,7})(?![A-Za-z0-9])")
+
+
 class Monitor:
     def __init__(self, config):
         self.cfg = config
@@ -77,6 +81,9 @@ class Monitor:
         self.manuales = e.get("dpsManuales", {})
         self.borradores = e.get("borradores", {})
         self.etags = e.get("etags", {})
+        # Jira: clave citada (historia) -> su feature (Feature Link). Con ella, la feature de una rama sale de las
+        # claves de su nombre o de sus commits aunque sean historias.
+        self.mapa_feature = e.get("mapaFeature", {})
         self.sincro = e.get("sincro") or {"estado": "nunca"}
         self.ultima_completa = e.get("ultimaCompleta")  # None: la primera carga todavía no ha terminado
         if self.sincro.get("estado") == "en curso":  # la app se cerró a medias
@@ -107,6 +114,7 @@ class Monitor:
                 "cacheRuns": dict(self.cache_runs), "dpsInfo": self.dps_info, "dpsManuales": self.manuales, "borradores": self.borradores,
                 # Copia: los hilos de la sincronización añaden ETags sin el cerrojo (dict() copia de una vez).
                 "etags": dict(self.etags), "sincro": dict(self.sincro), "ultimaCompleta": self.ultima_completa,
+                "mapaFeature": dict(self.mapa_feature),
             })
 
     # ── bucle en segundo plano ──────────────────────────────────────────────
@@ -376,7 +384,7 @@ class Monitor:
         solo = b.get("soloRamasDeProyecto", True)
         patron = b.get("patronRama")
         p_rel = b.get("patronRelease")
-        elegidas = [n for n in shas if n != base and (not solo or feature_de_rama(n, patron) or version_release(n, p_rel))]
+        elegidas = [n for n in shas if n != base and (feature_de_rama(n, patron) or version_release(n, p_rel))]
         # De las releases, solo las más recientes: las antiguas ya están en producción y leerlas gasta cuota.
         n_rel = int(b.get("releasesPorRepo") or 3)
         rels = sorted((n for n in elegidas if version_release(n, p_rel)), key=lambda n: clave_version(version_release(n, p_rel)), reverse=True)
@@ -444,8 +452,17 @@ class Monitor:
             v = version_release(n, p_rel)
             x["release"] = v
             if v:  # una release es una subida: qué features lleva (ramas mezcladas y mensajes de commit)
-                x["features"] = features_en(pr_hacia.get(n, []) + [c.get("mensaje") for c in x["commits"]], patron)
+                x["featuresRaw"] = features_en(pr_hacia.get(n, []) + [c.get("mensaje") for c in x["commits"]], patron)
+            self._resolver_feature(x)
             return x
+
+        if not solo:
+            # También las ramas sin el código del proyecto en el nombre (su proyecto sale de los commits): primero
+            # las que tienen PR o ejecuciones recientes, con un tope por repositorio para no gastar cuota.
+            ya = set(elegidas) | viejas
+            resto = [n for n in shas if n != base and n not in ya]
+            resto.sort(key=lambda n: (0 if n in pr_de else 1 if n in runs_de else 2, n))
+            elegidas = elegidas + resto[:int(b.get("maxRamasSinCodigo") or 40)]
 
         with ThreadPoolExecutor(POOL_RAMAS) as ex:
             for x in ex.map(una_rama, elegidas):
@@ -489,6 +506,12 @@ class Monitor:
             out["error"] = e.como_dict()
         out.update(comp)
         out["commits"] = out.get("commits") or []
+        out["featureRama"] = out["feature"]
+        # Claves de Jira de los mensajes (sin los DPs): features o historias; Jira dice de qué feature es cada historia.
+        p_dp = b.get("patronDP") or ""
+        cuenta = Counter(k for c in out["commits"]
+                         for k in set(RE_CLAVE_JIRA.findall(re.sub(p_dp, " ", c.get("mensaje") or "") if p_dp else c.get("mensaje") or "")))
+        out["clavesCommits"] = [[k, n] for k, n in cuenta.most_common(12)]
         out["ficheros"] = out.get("ficheros") or []
         out["mergeada"] = out.get("ahead") == 0 and bool(base_sha)
         out["runs"] = self._runs(cli, cfg, full, n, runs, usadas_runs, es_release=bool(version_release(n, b.get("patronRelease"))))
@@ -699,6 +722,46 @@ class Monitor:
         with self._cerrojo:
             if clave in self.dps_info:
                 self.dps_info[clave]["publicado"] = info
+
+    # ── feature de cada rama ────────────────────────────────────────────────
+    def _resolver_feature(self, r):
+        """La feature de la rama: la clave de su nombre o, si no tiene, la más citada en sus commits; si esa clave
+        es una historia, su feature (mapa de Jira). En una release, las features que lleva."""
+        if r.get("esBase"):
+            return r
+        mapa = self.mapa_feature
+        if "featureRama" not in r:  # datos guardados por una versión anterior
+            r["featureRama"] = r.get("feature") or ""
+        f = r["featureRama"]
+        f = mapa.get(f, f) if f else ""
+        integracion = self.cfg.get()["bbva"].get("patronIntegracion") or ""
+        if not f and not r.get("release") and not (integracion and re.search(integracion, r.get("rama") or "", re.I)):
+            cuenta = Counter()
+            patron = self.cfg.get()["bbva"].get("patronRama") or ""
+            for k, n in r.get("clavesCommits") or []:
+                if k in mapa or (patron and re.fullmatch(patron, k)):
+                    cuenta[mapa.get(k, k)] += n
+            if cuenta:
+                top, n = cuenta.most_common(1)[0]
+                # Solo si una feature domina: una rama que mezcla muchas (de integración) no es de ningún proyecto.
+                f = top if n >= 0.6 * sum(cuenta.values()) else ""
+        r["feature"] = f
+        if r.get("release"):
+            if "featuresRaw" not in r:
+                r["featuresRaw"] = list(r.get("features") or [])
+            r["features"] = list(dict.fromkeys(mapa.get(k, k) for k in r["featuresRaw"]))
+        return r
+
+    def aplicar_mapa_feature(self, mapa):
+        """Jira ha leído qué historia cuelga de qué feature: se recalcula la feature de todas las ramas."""
+        with self._cerrojo:
+            if mapa == self.mapa_feature:
+                return False
+            self.mapa_feature = dict(mapa)
+            for r in self.ramas.values():
+                self._resolver_feature(r)
+        self.guardar()
+        return True
 
     # ── vistas para la página ───────────────────────────────────────────────
     def dps_de_rama(self, r):
