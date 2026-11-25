@@ -87,7 +87,7 @@ La app une GitHub con vuestro Jira (`jira.globaldevtools.bbva.com`):
 - **Releases** del proyecto RDR (todas, con buscador): sus historias (campo *tech-version*) frente a las de los commits de las ramas `release/x.y.z`, marcando las que están en Jira sin commits y las que están en la rama sin la release en Jira. Como la rama se crea antes que la release en Jira, mientras tanto se ve con las historias de sus commits. También en la pestaña DPs, botón *Historias* de cada release.
 - El SDATOOL se busca solo en la feature: enlaces entre issues, campos, enlaces remotos y descripción.
 
-**Conectar:** en la entrada, en *Proyectos* o en *Ajustes → Jira* hay una guía paso a paso: *Abrir Jira* (entras con tu SSO de siempre), tu foto → *Perfil* → *Tokens de acceso personal* → *Crear token*, lo copias, lo pegas y *Conectar*. Debajo, las dudas típicas (caducidad, permisos, qué hacer si no aparece la opción). Se guarda como las sesiones de Git, en el almacén de credenciales de Windows: solo se pide una vez. Si los tokens estuvieran desactivados, vale usuario y contraseña.
+**Conectar:** *Iniciar sesión en Jira* (en la entrada, en *Proyectos* o en *Ajustes → Jira*) abre una ventana de Edge con un perfil propio de la app; entras con el SSO de BBVA y la app recoge la sesión por el protocolo de DevTools (solo en `127.0.0.1`) y cierra la ventana (`mp/navegador.py`). El perfil recuerda el SSO: en los siguientes arranques, y cuando la sesión caduca, entra sola sin ventana. Como alternativas: usuario y contraseña, el valor de `JSESSIONID` copiado del navegador o un token personal (en el Jira de BBVA están desactivados). Si una política impide leer la sesión de Edge, la app lo dice y ofrece esas alternativas.
 
 **Si algo no cuadra** (un campo con otro nombre, releases con otro formato…): *Ajustes → Jira → Generar diagnóstico*. Prueba cómo está montado vuestro Jira y prepara un informe **sin contenido** (nombres de campos, cifras y formas como `9.999.9`; ni títulos, ni descripciones, ni personas). Lo revisas en pantalla y, si quieres, se envía a `pases-datos/diagnostico/` para ajustar la app. Los campos también se pueden indicar a mano en Ajustes.
 
@@ -97,7 +97,7 @@ Usan [GitHub Copilot CLI](https://github.com/github/copilot-cli) con tu cuenta d
 
 **Prepararlo** (la pestaña Copilot lo comprueba):
 1. Hace falta Node.js 22 o superior.
-2. La app encuentra Copilot CLI esté instalado como esté: en el PATH (`copilot.exe` o el de npm), con npm en cualquier carpeta, winget, nvm o dentro de VS Code. Si no lo encuentra, en una terminal donde funcione ejecuta `where copilot` y pega esa ruta en *Ajustes → Copilot*. Si no lo tienes, el botón **Instalar** ejecuta `npm install -g @github/copilot`.
+2. La app encuentra Copilot CLI esté instalado como esté: `gh copilot` (GitHub CLI), en el PATH (`copilot.exe` o el de npm), con npm en cualquier carpeta, winget o nvm. Cada candidato se prueba con `--version` y se descarta si no es Copilot CLI (p. ej. el `copilot-debug` de VS Code). Si no lo encuentra, escribe `gh copilot` o la ruta de `where copilot` en *Ajustes → Copilot*. Si no lo tienes, el botón **Instalar** ejecuta `npm install -g @github/copilot`.
 3. Si npm no conecta, suele ser el proxy: define `HTTPS_PROXY` y `HTTP_PROXY` en las variables de entorno de tu usuario o en *Ajustes → Copilot*, y `NODE_EXTRA_CA_CERTS` si hay inspección TLS.
 4. **Iniciar sesión en Copilot** abre una ventana con Copilot CLI: escribe `/login`.
 

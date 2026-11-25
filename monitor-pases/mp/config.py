@@ -50,7 +50,7 @@ POR_DEFECTO = {
     },
     "nfq": {"host": "github.com", "api": "", "repo": "rdr-nfq/pases-datos", "rama": "main", "carpeta": "pases", "token": "",
             "proxy": "", "ca": "", "transporte": "python", "usuario": "", "publicarDPs": True},
-    "jira": {"url": "", "token": "", "proyectoReleases": "RDR", "campoFeature": "", "campoTechVersion": "", "proxy": "", "ca": ""},
+    "jira": {"url": "", "token": "", "proyectoReleases": "RDR", "campoFeature": "", "campoTechVersion": "", "proxy": "", "ca": "", "navegador": ""},
     "copilot": {"entrada": "", "modelo": "", "opciones": "", "permitirComandos": False, "urlRepo": "https://{host}/{repo}.git"},
     "proyectos": {},
     "reglas": REGLAS_POR_DEFECTO,

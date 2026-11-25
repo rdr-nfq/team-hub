@@ -9,6 +9,7 @@ import os
 import shutil
 import sys
 import tempfile
+from pathlib import Path
 import time
 import unittest
 import urllib.error
@@ -138,6 +139,40 @@ class TestConGitHubSimulado(unittest.TestCase):
             self.datos.sin_propiedades = False
             os.environ["MONITOR_PASES_DIR"] = antes_env
             shutil.rmtree(dir_, ignore_errors=True)
+
+    def test_jira_con_el_navegador(self):
+        """Sin tokens: se entra con el navegador (SSO) y la app recoge la cookie; si caduca, se renueva sin ventana."""
+        from mp import navegador
+        from mp.jira import Jira
+        if not navegador.buscar_navegador():
+            self.skipTest("hace falta Edge, Chrome o Chromium")
+        j = Jira(self.cfg, self.mon)
+        j.perfil = Path(self.dir) / "perfil-navegador"
+        self.datos_jira.sso_automatico = True
+        try:
+            cab, yo = j._por_navegador(False, espera=40)
+            self.assertIn("JSESSIONID=", cab)
+            self.assertEqual(yo["name"], "usuario-demo")
+            j._iniciada(("cookie", cab), yo)
+            j.metodo = "navegador"
+            self.assertEqual(j.publica()["metodo"], "navegador")
+            # La sesión caduca en Jira: la siguiente llamada la renueva sola, sin ventana.
+            self.datos_jira.sesiones.clear()
+            self.assertEqual(j._cliente().get("rest/api/2/myself")["name"], "usuario-demo")
+            self.assertNotEqual(j._auth[1], cab)
+            # Al arrancar la app: sin ventana, con el SSO.
+            j2 = Jira(self.cfg, self.mon)
+            j2.perfil, j2.metodo = j.perfil, "navegador"
+            self.assertTrue(j2.iniciar_guardada())
+            self.assertEqual(j2.sesion["estado"], "iniciada")
+            # Cookie copiada a mano: vale el valor suelto de JSESSIONID.
+            sid = next(iter(self.datos_jira.sesiones))
+            self.assertEqual(j2._probar(("cookie", "JSESSIONID=" + sid))["name"], "usuario-demo")
+            # Desconectar borra la sesión del navegador de la app.
+            j2.cerrar()
+            self.assertFalse(j.perfil.exists())
+        finally:
+            self.datos_jira.sso_automatico = False
 
     def test_jira_historias_features_y_releases(self):
         from mp.ghe import ErrorGHE

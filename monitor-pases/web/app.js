@@ -786,6 +786,8 @@ function VistaAjustes({ estado, aviso, recargar, jira, recargarJira }) {
           <small>Vacío = lo busca solo por el nombre. Vale el nombre o el id (customfield_…).</small></label>
         <label class="campo"><span>Campo de la release de una historia</span><input class="inp mono" value=${cfg.jira?.campoTechVersion || ""} onInput=${(e) => set(["jira", "campoTechVersion"], e.target.value)}
           placeholder=${jira?.campos?.techVersion ? `${jira.campos.techVersion.nombre} (encontrado solo)` : "tech-version"} /></label>
+        <label class="campo ancho"><span>Navegador para entrar en Jira (si no lo encuentra solo)</span><input class="inp mono" value=${cfg.jira?.navegador || ""} onInput=${(e) => set(["jira", "navegador"], e.target.value)}
+          placeholder="Vacío = Edge (o Chrome). Ruta de msedge.exe o chrome.exe" /></label>
       </div>
       ${jira?.sesion?.estado === "iniciada" ? html`<div class="prueba"><button class="btn" onClick=${() => api("jira/sincronizar", {}).then(() => { aviso("Leyendo Jira…"); setTimeout(recargarJira, 1500); }, (e) => aviso(e.message, "mal"))}><${Icono} n="actualizar" /> Leer Jira ahora</button>
         ${jira?.sincro?.fin ? html`<span class="tenue">Última lectura ${hace(jira.sincro.fin)}${jira.sincro.estado === "error" ? " · " + (jira.sincro.error?.mensaje || "con error") : ""}</span>` : ""}</div>
@@ -797,8 +799,8 @@ function VistaAjustes({ estado, aviso, recargar, jira, recargarJira }) {
       <h2 id="aj-cop">Copilot CLI</h2>
       <p>Lo usan los asistentes de la pestaña Copilot. Se instala y se inicia sesión desde esa pestaña.</p>
       <div class="rejilla">
-        <label class="campo ancho"><span>Ruta de Copilot CLI (si no la encuentra sola)</span><input class="inp mono" value=${cp.entrada || ""} onInput=${(e) => set(["copilot", "entrada"], e.target.value)} placeholder="C:\\Users\\…\\copilot.exe  o  …\\npm\\copilot.cmd" />
-          <small>En una terminal donde «copilot» funcione, ejecuta <span class="mono">where copilot</span> y pega aquí la primera ruta.</small></label>
+        <label class="campo ancho"><span>Ruta de Copilot CLI (si no la encuentra sola)</span><input class="inp mono" value=${cp.entrada || ""} onInput=${(e) => set(["copilot", "entrada"], e.target.value)} placeholder="gh copilot  o  C:\\Users\\…\\copilot.exe" />
+          <small>Si en una terminal te funciona <span class="mono">gh copilot</span>, escribe aquí <span class="mono">gh copilot</span>. Si te funciona <span class="mono">copilot</span>, ejecuta <span class="mono">where copilot</span> y pega la primera ruta.</small></label>
         <label class="campo"><span>Modelo (opcional)</span><input class="inp mono" value=${cp.modelo || ""} onInput=${(e) => set(["copilot", "modelo"], e.target.value)} placeholder="el que tenga Copilot por defecto" /></label>
         <label class="campo"><span>Opciones extra de copilot</span><input class="inp mono" value=${cp.opciones || ""} onInput=${(e) => set(["copilot", "opciones"], e.target.value)} placeholder="--log-level debug" /></label>
         <label class="campo ancho"><span>Variables de entorno para npm y Copilot (una por línea)</span>

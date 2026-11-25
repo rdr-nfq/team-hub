@@ -7,10 +7,12 @@
   cada una (campo tech-version). La rama release/x.y.z suele existir antes que
   la release en Jira: entonces se ve con las historias de sus commits.
 
-Sesión: token personal de Jira (se crea en la web de Jira, con el SSO de
-siempre) o usuario y contraseña. Se guarda con Git (Git Credential Manager →
-almacén de credenciales de Windows), como las de GitHub: la app no lo escribe
-en disco. Todo lo de Jira se queda en la VDI; solo sale el diagnóstico que la
+Sesión: con el navegador (se abre Edge con un perfil de la app, la persona
+entra con el SSO de siempre y la app recoge la sesión: ver navegador.py), con
+un token personal o con usuario y contraseña. Los dos últimos se guardan con
+Git (Git Credential Manager → almacén de credenciales de Windows), como las de
+GitHub; la del navegador vive en ese perfil. La app no escribe secretos en
+disco. Todo lo de Jira se queda en la VDI; solo sale el diagnóstico que la
 persona revisa y envía, que lleva estructura (nombres de campos, cifras y
 formas como «9.999.9»), nunca títulos, descripciones ni personas.
 """
@@ -32,6 +34,7 @@ from . import VERSION
 from .config import escribir_json, leer_json
 from .ghe import ErrorGHE, _diagnostico
 from .sesion import _git_credencial
+from . import navegador
 
 # Clave de Jira (PROYECTO-123) que no sea parte de otra (DP-KYTL-123 no da KYTL-123).
 RE_CLAVE = re.compile(r"(?<![A-Za-z0-9_-])([A-Z][A-Z0-9_]{1,15}-\d{1,7})(?![A-Za-z0-9])")
@@ -79,9 +82,10 @@ def _tipo_valor(v):
 class ClienteJira:
     """REST de Jira Data Center (/rest/api/2) con la sesión de la persona."""
 
-    def __init__(self, url, auth, proxy="", ca="", timeout=30):
+    def __init__(self, url, auth, proxy="", ca="", timeout=30, renovar=None):
         self.url = str(url or "").rstrip("/")
-        self.auth = auth  # ("token", token) o ("usuario", usuario, clave)
+        self.auth = auth  # ("token", token), ("usuario", usuario, clave) o ("cookie", cabecera Cookie)
+        self.renovar = renovar  # con cookie: vuelve a sacar la sesión del navegador si caduca (-> auth nueva o None)
         self.timeout = timeout
         ctx = ssl.create_default_context(cafile=ca) if ca else ssl.create_default_context()
         manejadores = [urllib.request.HTTPSHandler(context=ctx)]
@@ -97,9 +101,23 @@ class ClienteJira:
             h["Authorization"] = "Bearer " + self.auth[1]
         elif self.auth and self.auth[0] == "usuario":
             h["Authorization"] = "Basic " + base64.b64encode(("%s:%s" % (self.auth[1], self.auth[2])).encode()).decode()
+        elif self.auth and self.auth[0] == "cookie":
+            h["Cookie"] = self.auth[1]
         return h
 
     def pedir(self, metodo, ruta, params=None, cuerpo=None):
+        try:
+            return self._pedir(metodo, ruta, params, cuerpo)
+        except ErrorGHE as e:
+            if e.estado != 401 or not self.renovar or not self.auth or self.auth[0] != "cookie":
+                raise
+            nueva, self.renovar = self.renovar(), None  # una vez
+            if not nueva:
+                raise
+            self.auth = nueva
+            return self._pedir(metodo, ruta, params, cuerpo)
+
+    def _pedir(self, metodo, ruta, params=None, cuerpo=None):
         u = self.url + "/" + ruta.lstrip("/")
         if params:
             u += "?" + urllib.parse.urlencode(params)
@@ -127,7 +145,7 @@ class ClienteJira:
         if "text/html" in cab.get("content-type", "") and estado < 300:
             # Una página de inicio de sesión (SSO) en lugar de datos: la sesión no vale para la API.
             raise ErrorGHE("Jira ha contestado con una página de inicio de sesión en vez de datos.", 401, u,
-                           "Usa un token personal de Jira (se crea en tu perfil de Jira).")
+                           "Vuelve a entrar con «Iniciar sesión en Jira».")
         if estado >= 300:
             raise self._error(estado, cab, b, u)
         return json.loads(b.decode("utf-8") or "null") if b else None
@@ -140,8 +158,10 @@ class ClienteJira:
             msgs = []
         motivo = cab.get("x-authentication-denied-reason", "")
         if estado == 401:
-            return ErrorGHE("Jira no acepta la sesión (token caducado o incorrecto).", 401, u,
-                            "Vuelve a conectar Jira con un token nuevo.")
+            if self.auth and self.auth[0] == "cookie":
+                return ErrorGHE("La sesión de Jira ha caducado.", 401, u, "Vuelve a entrar con «Iniciar sesión en Jira».")
+            return ErrorGHE("Jira no acepta la sesión (token o contraseña caducados o incorrectos).", 401, u,
+                            "Vuelve a conectar Jira.")
         if estado == 403 and "CAPTCHA" in motivo.upper():
             return ErrorGHE("Jira pide un CAPTCHA por demasiados intentos fallidos.", 403, u,
                             "Entra una vez en la web de Jira con tu usuario y vuelve a probar.")
@@ -183,6 +203,7 @@ class Jira:
         self.no_existen = set(d.get("noExisten", []))
         self.ultima_completa = d.get("ultimaCompleta", 0)
         self.sincro = d.get("sincro") or {"estado": "nunca"}
+        self.metodo = d.get("metodo") or ""  # "navegador" si la última sesión fue con el navegador (sin secretos)
         if self.sincro.get("estado") == "en curso":
             self.sincro["estado"] = "interrumpida"
         self.sesion = {"estado": "sin sesión"}
@@ -190,6 +211,8 @@ class Jira:
         self._c = threading.RLock()
         self._en_curso = False
         self._informes = {}
+        self._entrando = False
+        self.perfil = config.dir / "navegador-jira"
 
     # ── sesión ──────────────────────────────────────────────────────────────
     def _host(self):
@@ -198,7 +221,60 @@ class Jira:
     def _cliente(self, auth=None):
         j = self.cfg.get()["jira"]
         b = self.cfg.get()["bbva"]
-        return ClienteJira(j.get("url"), auth or self._auth, j.get("proxy") or b.get("proxy"), j.get("ca") or b.get("ca"))
+        auth = auth or self._auth
+        renovar = self._renovar if auth and auth[0] == "cookie" and self.metodo == "navegador" else None
+        return ClienteJira(j.get("url"), auth, j.get("proxy") or b.get("proxy"), j.get("ca") or b.get("ca"), renovar=renovar)
+
+    # Con el navegador: se abre Edge (perfil de la app), la persona entra con su SSO y se recogen las cookies de Jira.
+    def _url_entrar(self):
+        return (self.cfg.get()["jira"].get("url") or "").rstrip("/") + "/secure/ViewProfile.jspa"
+
+    def _por_navegador(self, visible, espera=300):
+        j = self.cfg.get()["jira"]
+        url = (j.get("url") or "").rstrip("/")
+        return navegador.iniciar_sesion(self.perfil, self._url_entrar(), url + "/rest/api/2/myself",
+                                        lambda cab: self._probar(("cookie", cab)), visible=visible, espera=espera,
+                                        ruta_nav=j.get("navegador") or "")
+
+    def _renovar(self):
+        """La cookie ha caducado: se intenta sin ventana con el SSO del perfil. -> auth nueva o None."""
+        try:
+            cab, yo = self._por_navegador(False, espera=40)
+        except Exception:
+            with self._c:
+                self._auth = None
+                self.sesion = {"estado": "sin sesión", "aviso": "La sesión de Jira ha caducado: vuelve a entrar."}
+            return None
+        self._iniciada(("cookie", cab), yo)
+        return ("cookie", cab)
+
+    def conectar_navegador(self):
+        """Abre la ventana para entrar en Jira y vuelve enseguida; la página pregunta cómo va (sesion.estado)."""
+        if not (self.cfg.get()["jira"].get("url")):
+            raise ValueError("Pon la dirección de Jira en Ajustes → Jira.")
+        with self._c:
+            if self._entrando:
+                return self.publica()
+            self._entrando = True
+            self.sesion = {"estado": "entrando", "mensaje": "Se ha abierto una ventana de Jira: entra como siempre. Se cerrará sola."}
+
+        def trabajo():
+            try:
+                cab, yo = self._por_navegador(True)
+                self._iniciada(("cookie", cab), yo)
+                with self._c:
+                    self.metodo = "navegador"
+                self.guardar()
+                threading.Thread(target=self.sincronizar, name="jira", daemon=True).start()
+            except Exception as e:
+                with self._c:
+                    self.sesion = {"estado": "sin sesión", "aviso": str(e), "fallo": "navegador"}
+            finally:
+                with self._c:
+                    self._entrando = False
+
+        threading.Thread(target=trabajo, name="jira-navegador", daemon=True).start()
+        return self.publica()
 
     def publica(self):
         with self._c:
@@ -211,7 +287,7 @@ class Jira:
         with self._c:
             self._auth = auth
             self.sesion = {"estado": "iniciada", "usuario": yo.get("name") or yo.get("key") or "", "nombre": yo.get("displayName") or "",
-                           "metodo": auth[0], "desde": time.strftime("%H:%M")}
+                           "metodo": "navegador" if auth[0] == "cookie" else auth[0], "desde": time.strftime("%H:%M")}
 
     def iniciar_guardada(self):
         """Al arrancar: la sesión guardada en Git (si la hay), sin abrir nada."""
@@ -223,6 +299,15 @@ class Jira:
                 auth = ("token", j["token"])
             elif self.demo:
                 return False  # en la demo se enseña cómo se conecta
+            elif self.metodo == "navegador":
+                try:
+                    cab, yo = self._por_navegador(False, espera=40)  # sin ventana, con el SSO que guarda el perfil
+                except Exception:
+                    with self._c:
+                        self.sesion = {"estado": "sin sesión", "aviso": "Vuelve a entrar en Jira: la sesión ha caducado."}
+                    return False
+                self._iniciada(("cookie", cab), yo)
+                return True
             else:
                 d = _git_credencial("fill", self._host(), None, interactiva=False, timeout=30)
                 auth = ("token", d["password"]) if d.get("username") == MARCA_TOKEN else ("usuario", d.get("username", ""), d["password"])
@@ -233,9 +318,21 @@ class Jira:
                 self.sesion = {"estado": "sin sesión", "aviso": str(e) if e.estado == 401 else ""}
             return False
 
-    def conectar(self, token=None, usuario=None, clave=None):
-        """Con un token personal (recomendado) o usuario y contraseña. Se guarda con Git si se puede."""
+    def conectar(self, token=None, usuario=None, clave=None, cookie=None):
+        """Con un token personal, usuario y contraseña (se guardan con Git si se puede) o la cookie de sesión
+        copiada del navegador (no se guarda: dura lo que la sesión)."""
         token = str(token or "").strip()
+        cookie = re.sub(r"^\s*cookie:\s*", "", str(cookie or "").strip(), flags=re.I)
+        if cookie:
+            cab = cookie if "=" in cookie else "JSESSIONID=" + cookie
+            yo = self._probar(("cookie", cab))
+            with self._c:
+                self.metodo = ""
+            self._iniciada(("cookie", cab), yo)
+            with self._c:
+                self.sesion.update(metodo="cookie", guardada=False)
+            threading.Thread(target=self.sincronizar, name="jira", daemon=True).start()
+            return self.publica()
         if token:
             auth = ("token", token)
         elif usuario and clave:
@@ -253,6 +350,7 @@ class Jira:
         self._iniciada(auth, yo)
         with self._c:
             self.sesion["guardada"] = guardado or self.demo
+            self.metodo = ""
         threading.Thread(target=self.sincronizar, name="jira", daemon=True).start()
         return self.publica()
 
@@ -260,6 +358,12 @@ class Jira:
         with self._c:
             auth, self._auth = self._auth, None
             self.sesion = {"estado": "sin sesión"}
+            self.metodo = ""
+        self.guardar()
+        if auth and auth[0] == "cookie":
+            import shutil
+            shutil.rmtree(self.perfil, ignore_errors=True)  # se borra la sesión del navegador de la app
+            return self.publica()
         if auth and not self.demo:
             try:
                 _git_credencial("reject", self._host(), MARCA_TOKEN if auth[0] == "token" else auth[1], auth[-1], timeout=30)
@@ -523,7 +627,8 @@ class Jira:
         with self._c:
             escribir_json(self.ruta, {"issues": dict(self.issues), "features": dict(self.features), "releases": list(self.releases),
                                       "relHistorias": dict(self.rel_historias), "campos": dict(self.campos),
-                                      "noExisten": sorted(self.no_existen), "ultimaCompleta": self.ultima_completa, "sincro": self.sincro})
+                                      "noExisten": sorted(self.no_existen), "ultimaCompleta": self.ultima_completa, "sincro": self.sincro,
+                                      "metodo": self.metodo})
 
     # ── para la página ──────────────────────────────────────────────────────
     def vista(self):

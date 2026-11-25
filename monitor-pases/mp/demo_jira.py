@@ -1,7 +1,9 @@
 """Jira simulado para `--demo` y las pruebas (datos inventados, coherentes con
 el GitHub simulado de demo.py). Imita lo que usa la app de la API de Jira Data
 Center: /rest/api/2/myself, serverInfo, field, search (un subconjunto de JQL),
-project/{key}/versions e issue/{key}/remotelink.
+project/{key}/versions e issue/{key}/remotelink. Y una página de entrada que da
+una cookie de sesión (JSESSIONID), como el SSO, para entrar con el navegador;
+con `sso_automatico` entra sola (como el SSO integrado de Windows).
 
 - Features: las CIBRDR-… de las ramas. Su SDATOOL está en un enlace entre
   issues, en un enlace remoto o no está.
@@ -36,6 +38,8 @@ def _h(*partes):
 
 class DatosJira:
     def __init__(self, datos_gh):
+        self.sesiones = set()
+        self.sso_automatico = False
         hoy = dt.date.today()
         todas = {**demo.PROYECTOS, **demo.PROYECTOS_EXTRA}
         self.issues = {}
@@ -148,9 +152,45 @@ class _H(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b)
 
+    def _sesion(self):
+        m = re.search(r"(?:^|;\s*)JSESSIONID=([^;]+)", self.headers.get("Cookie") or "")
+        return bool(m and m.group(1) in self.datos.sesiones)
+
     def _ok(self):
         a = self.headers.get("Authorization") or ""
-        return a.startswith("Bearer ") and a[7:] not in ("", TOKEN_MALO) or a.startswith("Basic ")
+        return a.startswith("Bearer ") and a[7:] not in ("", TOKEN_MALO) or a.startswith("Basic ") or self._sesion()
+
+    def _html(self, cuerpo, estado=200, extra=None):
+        b = ("<!doctype html><meta charset=utf-8><title>Jira (demo)</title>"
+             "<body style='font-family:sans-serif;max-width:520px;margin:60px auto'>%s</body>" % cuerpo).encode()
+        self.send_response(estado)
+        self.send_header("Content-Type", "text/html;charset=UTF-8")
+        self.send_header("Content-Length", str(len(b)))
+        for k, v in (extra or {}).items():
+            self.send_header(k, v)
+        self.end_headers()
+        self.wfile.write(b)
+
+    def _paginas(self, metodo, p):
+        """Las páginas web (sin API): entrada y perfil. True si la ha servido."""
+        if p == "/login.jsp" and metodo == "POST":
+            sid = hashlib.md5(str(dt.datetime.now().timestamp()).encode()).hexdigest()
+            self.datos.sesiones.add(sid)
+            self.send_response(302)
+            self.send_header("Set-Cookie", "JSESSIONID=%s; Path=/; HttpOnly" % sid)
+            self.send_header("Location", "/secure/ViewProfile.jspa")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return True
+        if p in ("/secure/ViewProfile.jspa", "/login.jsp", "/"):
+            if self._sesion():
+                self._html("<h1>Usuario demo</h1><p>Has entrado en el Jira de la demo. Esta ventana se cerrará sola.</p>")
+            else:
+                auto = "<script>document.forms[0].submit()</script>" if self.datos.sso_automatico else ""
+                self._html("<h1>Jira (demo)</h1><p>Aquí verías el inicio de sesión de BBVA (SSO).</p>"
+                           "<form method=post action='/login.jsp'><button style='font-size:16px;padding:8px 16px'>Entrar (demo)</button></form>" + auto)
+            return True
+        return False
 
     def do_GET(self):
         self._ruta("GET")
@@ -159,6 +199,8 @@ class _H(BaseHTTPRequestHandler):
         self._ruta("POST")
 
     def _ruta(self, metodo):
+        if self._paginas(metodo, urllib.parse.urlparse(self.path).path):
+            return
         if not self._ok():
             return self._json(401, {"errorMessages": ["You are not authenticated."]})
         u = urllib.parse.urlparse(self.path)

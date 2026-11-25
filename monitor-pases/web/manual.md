@@ -139,7 +139,7 @@ Asistentes con **GitHub Copilot CLI**, con tu cuenta de Copilot de BBVA.
 
 ### Preparación
 La pestaña comprueba que todo está:
-- **Copilot CLI**: la app lo encuentra esté instalado como esté (`copilot.exe`, npm, winget, VS Code…). Si no, en una terminal donde `copilot` funcione ejecuta `where copilot` y pega la ruta en *Ajustes → Copilot*. Si no lo tienes, *Instalar Copilot CLI (npm)*.
+- **Copilot CLI**: la app lo encuentra esté instalado como esté: `gh copilot` (con GitHub CLI), `copilot.exe`, npm, winget… Antes de usarlo comprueba que responde de verdad (`--version`), así que no confunde con otros programas que se llaman parecido. Si no lo encuentra, escribe `gh copilot` o la ruta de `where copilot` en *Ajustes → Copilot → Ruta de Copilot CLI*. Si no lo tienes, *Instalar Copilot CLI (npm)*.
 - **Git**: para las copias locales de las ramas.
 - **Iniciar sesión en Copilot**: abre una ventana con Copilot; escribe `/login` y sigue los pasos (cuenta de empresa, `bbva.ghe.com`).
 
@@ -195,15 +195,19 @@ Ruta de Copilot CLI, modelo, opciones y variables de entorno (proxy).
 
 ## Jira {#jira}
 
-### Conectar con un token
-La app lee Jira con un **token personal**, una contraseña especial que te da Jira. Se crea una vez:
-1. En la entrada, en Proyectos o en *Ajustes → Jira*, pulsa **Abrir Jira**. Entra con tu usuario de BBVA si te lo pide.
-2. Abre la pestaña **«Tokens de acceso personal»**. Si no la ves: arriba a la derecha, tu foto → *Perfil* → *Tokens de acceso personal*.
-3. **Crear token**, con nombre *Monitor de pases* y la caducidad más larga que te deje. Pulsa **Crear**.
-4. Jira lo enseña **una sola vez**: pulsa **Copiar**.
-5. Pégalo en la app y pulsa **Conectar**.
+### Conectar (iniciar sesión)
+1. En la entrada, en Proyectos o en *Ajustes → Jira*, pulsa **Iniciar sesión en Jira**.
+2. Se abre una ventana de **Edge** con Jira. Entra como siempre, con tu usuario de BBVA.
+3. En cuanto estás dentro, la ventana **se cierra sola** y la app queda conectada.
 
-Queda guardado en el almacén de credenciales de Windows. Cuando caduque, la app te pedirá otro. Si vuestro Jira no tiene tokens, usa *Prefiero usuario y contraseña*.
+La ventana usa un perfil de Edge propio de la app: tu Edge de siempre no se toca. Ese perfil recuerda el inicio de sesión, así que en los siguientes arranques la app entra **sola, sin ventana**. Si un día la sesión ha caducado del todo, te avisa y vuelves a pulsar *Iniciar sesión en Jira*.
+
+**Otras formas de entrar** (debajo del botón), por si la ventana no se abre o no conecta:
+- **Usuario y contraseña**: tu usuario de Jira (el de tu perfil) y tu contraseña de BBVA. Solo vale si vuestro Jira la admite además del SSO.
+- **Copiar la sesión del navegador**: entras en Jira en tu navegador, `F12` → *Aplicación* → *Cookies* → copias el valor de `JSESSIONID` y lo pegas. Dura lo que tu sesión de Jira.
+- **Token personal**: solo si en tu perfil de Jira aparece *Tokens de acceso personal* (en BBVA suele estar desactivado).
+
+*Desconectar* (en *Ajustes → Jira*) borra la sesión guardada en ese perfil.
 
 ### Qué saca de Jira
 - **Historias de los commits**: las claves de Jira de cada mensaje (`RDR-1234 …`). Las de los DPs (`DP-KYTL-…`) no cuentan.
@@ -245,7 +249,7 @@ Escribe un trozo del nombre de un repositorio, una rama, una release, un proyect
 ## Seguridad: qué sale de la VDI {#seguridad}
 
 - La app solo escucha en tu propio equipo (`127.0.0.1`) y cada llamada lleva una clave de sesión.
-- Los tokens los guarda Git (almacén de credenciales de Windows); la app no los escribe en disco.
+- Los tokens y contraseñas los guarda Git (almacén de credenciales de Windows); la sesión de Jira vive en el perfil de Edge de la app, cifrada por el propio Edge. La app no escribe secretos en disco.
 - **Solo sale de la VDI** lo que se publica en `rdr-nfq/pases-datos`:
   - los DPs: release, features y nombres de componentes, nunca código;
   - los pases que subes tú;
@@ -257,9 +261,10 @@ Escribe un trozo del nombre de un repositorio, una rama, una release, un proyect
 
 - **«Primera carga en pausa»**: normal. GitHub limita las consultas por hora y la app sigue sola a la hora indicada.
 - **No me deja iniciar sesión en GitHub**: comprueba que Git tiene el gestor de credenciales (`git config --get credential.helper`). Si no, pon un token personal en *Ajustes*.
-- **No encuentra Copilot CLI**: en una terminal donde funcione, `where copilot`, y pega la ruta en *Ajustes → Copilot*.
+- **No encuentra Copilot CLI**: si en una terminal te funciona `gh copilot`, escribe `gh copilot` en *Ajustes → Copilot → Ruta de Copilot CLI*; si te funciona `copilot`, pega ahí la ruta de `where copilot`. La pestaña Copilot dice qué ha encontrado y por qué lo ha descartado.
 - **Copilot o npm no conectan**: casi siempre es el proxy (`HTTPS_PROXY`, `HTTP_PROXY`, `NODE_EXTRA_CA_CERTS`).
-- **Jira dice que el token no vale**: puede haber caducado o estar mal copiado. Crea otro (sección *Jira*).
+- **No se abre la ventana de Jira o no conecta**: puede que una política de la empresa no deje a la app leer la sesión de Edge. Usa *Otras formas de entrar* (sección *Jira*).
+- **«La sesión de Jira ha caducado»**: pulsa otra vez *Iniciar sesión en Jira*.
 - **Un proyecto sale *sin SDATOOL***: la feature de Jira no lo tiene en enlaces, campos ni descripción. Añádelo en Jira.
 - **Una historia sale *sin tech-version***: está en la rama de release, pero en Jira no tiene esa release. Revísalo en Jira.
 - **Windows bloquea el .exe**: es un ejecutable sin firma digital. SmartScreen pide «Más información → Ejecutar de todas formas»; si lo frena el antivirus, hay que pedir a sistemas que lo permita.

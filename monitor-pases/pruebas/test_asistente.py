@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 COPILOT_FALSO = r"""
 const fs = require("fs");
 const args = process.argv.slice(2);
+if (args[0] === "--version") { console.log("0.0.999"); process.exit(0); }
 const prompt = args[args.indexOf("-p") + 1] || "";
 const escribe = args.includes("write") && args[args.indexOf("write") - 1] === "--allow-tool";
 console.log("ARGS " + JSON.stringify(args.filter((a) => a !== prompt)));
@@ -198,6 +199,22 @@ $exe=""
         self.assertEqual(self.a._resolver(exe), [str(exe)])
         r = self.a._resolver(self.dir / "npm")
         self.assertEqual(Path(r[-1]).resolve(), Path(self.js))
+
+    def test_gh_copilot(self):
+        self.assertEqual(self.a._resolver("gh:/usr/bin/gh"), ["/usr/bin/gh", "copilot", "--"])
+
+    @unittest.skipUnless(shutil.which("node"), "hace falta node")
+    def test_descarta_lo_que_no_es_copilot_cli(self):
+        # El copilotDebugCommand.js de VS Code responde con su uso, no con una versión.
+        malo = self.dir / "copilotDebugCommand.js"
+        malo.write_text('console.log("Usage: copilot-debug [--print] [--no-cache] [--help] <command> <args...>"); process.exit(1);')
+        bueno = self.dir / "bueno.js"
+        bueno.write_text('console.log(process.argv[2] === "--version" ? "GitHub Copilot CLI 0.0.354" : "hola");')
+        self.a._candidatos = lambda: [("VS Code", str(malo)), ("npm", str(bueno))]
+        cmd, donde, ruta = self.a._lanzador()
+        self.assertEqual(ruta, str(bueno))
+        self.assertEqual(self.a._version_cache, "0.0.354")
+        self.assertIn("copilot-debug", self.a._descartados[0])
 
     def test_un_lanzador_que_no_se_entiende_no_se_ejecuta_con_cmd(self):
         raro = self.dir / "copilot.bat"

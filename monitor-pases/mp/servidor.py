@@ -186,7 +186,11 @@ class App:
         if metodo == "GET" and ruta == "/api/jira":
             return self.jira.vista()
         if metodo == "POST" and ruta == "/api/jira/conectar":
-            return self.jira.conectar(cuerpo.get("token"), cuerpo.get("usuario"), cuerpo.get("clave"))
+            return self.jira.conectar(cuerpo.get("token"), cuerpo.get("usuario"), cuerpo.get("clave"), cuerpo.get("cookie"))
+        if metodo == "GET" and ruta == "/api/jira/sesion-estado":
+            return self.jira.publica()
+        if metodo == "POST" and ruta == "/api/jira/navegador":
+            return self.jira.conectar_navegador()
         if metodo == "POST" and ruta == "/api/jira/cerrar":
             return self.jira.cerrar()
         if metodo == "POST" and ruta == "/api/jira/sincronizar":

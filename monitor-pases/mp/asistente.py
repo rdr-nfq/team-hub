@@ -133,6 +133,8 @@ class Asistente:
     def _resolver(self, ruta, profundidad=0):
         """De un fichero (.exe, .js o un lanzador .cmd/.bat/.ps1/sin extensión) al comando que lo ejecuta
         directamente: [exe] o [node, js]. None si no se puede sin pasar por cmd."""
+        if str(ruta).startswith("gh:"):  # «gh copilot»: gh ejecuta el Copilot CLI que tenga (lo que va tras «--» es de Copilot)
+            return [str(ruta)[3:], "copilot", "--"]
         f = Path(ruta)
         if not f.exists() or profundidad > 3:
             return None
@@ -172,12 +174,19 @@ class Asistente:
         """(dónde, ruta) en el orden en que se prueban."""
         out = []
         propia = str(self.cfg.get()["copilot"].get("entrada") or "").strip().strip('"')
-        if propia:
+        if propia.lower() in ("gh", "gh copilot", "gh.exe copilot"):
+            gh = self._gh()
+            if gh:
+                out.append(("la ruta de Ajustes", "gh:" + gh))
+        elif propia:
             out.append(("la ruta de Ajustes", propia))
         for nombre in ("copilot", "copilot.exe", "copilot.cmd"):
             w = shutil.which(nombre)
             if w:
                 out.append(("el PATH", w))
+        gh = self._gh()
+        if gh:
+            out.append(("gh copilot", "gh:" + gh))
         npm = shutil.which("npm")
         if npm:
             cod, salida = _ejecutar([npm, "root", "-g"], timeout=60, env=self._env())
@@ -193,6 +202,7 @@ class Asistente:
             ]
             patrones = [
                 ("winget", os.path.join(e("LOCALAPPDATA", ""), "Microsoft", "WinGet", "Packages", "GitHub.Copilot*", "**", "copilot.exe")),
+                ("gh (descargado)", os.path.join(e("LOCALAPPDATA", ""), "GitHub CLI", "copilot", "**", "copilot*.exe")),
                 ("instalador", os.path.join(e("LOCALAPPDATA", ""), "Programs", "*opilot*", "**", "copilot.exe")),
                 ("instalador", os.path.join(e("ProgramFiles", r"C:\Program Files"), "*opilot*", "**", "copilot.exe")),
                 ("nvm", os.path.join(e("APPDATA", ""), "nvm", "v*", "node_modules", "@github", "copilot")),
@@ -202,26 +212,57 @@ class Asistente:
         else:
             casa = str(Path.home())
             lista = [("~/.local/bin", os.path.join(casa, ".local", "bin", "copilot")), ("/usr/local/bin", "/usr/local/bin/copilot")]
-            patrones = [("nvm", os.path.join(casa, ".nvm", "versions", "node", "*", "lib", "node_modules", "@github", "copilot"))]
+            patrones = [("nvm", os.path.join(casa, ".nvm", "versions", "node", "*", "lib", "node_modules", "@github", "copilot")),
+                        ("gh (descargado)", os.path.join(casa, ".local", "share", "gh", "copilot", "**", "copilot"))]
         out += lista
         for donde, pat in patrones:
             for r in sorted(glob.glob(pat, recursive=True))[:20]:
+                if "debug" in Path(r).name.lower():  # copilotDebugCommand.js de VS Code: no es Copilot CLI
+                    continue
                 if Path(r).suffix.lower() in ("", ".exe", ".cmd", ".bat", ".ps1", ".js") or Path(r).is_dir():
                     out.append((donde, r))
         return out
 
+    @staticmethod
+    def _gh():
+        w = shutil.which("gh") or shutil.which("gh.exe")
+        if w or os.name != "nt":
+            return w
+        e = os.environ.get
+        for c in (os.path.join(e("ProgramFiles", r"C:\Program Files"), "GitHub CLI", "gh.exe"),
+                  os.path.join(e("LOCALAPPDATA", ""), "Programs", "GitHub CLI", "gh.exe"),
+                  os.path.join(e("LOCALAPPDATA", ""), "Microsoft", "WinGet", "Links", "gh.exe")):
+            if os.path.isfile(c):
+                return c
+        return None
+
+    def _version(self, cmd):
+        """Versión de Copilot CLI si `cmd` lo es de verdad (otros «copilot», como el copilot-debug de VS Code, no valen)."""
+        cod, sal = _ejecutar(list(cmd) + ["--version"], timeout=60, env=self._env())
+        if cod != 0 or re.search(r"copilot-debug|^usage:", sal or "", flags=re.I | re.M):
+            return None, (_primera(sal) or "")[:300]
+        m = re.search(r"\d+\.\d+\.\d+[\w.+-]*", sal or "")
+        return (m.group(0) if m else None), (_primera(sal) or "")[:300]
+
     def _lanzador(self):
-        """-> (comando, dónde, ruta) de Copilot CLI, o (None, None, None)."""
+        """-> (comando, dónde, ruta) de Copilot CLI, o (None, None, None). Cada candidato se prueba con --version."""
         clave = str(self.cfg.get()["copilot"].get("entrada") or "")
-        if self._entrada_cache and self._entrada_cache[0] == clave and all(Path(x).exists() for x in self._entrada_cache[1]):
+        if self._entrada_cache and self._entrada_cache[0] == clave and Path(self._entrada_cache[1][0]).exists():
             return self._entrada_cache[1], self._entrada_cache[2], self._entrada_cache[3]
-        self._buscado = []
+        self._buscado, self._descartados = [], []
+        vistos = set()
         for donde, ruta in self._candidatos():
             self._buscado.append(donde)
             cmd = self._resolver(ruta)
-            if cmd:
+            if not cmd or tuple(cmd) in vistos:
+                continue
+            vistos.add(tuple(cmd))
+            v, fallo = self._version(cmd)
+            if v:
                 self._entrada_cache = (clave, cmd, donde, ruta)
+                self._version_cache = v
                 return cmd, donde, ruta
+            self._descartados.append("%s (%s)" % (ruta, fallo or "no responde"))
         return None, None, None
 
     def estado(self):
@@ -235,13 +276,9 @@ class Asistente:
         npm = bool(shutil.which("npm"))
         self._entrada_cache = None  # «Comprobar de nuevo» vuelve a buscar
         cmd, donde, ruta = self._lanzador()
-        v_cop, fallo = None, ""
-        if cmd:
-            cod, sal = _ejecutar(cmd + ["--version"], timeout=60, env=self._env())
-            v_cop = _primera(sal) if cod == 0 else None
-            fallo = "" if cod == 0 else _primera(sal)[:300]
+        v_cop = getattr(self, "_version_cache", None) if cmd else None
         problemas = []
-        usa_node = bool(cmd) and len(cmd) > 1
+        usa_node = bool(cmd) and len(cmd) == 2 and Path(cmd[1]).suffix.lower() in (".js", ".mjs", ".cjs")
         if usa_node or not cmd:
             m = re.match(r"v(\d+)", v_node or "")
             if not node and usa_node:
@@ -249,15 +286,16 @@ class Asistente:
             elif m and int(m.group(1)) < NODE_MINIMO and usa_node:
                 problemas.append("Tienes Node.js %s y Copilot CLI necesita la %d o superior." % (v_node, NODE_MINIMO))
         if not cmd:
-            problemas.append("No se encuentra Copilot CLI. Se ha buscado en: %s. Si en una terminal te funciona «copilot», ejecuta "
-                             "«where copilot» y pega esa ruta en Ajustes → Copilot → Ruta de Copilot CLI."
-                             % ", ".join(dict.fromkeys(self._buscado or ["el PATH"])))
-        elif not v_cop:
-            problemas.append("Copilot CLI está en %s, pero no arranca%s." % (ruta, (": " + fallo) if fallo else ""))
+            problemas.append("No se encuentra Copilot CLI. Se ha buscado en: %s.%s Si en una terminal te funciona «gh copilot» o "
+                             "«copilot», comprueba que gh o copilot están en el PATH de Windows, o pega la ruta de «where copilot» "
+                             "en Ajustes → Copilot → Ruta de Copilot CLI."
+                             % (", ".join(dict.fromkeys(self._buscado or ["el PATH"])),
+                                (" Encontrados pero descartados: %s." % "; ".join(self._descartados[:4])) if getattr(self, "_descartados", None) else ""))
         if not git:
             problemas.append("No se encuentra Git (hace falta para las copias locales de las ramas).")
         return {"demo": False, "listo": bool(cmd and v_cop and git), "node": v_node, "usaNode": usa_node, "npm": npm,
-                "copilot": v_cop, "instalado": bool(cmd), "donde": donde, "ruta": ruta, "git": v_git, "problemas": problemas}
+                "copilot": v_cop, "instalado": bool(cmd), "donde": donde,
+                "ruta": ("gh copilot (%s)" % ruta[3:]) if ruta and ruta.startswith("gh:") else ruta, "git": v_git, "problemas": problemas}
 
     def instalar(self):
         npm = shutil.which("npm")
