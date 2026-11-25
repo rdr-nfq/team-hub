@@ -262,7 +262,9 @@ class TestConGitHubSimulado(unittest.TestCase):
             Monitor(cfg2).sincronizar()
             shutil.rmtree(dir2, ignore_errors=True)
             self.assertGreater(primera, 0)
-            self.assertLessEqual(primera + segunda, caras(n0) + 5)
+            # Solo se repite lo que estaban leyendo los repos en marcha cuando se acabó la cuota (POOL_REPOS a la vez).
+            from mp.sincro import POOL_REPOS
+            self.assertLessEqual(primera + segunda, caras(n0) + POOL_REPOS * 6)
         finally:
             self.datos.cuota = None
             os.environ["MONITOR_PASES_DIR"] = antes_env
