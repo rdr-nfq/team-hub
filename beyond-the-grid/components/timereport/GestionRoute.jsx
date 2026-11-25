@@ -63,10 +63,11 @@ function Aviso({ children, className = "" }) {
     </p>
   );
 }
-function Desplegable({ className = "", children, ...p }) {
+function Desplegable({ className = "", ajustado = false, children, ...p }) {
+  // ajustado: tan ancho como la opción más larga (no ocupa toda la columna).
   return (
-    <span className={`relative flex ${className}`}>
-      <select {...p} className={`${INP} cursor-pointer appearance-none pr-8`}>{children}</select>
+    <span className={`relative ${ajustado ? "inline-flex" : "flex"} ${className}`}>
+      <select {...p} className={`${ajustado ? INP.replace("w-full", "w-auto").replace("py-2", "py-1.5") : INP} cursor-pointer appearance-none pr-8`}>{children}</select>
       <IconoBBVA nombre="fold" size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rotate-180" />
     </span>
   );
@@ -290,13 +291,13 @@ export default function GestionRoute() {
     const e = estadoDe(p.feature);
     const quien = e ? `${e.por ? e.por + " · " : ""}${e.fecha ? new Date(e.fecha).toLocaleDateString("es-ES", { day: "numeric", month: "short" }) : ""}` : "";
     return (
-      <span className="grid gap-0.5">
-        <Desplegable value={e?.estado || ""} aria-label={`Estado de ${p.feature}`} className="min-w-[150px]"
+      <span className="flex items-center gap-2">
+        <Desplegable ajustado value={e?.estado || ""} aria-label={`Estado de ${p.feature}`} className="shrink-0"
           onChange={(ev) => cambiaEstadoFeature(p.feature, ev.target.value)}>
           {!e && <option value="">Sin estado</option>}
           {ESTADOS_FEATURE.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
         </Desplegable>
-        {quien && <span className="truncate text-[11px] text-sand/75" title={`Último cambio: ${quien}`}>{quien}</span>}
+        {quien && <span className="max-w-[150px] truncate whitespace-nowrap text-[11px] leading-tight text-sand/75" title={`Último cambio: ${quien}`}>{quien}</span>}
       </span>
     );
   };
@@ -618,7 +619,7 @@ export default function GestionRoute() {
                       {p.sinRepartir > 0 && <> · <span className="hub-etiqueta hub-eq rounded-full px-1.5 font-bold">{p.sinRepartir} h sin repartir</span></>}
                     </span>
                   </td>
-                  <td className="px-1.5 py-2.5 text-left align-top">{selectorEstado(p)}</td>
+                  <td className="px-1.5 py-2.5 text-left">{selectorEstado(p)}</td>
                   <td className="px-1.5 py-2.5">{num(p.horas)}</td>
                   <td className="px-1.5 py-2.5">{p.imputadas}</td>
                   <td className="px-1.5 py-2.5 font-bold">{p.pendientes}</td>
