@@ -11,6 +11,7 @@ import { VistaCopilot } from "./copilot.js";
 import { BarraFiltros, LateralFiltros, guardarFiltros, leerFiltros, pasa, propsDeRepos, useFacetas } from "./filtros.js";
 import { Paleta } from "./paleta.js";
 import { ConectarJira, DiagnosticoJira, SeccionJiraRama, VistaProyecto, VistaProyectos } from "./jira.js";
+import { Ayuda } from "./ayuda.js";
 
 /* ── Cabecera ── */
 function EstadoSincro({ s, cuota }) {
@@ -34,7 +35,7 @@ const hora = (iso) => (iso ? new Date(iso).toLocaleTimeString("es-ES", { hour: "
 
 const VISTAS = ["ramas", "proyectos", "actividad", "commits", "dps", "repos", "copilot", "pase", "ajustes"];
 
-function Cabecera({ estado, vista, setVista, onSync, tema, cambiarTema, abrirPaleta }) {
+function Cabecera({ estado, vista, setVista, onSync, tema, cambiarTema, abrirPaleta, abrirAyuda }) {
   const vistas = [["ramas", "Ramas"], ["proyectos", "Proyectos"], ["actividad", "Actividad"], ["commits", "Commits"], ["dps", "DPs"], ["repos", "Repos"],
     ["copilot", "Copilot"], ["pase", "Pase"], ["ajustes", "Ajustes"]];
   const ses = estado?.sesion || {};
@@ -53,6 +54,7 @@ function Cabecera({ estado, vista, setVista, onSync, tema, cambiarTema, abrirPal
       <button class="chip-sesion" onClick=${() => setVista("ajustes")} title="Sesiones de GitHub">
         <${Icono} n="usuario" /> <span>${ses.bbva?.usuario || "sin BBVA"}${ses.nfq?.estado === "iniciada" ? "" : " · sin NFQ"}</span></button>
       <button class="btn btn-s" onClick=${onSync} disabled=${!estado?.configurado || enCurso}><${Icono} n="actualizar" cls=${enCurso ? "gira" : ""} /> Actualizar</button>
+      <button class="btn-tema" onClick=${abrirAyuda} title="Manual y ayuda (F1)" aria-label="Abrir el manual y la ayuda (F1)"><${Icono} n="ayuda" /></button>
       <${BotonTema} tema=${tema} cambiar=${cambiarTema} />
     </div>
   </header>`;
@@ -856,6 +858,7 @@ function App() {
   const [facetas, setFacetas] = useState(null);
   const [jiraDatos, setJiraDatos] = useState(null);
   const [paleta, setPaleta] = useState(false);
+  const [ayuda, setAyuda] = useState(false);
   const [abierta, setAbierta] = useState(null);
   const [tostadas, setTostadas] = useState([]);
   const [presel, setPresel] = useState(null);
@@ -937,6 +940,7 @@ function App() {
     const t = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPaleta(true); return; }
       const escribiendo = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
+      if (e.key === "F1" || (e.key === "?" && !escribiendo)) { e.preventDefault(); setAyuda(true); return; }
       if (e.key === "/" && !escribiendo && !e.ctrlKey && !e.metaKey) {
         const b = document.getElementById("buscar-filtros");
         if (b) { e.preventDefault(); b.focus(); b.select(); }
@@ -947,11 +951,11 @@ function App() {
   }, []);
 
   if (!estado) return html`<p class="arranque" role=${errorCarga ? "alert" : "status"}>${errorCarga ? "No se puede hablar con la app: " + errorCarga : "Cargando el monitor…"}</p>`;
-  if (!dentro) return html`<${PantallaEntrada} estado=${estado} jira=${jiraDatos} recargarJira=${cargarJira} tema=${tema} cambiarTema=${cambiarTema} entrar=${() => { setDentro(true); cargar(); }} />`;
+  if (!dentro) return html`${ayuda && html`<${Ayuda} cerrar=${() => setAyuda(false)} vista="inicio" estado=${estado} jira=${jiraDatos} />`}<${PantallaEntrada} abrirAyuda=${() => setAyuda(true)} estado=${estado} jira=${jiraDatos} recargarJira=${cargarJira} tema=${tema} cambiarTema=${cambiarTema} entrar=${() => { setDentro(true); cargar(); }} />`;
   const conLateral = ["ramas", "actividad", "commits", "dps", "repos"].includes(vista);
   const comun = { estado, f: filtros, setF: setFiltros, setFacetas, ir };
   return html`<div class="marco">
-    <${Cabecera} estado=${estado} vista=${VISTAS.includes(vista) ? vista : ruta.desde} setVista=${setVista} onSync=${sincronizar} tema=${tema} cambiarTema=${cambiarTema} abrirPaleta=${() => setPaleta(true)} />
+    <${Cabecera} estado=${estado} vista=${VISTAS.includes(vista) ? vista : ruta.desde} setVista=${setVista} onSync=${sincronizar} tema=${tema} cambiarTema=${cambiarTema} abrirPaleta=${() => setPaleta(true)} abrirAyuda=${() => setAyuda(true)} />
     <${Avisos} estado=${estado} setVista=${setVista} />
     <div class="cuerpo ${conLateral ? "" : "ancho"}">
       ${conLateral && html`<${LateralFiltros} facetas=${facetas} f=${filtros} setF=${setFiltros} />`}
@@ -975,6 +979,7 @@ function App() {
         ${vista === "ajustes" && html`<${VistaAjustes} estado=${estado} aviso=${aviso} recargar=${cargar} jira=${jiraDatos} recargarJira=${cargarJira} />`}
       </main>
     </div>
+    ${ayuda && html`<${Ayuda} cerrar=${() => setAyuda(false)} vista=${vista} estado=${estado} jira=${jiraDatos} />`}
     ${paleta && html`<${Paleta} estado=${estado} cerrar=${() => setPaleta(false)} ir=${ir} abrirRama=${(id) => setAbierta(id)}
       filtrarProyecto=${(p) => { setFiltros({ ...filtros, proyectos: [p] }); if (!["ramas", "actividad", "commits", "dps"].includes(vista)) ir({ vista: "ramas" }); }} />`}
     ${abierta && html`<${Detalle} id=${abierta} onCerrar=${() => setAbierta(null)} aviso=${aviso} recargar=${cargar} ir=${ir} jira=${jiraDatos} />`}

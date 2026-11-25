@@ -1,4 +1,4 @@
 """Monitor de pases: app local (dentro de la VDI) que lee los repositorios de
 GitHub BBVA y genera el .json del pase. Solo librería estándar de Python."""
 
-VERSION = "1.4.0"
+VERSION = "1.5.0"

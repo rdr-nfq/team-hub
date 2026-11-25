@@ -20,6 +20,9 @@ const escribe = args.includes("write") && args[args.indexOf("write") - 1] === "-
 console.log("ARGS " + JSON.stringify(args.filter((a) => a !== prompt)));
 const ctx = (prompt.match(/en (\S+contexto-monitor\.md)/) || [])[1];
 if (ctx) console.log("CONTEXTO " + fs.readFileSync(ctx, "utf8").split("\n")[2]);
+const dir = args[args.indexOf("--add-dir") + 1];
+if (prompt.includes("manual.md") && dir && fs.existsSync(dir + "/manual.md"))
+  console.log("MANUAL " + fs.readFileSync(dir + "/manual.md", "utf8").split("\n")[0] + " | " + fs.readFileSync(dir + "/situacion.md", "utf8").split("\n")[2]);
 if (escribe) {
   fs.appendFileSync("Uno.java", "// cambio hecho por copilot\n");
   fs.writeFileSync("Nuevo.java", "class Nuevo {}\n");
@@ -117,6 +120,17 @@ class TestAsistente(unittest.TestCase):
         self.assertEqual(git("--git-dir", str(self.origen), "rev-parse", "feature/CIBRDR-1-prueba"), r["sha"])
         with self.assertRaises(ValueError):
             self.cop.aplicar(t["id"], "otra vez")
+
+    def test_ayuda_lee_el_manual_sin_escribir_ni_ejecutar(self):
+        tid = self.cop.ayuda("¿Cómo conecto Jira?", "Pestaña abierta: DPs", [{"rol": "persona", "texto": "hola"}])
+        t = self.esperar(tid)
+        self.assertEqual(t["estado"], "terminada", t["salida"])
+        self.assertIn('"--deny-tool","write","--deny-tool","shell"', t["salida"])
+        self.assertIn("MANUAL # ", t["salida"])
+        self.assertIn("Pestaña abierta: DPs", t["salida"])
+        self.assertNotIn(tid, [x["id"] for x in self.cop.lista()])  # no se mezcla con las tareas de Copilot
+        with self.assertRaises(ValueError):
+            self.cop.ayuda("   ")
 
     def test_modificar_exige_rama(self):
         with self.assertRaises(ValueError):

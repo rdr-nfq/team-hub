@@ -52,6 +52,13 @@ La app pide a GitHub las propiedades personalizadas de esos repos (UUAA y las de
 | **Pase** | Propone los componentes de las ramas pendientes de producción con su DP. Revisas el .json y lo guardas o lo subes. |
 | **Ajustes** | Sesiones, conexión, patrones de ramas, releases y DPs, nombres de proyectos, reglas de componentes, `pases-datos` y Copilot. |
 
+### Manual y ayuda (tecla `F1`)
+
+El botón **?** de la cabecera (también en la entrada) abre el manual sin salir de lo que estás viendo:
+
+- **Manual:** todas las funciones explicadas, con buscador. Se abre por la sección de la pestaña en la que estás y avisa de lo que falta ahora mismo (sin sesión de NFQ, Jira sin conectar, sincronización en pausa…). Está en `web/manual.md`: al cambiar la app, se actualiza ahí.
+- **Pregúntale:** un chat que responde con **Copilot CLI** leyendo solo el manual y un resumen de la situación de la app (pestaña, sesiones, cuántos repos; nunca tokens ni código). Copilot no puede escribir ficheros ni ejecutar comandos. Sin Copilot, contesta con el trozo del manual que más se parece a la pregunta.
+
 ### Filtros y navegación (pensado para 150+ repositorios)
 
 - **Filtros en el lateral** (Ramas, Actividad, Commits, DPs y Repos): proyecto, repositorio, persona y las propiedades de los repos (UUAA, lenguaje…). Cada opción dice cuántos resultados da con el resto de filtros; se pueden marcar varias y cada lista tiene su buscador.
@@ -80,7 +87,7 @@ La app une GitHub con vuestro Jira (`jira.globaldevtools.bbva.com`):
 - **Releases** del proyecto RDR (todas, con buscador): sus historias (campo *tech-version*) frente a las de los commits de las ramas `release/x.y.z`, marcando las que están en Jira sin commits y las que están en la rama sin la release en Jira. Como la rama se crea antes que la release en Jira, mientras tanto se ve con las historias de sus commits. También en la pestaña DPs, botón *Historias* de cada release.
 - El SDATOOL se busca solo en la feature: enlaces entre issues, campos, enlaces remotos y descripción.
 
-**Conectar:** en la entrada, en *Proyectos* o en *Ajustes → Jira*: *Abrir Jira y crear un token* (entras con tu SSO de siempre y en *Tokens de acceso personal* creas uno), lo pegas y *Conectar*. Se guarda como las sesiones de Git, en el almacén de credenciales de Windows: solo se pide una vez. Si los tokens estuvieran desactivados, vale usuario y contraseña.
+**Conectar:** en la entrada, en *Proyectos* o en *Ajustes → Jira* hay una guía paso a paso: *Abrir Jira* (entras con tu SSO de siempre), tu foto → *Perfil* → *Tokens de acceso personal* → *Crear token*, lo copias, lo pegas y *Conectar*. Debajo, las dudas típicas (caducidad, permisos, qué hacer si no aparece la opción). Se guarda como las sesiones de Git, en el almacén de credenciales de Windows: solo se pide una vez. Si los tokens estuvieran desactivados, vale usuario y contraseña.
 
 **Si algo no cuadra** (un campo con otro nombre, releases con otro formato…): *Ajustes → Jira → Generar diagnóstico*. Prueba cómo está montado vuestro Jira y prepara un informe **sin contenido** (nombres de campos, cifras y formas como `9.999.9`; ni títulos, ni descripciones, ni personas). Lo revisas en pantalla y, si quieres, se envía a `pases-datos/diagnostico/` para ajustar la app. Los campos también se pueden indicar a mano en Ajustes.
 

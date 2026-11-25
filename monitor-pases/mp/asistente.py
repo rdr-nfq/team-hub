@@ -346,7 +346,7 @@ class Asistente:
 
     def lista(self):
         with self._c:
-            ts = sorted(self.tareas.values(), key=lambda t: t["inicio"], reverse=True)
+            ts = sorted((t for t in self.tareas.values() if t["modo"] != "ayuda"), key=lambda t: t["inicio"], reverse=True)
         return [{k: v for k, v in self.publica(t).items() if k not in ("salida", "cambios")} for t in ts]
 
     # ── copias locales de los repositorios ──────────────────────────────────
@@ -507,6 +507,61 @@ class Asistente:
             t["estado"] = "terminada"  # ahora sí: con los cambios ya calculados
 
         return self._lanzar({"modo": modo, "contexto": contexto, "pregunta": pregunta}, trabajo)
+
+    # ── chat de ayuda: Copilot responde con el manual ─────────────────────────
+    def ayuda(self, pregunta, situacion="", historial=None):
+        """Pregunta sobre cómo usar la app. Copilot lee el manual y un resumen de la situación;
+        no ve repositorios ni ejecuta nada, y no puede escribir ficheros."""
+        pregunta = str(pregunta or "").strip()[:2000]
+        if not pregunta:
+            raise ValueError("Escribe tu pregunta.")
+        from .config import recurso
+
+        def trabajo(t):
+            d = self.dir / "contexto" / t["id"]
+            d.mkdir(parents=True, exist_ok=True)
+            manual = recurso("web/manual.md").read_text(encoding="utf-8")
+            (d / "manual.md").write_text(manual, encoding="utf-8")
+            (d / "situacion.md").write_text("# Situación de la app ahora\n\n" + str(situacion or "")[:4000], encoding="utf-8")
+            charla = [x for x in (historial or [])[-6:] if isinstance(x, dict)]
+            if charla:
+                (d / "conversacion.md").write_text("\n\n".join("**%s:** %s" % ("Persona" if x.get("rol") == "persona" else "Asistente",
+                                                                               str(x.get("texto") or "")[:1500]) for x in charla), encoding="utf-8")
+            if self.demo:
+                return self._demo_ayuda(t, manual)
+            cmd = self._lanzador()[0]
+            if not cmd:
+                raise RuntimeError("No se encuentra Copilot CLI: mira la pestaña Copilot.")
+            prompt = ("Eres la ayuda de la aplicación «Monitor de pases». Responde en español, claro y breve, a alguien que "
+                      "usa la app. Básate SOLO en manual.md y en situacion.md (y en conversacion.md si existe) de %s. "
+                      "Di en qué pestaña y con qué botones se hace, paso a paso si hace falta. Si el manual no lo cubre, "
+                      "dilo y sugiere a quién preguntar; no inventes funciones. No modifiques ningún fichero.\n\n"
+                      "Pregunta: %s" % (d, pregunta))
+            c = self.cfg.get()["copilot"]
+            args = list(cmd) + ["-p", prompt, "--add-dir", str(d), "--deny-tool", "write", "--deny-tool", "shell"]
+            if c.get("modelo"):
+                args += ["--model", c["modelo"]]
+            self._proceso(t, args, str(d), self._env())
+
+        return self._lanzar({"modo": "ayuda", "contexto": {"tipo": "ayuda"}, "pregunta": pregunta}, trabajo)
+
+    def _demo_ayuda(self, t, manual):
+        """Demo: sin Copilot, contesta con la sección del manual que más se parece a la pregunta."""
+        t["estado"] = "en curso"
+        import unicodedata
+        llano = lambda x: unicodedata.normalize("NFD", x.lower()).encode("ascii", "ignore").decode()
+        palabras = {w for w in re.findall(r"\w{4,}", llano(t["pregunta"]))}
+        secciones = re.split(r"\n(?=## )", manual)
+        puntos = lambda x: sum(llano(x).count(w) + 25 * llano(x.split("\n", 1)[0]).count(w) for w in palabras)  # el título pesa más
+        mejor = max(secciones[1:], key=puntos, default="")
+        titulo = re.sub(r"\s*\{#.*\}", "", mejor.split("\n", 1)[0].lstrip("# ")).strip()
+        cuerpo = mejor.split("\n", 1)[1].strip() if "\n" in mejor else ""
+        texto = ("(Demo: en la app real responde Copilot leyendo el manual.) Lo más parecido está en **%s**:\n\n%s\n"
+                 % (titulo, "\n".join(cuerpo.splitlines()[:14])))
+        for trozo in re.split(r"(\s+)", texto):
+            self._anadir(t, trozo)
+            time.sleep(0.004)
+        t["estado"], t["codigo"] = "terminada", 0
 
     def aplicar(self, tid, mensaje):
         t = self.tareas.get(tid)

@@ -29,7 +29,7 @@ export function FilaSesion({ quien, s, host, onIniciar, onCerrar }) {
   </div>`;
 }
 
-export function PantallaEntrada({ estado, entrar, tema, cambiarTema, jira, recargarJira }) {
+export function PantallaEntrada({ estado, entrar, tema, cambiarTema, jira, recargarJira, abrirAyuda }) {
   const [ses, setSes] = useState(estado.sesion);
   const [hosts, setHosts] = useState({ bbva: "bbva.ghe.com", nfq: "github.com" });
   useEffect(() => { api("config").then((c) => setHosts({ bbva: c.bbva.host, nfq: c.nfq.host || "github.com" }), () => {}); }, []);
@@ -44,7 +44,8 @@ export function PantallaEntrada({ estado, entrar, tema, cambiarTema, jira, recar
   return html`<div class="entrada">
     <div class="caja-entrada">
       <div class="cab-entrada"><div class="marca grande"><${Marca} /> Monitor de pases ${estado.demo ? html`<small>Demo</small>` : ""}</div>
-        <${BotonTema} tema=${tema} cambiar=${cambiarTema} /></div>
+        <span class="acc-entrada"><button class="btn-tema" onClick=${abrirAyuda} title="Manual y ayuda (F1)" aria-label="Abrir el manual y la ayuda (F1)"><${Icono} n="ayuda" /></button>
+        <${BotonTema} tema=${tema} cambiar=${cambiarTema} /></span></div>
       <h1>Inicia sesión</h1>
       <p class="suave">Con tus cuentas de GitHub de BBVA y de NFQ. Se abre la ventana de inicio de sesión de GitHub, como con Copilot;
         si ya la tienes iniciada en Git, entra directamente.</p>

@@ -81,11 +81,27 @@ export function ConectarJira({ estado, jira, recargar, aviso, compacto }) {
         ${conUsuario ? html`
           <label class="sr" for="j-usu">Usuario de Jira</label><input id="j-usu" class="inp" autocomplete="username" placeholder="Usuario" value=${usuario} onInput=${(e) => setUsuario(e.target.value)} />
           <label class="sr" for="j-cla">Contraseña de Jira</label><input id="j-cla" class="inp" type="password" autocomplete="current-password" placeholder="Contraseña" value=${clave} onInput=${(e) => setClave(e.target.value)} />`
-        : html`<ol class="pasos-jira">
-            <li><a class="btn btn-s" href=${url + (jira?.pats || "")} target="_blank" rel="noopener noreferrer"><${Icono} n="externo" /> Abrir Jira y crear un token</a>
-              <span class="tenue">Entras con tu SSO de siempre; en «Tokens de acceso personal», «Crear token».</span></li>
-            <li><label class="sr" for="j-tok">Token de Jira</label><input id="j-tok" class="inp mono" type="password" autocomplete="off" placeholder="Pega aquí el token" value=${token} onInput=${(e) => setToken(e.target.value)} /></li>
-          </ol>`}
+        : html`<div class="guia-token">
+            <p class="que-token">Hace falta un <b>token</b>: una contraseña especial que te da Jira para que esta app pueda <b>leer</b> Jira por ti.
+              Se crea una sola vez y se tarda un par de minutos.</p>
+            <ol class="pasos-jira">
+              <li><span><b>Abre tu perfil de Jira.</b> Si te pide entrar, hazlo con tu usuario de BBVA, como siempre.</span>
+                <a class="btn btn-s" href=${url + (jira?.pats || "")} target="_blank" rel="noopener noreferrer"><${Icono} n="externo" /> Abrir Jira</a></li>
+              <li><span>Entra en la pestaña <b>«Tokens de acceso personal»</b> <span class="tenue">(Personal Access Tokens)</span>. Si no la ves: arriba a la derecha, tu foto → <b>Perfil</b> → <b>Tokens de acceso personal</b>.</span></li>
+              <li><span>Pulsa <b>«Crear token»</b>. Como nombre pon <b>Monitor de pases</b>; en caducidad, la más larga que te deje. Pulsa <b>«Crear»</b>.</span></li>
+              <li><span>Jira enseña el token <b>una sola vez</b>: pulsa <b>«Copiar»</b> (o selecciónalo y <kbd>Ctrl</kbd>+<kbd>C</kbd>).</span></li>
+              <li><span>Pégalo aquí y pulsa <b>Conectar</b>:</span>
+                <label class="sr" for="j-tok">Token de Jira</label><input id="j-tok" class="inp mono" type="password" autocomplete="off" placeholder="Pega aquí el token" value=${token} onInput=${(e) => setToken(e.target.value)} /></li>
+            </ol>
+            <details class="dudas-token"><summary>Dudas frecuentes</summary>
+              <ul>
+                <li><b>¿Qué hace la app con él?</b> Solo leer historias, features y releases. Se guarda en el almacén de credenciales de Windows (como las sesiones de Git) y no sale de tu equipo.</li>
+                <li><b>¿Y cuando caduque?</b> La app te avisará y te pedirá uno nuevo: repite estos pasos.</li>
+                <li><b>No aparece «Tokens de acceso personal».</b> Vuestro Jira puede tenerlos desactivados: usa <b>«Prefiero usuario y contraseña»</b>.</li>
+                <li><b>Dice que el token no vale.</b> Comprueba que lo has copiado entero, sin espacios, o crea otro.</li>
+                <li><b>Si dejas de usar la app</b>, puedes borrarlo en esa misma página de Jira (Revocar).</li>
+              </ul></details>
+          </div>`}
         <div class="acc-jira">
           <button class="btn btn-pri btn-s" type="submit" disabled=${ocupado || (conUsuario ? !(usuario && clave) : !token.trim())}>${ocupado ? "Conectando…" : "Conectar"}</button>
           <button class="btn btn-t btn-s" type="button" onClick=${() => { setConUsuario(!conUsuario); setError(null); }}>${conUsuario ? "Usar un token (recomendado)" : "Prefiero usuario y contraseña"}</button>

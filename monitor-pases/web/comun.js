@@ -87,6 +87,7 @@ export const RUTAS = {
   historial: "M3 12a9 9 0 1 0 3-6.7M3 4v5h5M12 7v5l3 2",
   marcador: "M6 4h12v16l-6-4-6 4z",
   reloj: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7.5V12l3 2",
+  ayuda: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9.6 9.4a2.5 2.5 0 1 1 3.4 2.4c-.6.3-1 .8-1 1.5v.6M12 16.8v.1",
   filtro: "M4 5h16l-6 8v5l-4 2v-7z",
   ir: "M5 12h14M13 6l6 6-6 6",
   carpetaAbierta: "M3 7h6l2 2h10l-2 10H3z",

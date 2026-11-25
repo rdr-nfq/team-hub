@@ -35,6 +35,7 @@ MAX_CUERPO = 4 * 1024 * 1024
 mimetypes.add_type("text/javascript", ".mjs")
 mimetypes.add_type("text/javascript", ".js")
 mimetypes.add_type("font/woff2", ".woff2")
+mimetypes.add_type("text/markdown", ".md")
 
 
 def _git(*args):
@@ -104,6 +105,20 @@ class App:
                     return
 
         threading.Thread(target=bucle, name="vigilar-pestanas", daemon=True).start()
+
+    def _situacion(self, vista):
+        """Resumen de la situación para el chat de ayuda (sin tokens ni contenido de repos)."""
+        ses = self.ses.publica()
+        sj = self.jira.publica()
+        sc = dict(self.mon.sincro)
+        lineas = ["- Versión de la app: %s%s" % (VERSION, " (demo)" if self.demo else ""),
+                  "- Pestaña abierta: %s" % (vista or "?"),
+                  "- GitHub BBVA: %s; GitHub NFQ: %s; Jira: %s" % ((ses.get("bbva") or {}).get("estado"), (ses.get("nfq") or {}).get("estado"), sj.get("estado")),
+                  "- Sincronización: %s; repositorios al día: %s%s" % (sc.get("estado"), "/".join(str(x) for x in sc.get("repos") or []),
+                                                                       " · sigue a las %s" % sc.get("reanuda") if sc.get("estado") == "pausada" else ""),
+                  "- Primera carga terminada: %s" % ("sí" if self.mon.ultima_completa else "no"),
+                  "- Repositorios: %d; ramas: %d" % (len(self.mon.repos), len(self.mon.ramas))]
+        return "\n".join(lineas)
 
     def tras_sincronizar(self):
         try:
@@ -181,6 +196,8 @@ class App:
             return self.jira.diagnostico()
         if metodo == "POST" and ruta == "/api/jira/diagnostico/enviar":
             return self.jira.enviar_diagnostico(cuerpo.get("id") or "")
+        if metodo == "POST" and ruta == "/api/ayuda/preguntar":
+            return {"id": self.copilot.ayuda(cuerpo.get("pregunta"), self._situacion(cuerpo.get("vista") or ""), cuerpo.get("historial"))}
         if metodo == "POST" and ruta == "/api/latido":
             self.latido(cuerpo.get("id") or "")
             return {"ok": True}
