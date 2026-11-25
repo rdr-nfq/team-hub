@@ -34,6 +34,20 @@ export const NIVEL3_OTRAS = "Otras Tecnologías";
 export const OTRAS_TEC = "GoldenSource";
 export const SOPORTE_ID = ""; // proyectoId vacío = Soporte a Usuarios
 
+/* Estado de una feature (CIBRDR-…), lo pone coordinación en el Time Report.
+   `id` es lo que se guarda (backend: ESTADOS_FEATURE_TR); `color`, el acento
+   de la etiqueta (texto siempre Electric sobre acento); New va sin relleno. */
+export const ESTADOS_FEATURE = [
+  { id: "New", nombre: "New", color: null },
+  { id: "Analisis", nombre: "Análisis", color: "#9694FF" },
+  { id: "In Progress", nombre: "In Progress", color: "#85C8FF" },
+  { id: "Test", nombre: "Test", color: "#FFB56B" },
+  { id: "Accepted", nombre: "Accepted", color: "#8BE1E9" },
+  { id: "Ready To Deploy", nombre: "Ready To Deploy", color: "#FFE761" },
+  { id: "Deployed", nombre: "Deployed", color: "#88E783" },
+];
+export const estadoFeatureDe = (id) => ESTADOS_FEATURE.find((e) => e.id === id) || null;
+
 export const num = (v) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;

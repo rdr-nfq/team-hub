@@ -52,6 +52,9 @@
  *        (borra las filas del Q con quincena >= desdeQuincena y escribe las nuevas;
  *         las filas de personas bloqueadas que se conservan YA vienen incluidas)
  *   POST { action:'guardarBloqueadas', q, personas:[nombres] }
+ *   POST { action:'guardarEstadoFeature', feature:'CIBRDR-1234', estado, por }
+ *        (estado: New · Analisis · In Progress · Test · Accepted · Ready To Deploy · Deployed;
+ *         uno por feature y equipo, sin Q; el snapshot lo devuelve en «estadosFeature»)
  *   ?action=carpetaEvidencias&q=2026Q3&quincena=4   -> { id, url, nombre } (la crea si no existe)
  *   ?action=estadoEvidencias&q=2026Q3&quincena=4    -> { carpeta, entregados, pendientes, sinIdentificar, zip }
  *   POST { action:'descargarEvidencias', q, quincena } -> { url, verUrl, nombre, n } (ZIP en la carpeta)
@@ -116,8 +119,12 @@ var HOJAS = {
   // 'Equipo', la última: vacía = rdr (filas de antes de separar los equipos).
   proyectos: ['TR_Proyectos', ['Q', 'Id', 'SDATOOL', 'Nombre', 'Feature', 'Horas', 'Estados', 'Actualizado', 'Personas', 'Incurridas', 'Inicio', 'Fin', 'Equipo']],
   reparto: ['TR_Reparto', ['Q', 'Quincena', 'Persona', 'ProyectoId', 'Dias', 'Actualizado', 'Equipo']],
-  bloqueadas: ['TR_Bloqueadas', ['Q', 'Personas', 'Actualizado', 'Equipo']]
+  bloqueadas: ['TR_Bloqueadas', ['Q', 'Personas', 'Actualizado', 'Equipo']],
+  // Estado de cada feature (CIBRDR-…): uno por feature y equipo, sin Q (la feature sigue entre trimestres).
+  estadosFeature: ['TR_EstadosFeature', ['Feature', 'Estado', 'Por', 'Actualizado', 'Equipo']]
 };
+/* Estados de una feature, en orden (los mismos que la web: model.js → ESTADOS_FEATURE). */
+var ESTADOS_FEATURE_TR = ['New', 'Analisis', 'In Progress', 'Test', 'Accepted', 'Ready To Deploy', 'Deployed'];
 /* Equipo de una fila leída (columna «Equipo»; vacía = rdr). */
 function _eqFila(r, clave) {
   var col = HOJAS[clave][1].length - 1;
@@ -173,6 +180,7 @@ function _serveTR(e) {
       case 'guardarProyectos': data = guardarProyectos(p.q, _eqTR(p.equipo), p.proyectos); break;
       case 'guardarReparto': data = guardarReparto(p.q, _eqTR(p.equipo), p.desdeQuincena, p.filas); break;
       case 'guardarBloqueadas': data = guardarBloqueadas(p.q, _eqTR(p.equipo), p.personas); break;
+      case 'guardarEstadoFeature': data = guardarEstadoFeature(_eqTR(p.equipo), p.feature, p.estado, p.por); break;
       case 'carpetaEvidencias': data = carpetaEvidencias(p.q, p.quincena, p.raiz, _eqTR(p.equipo)); break;
       case 'estadoEvidencias': data = estadoEvidencias(p.q, p.quincena, p.raiz, _eqTR(p.equipo)); break;
       case 'descargarEvidencias': data = descargarEvidencias(p.q, p.quincena, p.raiz, _eqTR(p.equipo)); break;
@@ -242,6 +250,7 @@ function getSnapshotTR(q, eq) {
   return {
     generadoEn: new Date().toISOString(),
     q: q, equipo: eq, proyectos: proyectos, reparto: reparto, bloqueadas: bloqueadas,
+    estadosFeature: _estadosFeature(eq),
     qs: Object.keys(qsSet).sort(),
     evidenciasConfiguradas: !!_evidenciasRootId('', eq)
   };
@@ -283,6 +292,46 @@ function guardarProyectos(q, eq, proyectos) {
   if (rows.length) sh.getRange(sh.getLastRow() + 1, 1, rows.length, cab.length).setValues(rows);
   SpreadsheetApp.flush(); // antes de soltar el bloqueo: si no, el siguiente guardado lee la hoja sin estos cambios y duplica filas
   return { n: rows.length };
+  } finally { lock.releaseLock(); }
+}
+
+/* ───────────────────────── Estado de las features ───────────────────────── */
+
+/* { "CIBRDR-1234": { estado, por, fecha } } del equipo (la última fila de cada feature gana). */
+function _estadosFeature(eq) {
+  var out = {};
+  _filasTR(_hojaTR('estadosFeature')).forEach(function (r) {
+    if (_eqFila(r, 'estadosFeature') !== eq) return;
+    var f = String(r[0] || '').trim().toUpperCase();
+    if (!f) return;
+    out[f] = { estado: String(r[1] || ''), por: String(r[2] || ''),
+               fecha: r[3] instanceof Date ? r[3].toISOString() : String(r[3] || '') };
+  });
+  return out;
+}
+
+/* Cambia el estado de una feature (una fila por feature y equipo: se actualiza o se crea). */
+function guardarEstadoFeature(eq, feature, estado, por) {
+  var f = String(feature || '').trim().toUpperCase();
+  if (!/^[A-Z][A-Z0-9_]*-\d+$/.test(f)) throw new Error('Feature no válida: ' + feature);
+  if (ESTADOS_FEATURE_TR.indexOf(String(estado)) < 0) throw new Error('Estado no válido: ' + estado);
+  var sh = _hojaTR('estadosFeature');
+  var cab = HOJAS.estadosFeature[1];
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var now = new Date();
+    var fila = [f, String(estado), String(por || '').slice(0, 120), now, eq];
+    var last = sh.getLastRow();
+    var vals = last >= 2 ? sh.getRange(2, 1, last - 1, cab.length).getValues() : [];
+    var i = -1;
+    for (var k = 0; k < vals.length; k++) {
+      if (String(vals[k][0]).trim().toUpperCase() === f && _eqFila(vals[k], 'estadosFeature') === eq) { i = k; break; }
+    }
+    if (i >= 0) sh.getRange(i + 2, 1, 1, cab.length).setValues([fila]);
+    else sh.getRange(last + 1, 1, 1, cab.length).setValues([fila]);
+    SpreadsheetApp.flush();
+    return { feature: f, estado: String(estado), por: fila[2], fecha: now.toISOString() };
   } finally { lock.releaseLock(); }
 }
 

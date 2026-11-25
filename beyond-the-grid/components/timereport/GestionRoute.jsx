@@ -10,6 +10,7 @@ import { useAuth } from "../chrome/AuthGate";
 import {
   num, curQ, hoyISO, hoyTR, fechaDe, quincenasDeQ, quincenaDe, horasDe, esLaborable, jornada,
   repartir, capacidadMaxima, NIVELES2, NIVEL2_ANALISIS, SOPORTE_ID, MAX_DIA, etiquetaEvidencias, esBAU, BAU,
+  ESTADOS_FEATURE, estadoFeatureDe,
 } from "./model";
 import { abrirResumenPdf } from "./resumenPdf";
 
@@ -70,6 +71,16 @@ function Desplegable({ className = "", children, ...p }) {
     </span>
   );
 }
+/* Estado de la feature (New … Deployed): etiqueta de color; texto Electric sobre el acento. */
+function EstadoFeature({ estado, className = "" }) {
+  const e = estadoFeatureDe(estado);
+  if (!e) return null;
+  return (
+    <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-[2px] text-[11px] font-bold leading-[16px] ${e.color ? "" : "border border-white/40 text-sand"} ${className}`}
+      style={e.color ? { background: e.color, color: "#001391" } : undefined}>{e.nombre}</span>
+  );
+}
+
 function Estado({ letra, hoy, nombre, quincena }) {
   return (
     <span title={quincena ? `${quincena}${hoy ? " (actual)" : ""}: ${nombre}` : nombre}
@@ -79,7 +90,7 @@ function Estado({ letra, hoy, nombre, quincena }) {
 
 export default function GestionRoute() {
   const { showToast, getUrl } = useLinks();
-  const { equipos: misEquipos } = useAuth();
+  const { equipos: misEquipos, nombre: miNombre, email: miEmail } = useAuth();
   // Q y quincena de partida: las del «hoy» del Time Report (la quincena cerrada
   // sigue siendo la actual hasta el día del recordatorio, incluido).
   const [q, setQ] = useState(() => curQ(fechaDe(hoyTR())));
@@ -145,6 +156,7 @@ export default function GestionRoute() {
      va en segundo plano; solo se resincroniza al cambiar de Q/equipo o si un
      guardado falla. */
   const [proyectos, setProyectos] = useState(null);
+  const [estadosFeature, setEstadosFeature] = useState({}); // { "CIBRDR-1234": { estado, por, fecha } }
   const [reparto, setReparto] = useState([]);
   const [bloqueadas, setBloqueadas] = useState(() => new Set());
   const seeded = useRef(null);
@@ -154,6 +166,7 @@ export default function GestionRoute() {
     if (seeded.current === key) return;
     seeded.current = key;
     setProyectos(snap.data.proyectos || []);
+    setEstadosFeature(snap.data.estadosFeature || {});
     setReparto(snap.data.reparto || []);
     setBloqueadas(new Set(snap.data.bloqueadas || []));
     setDirtyQ(null);
@@ -261,6 +274,32 @@ export default function GestionRoute() {
   // Se puede pegar el código completo ("SDATOOL-49780" / "CIBRDR-1088").
   const limpiaSdatool = (v) => String(v || "").replace(/^\s*sdatool[\s-]*/i, "").trim();
   const limpiaFeature = (v) => (prefijoFeature ? String(v || "").replace(/^\s*cibrdr[\s-]*/i, "").trim() : String(v || "").trim());
+
+  /* Estado de una feature: se guarda al momento (uno por feature, no por Q: la feature sigue entre trimestres). */
+  const cambiaEstadoFeature = (feature, estado) => {
+    const f = String(feature || "").trim().toUpperCase();
+    if (!f || !estado) return;
+    const por = miNombre || miEmail || "";
+    setEstadosFeature((prev) => ({ ...prev, [f]: { estado, por, fecha: new Date().toISOString() } }));
+    salva(() => post("guardarEstadoFeature", { feature: f, estado, por }));
+  };
+  const estadoDe = (feature) => estadosFeature[String(feature || "").trim().toUpperCase()] || null;
+  // Función (no componente): así el desplegable no se vuelve a montar en cada render y no pierde el foco.
+  const selectorEstado = (p) => {
+    if (!p.feature) return <span className="text-xs text-sand/75">sin feature</span>;
+    const e = estadoDe(p.feature);
+    const quien = e ? `${e.por ? e.por + " · " : ""}${e.fecha ? new Date(e.fecha).toLocaleDateString("es-ES", { day: "numeric", month: "short" }) : ""}` : "";
+    return (
+      <span className="grid gap-0.5">
+        <Desplegable value={e?.estado || ""} aria-label={`Estado de ${p.feature}`} className="min-w-[150px]"
+          onChange={(ev) => cambiaEstadoFeature(p.feature, ev.target.value)}>
+          {!e && <option value="">Sin estado</option>}
+          {ESTADOS_FEATURE.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
+        </Desplegable>
+        {quien && <span className="truncate text-[11px] text-sand/75" title={`Último cambio: ${quien}`}>{quien}</span>}
+      </span>
+    );
+  };
 
   /* ── Editor de proyecto (uno abierto a la vez) ── */
   const abrirProyecto = (id) => {
@@ -559,10 +598,11 @@ export default function GestionRoute() {
           <span className="text-[13px] text-sand/75">El PDF va en formato BBVA y sin horas incurridas.</span>
         </div>
         <div className={`${CAJA} overflow-x-auto px-3.5 py-1`}>
-          <table className="w-full min-w-[760px] border-collapse text-[13px] tabular-nums">
+          <table className="w-full min-w-[920px] border-collapse text-[13px] tabular-nums">
             <thead>
               <tr className="text-right text-xs font-bold text-sand/75">
                 <th className="px-1.5 py-2.5 text-left">Proyecto</th>
+                <th className="px-1.5 py-2.5 text-left">Estado de la feature</th>
                 <th className="px-1.5 py-2.5">Horas</th><th className="px-1.5 py-2.5">Imputadas</th><th className="px-1.5 py-2.5">Por imputar</th>
                 <th className="px-1.5 py-2.5">Incurridas</th><th className="px-1.5 py-2.5">Por incurrir</th>
                 {verQuincenas && qs.map((x) => <th key={x.n} className="px-1.5 py-2.5">{x.label}{x.n === qActualN ? " · hoy" : ""}</th>)}
@@ -578,6 +618,7 @@ export default function GestionRoute() {
                       {p.sinRepartir > 0 && <> · <span className="hub-etiqueta hub-eq rounded-full px-1.5 font-bold">{p.sinRepartir} h sin repartir</span></>}
                     </span>
                   </td>
+                  <td className="px-1.5 py-2.5 text-left align-top">{selectorEstado(p)}</td>
                   <td className="px-1.5 py-2.5">{num(p.horas)}</td>
                   <td className="px-1.5 py-2.5">{p.imputadas}</td>
                   <td className="px-1.5 py-2.5 font-bold">{p.pendientes}</td>
@@ -590,6 +631,7 @@ export default function GestionRoute() {
             <tfoot>
               <tr className="border-t-[1.5px] border-white/40 text-right font-bold text-sand">
                 <td className="px-1.5 py-2.5 text-left">Total</td>
+                <td />
                 <td className="px-1.5 py-2.5">{tot.horas}</td><td className="px-1.5 py-2.5">{tot.imputadas}</td><td className="px-1.5 py-2.5">{tot.pendientes}</td>
                 <td className="px-1.5 py-2.5">{tot.incurridas}</td><td className="px-1.5 py-2.5">{tot.porIncurrir}</td>
                 {verQuincenas && <td colSpan={6} />}
@@ -753,7 +795,7 @@ export default function GestionRoute() {
     );
   };
 
-  const COLS = "grid-cols-[minmax(0,1fr)_20px] md:grid-cols-[minmax(150px,1fr)_112px_84px_200px_52px_20px] min-[1400px]:grid-cols-[minmax(150px,1fr)_112px_84px_134px_220px_52px_20px]";
+  const COLS = "grid-cols-[minmax(0,1fr)_20px] md:grid-cols-[minmax(150px,1fr)_112px_124px_200px_52px_20px] min-[1400px]:grid-cols-[minmax(150px,1fr)_112px_124px_134px_220px_52px_20px]";
   const lineaProyecto = (p) => {
     const ab = abierto === p.id;
     const pct = num(p.horas) ? Math.min(100, Math.round((p.plan / num(p.horas)) * 100)) : 0;
@@ -765,7 +807,10 @@ export default function GestionRoute() {
           {p.sinRepartir > 0 && <span className="hub-etiqueta hub-eq mt-1 inline-block rounded-full px-[7px] text-[11px] font-bold leading-[17px] md:hidden">faltan {p.sinRepartir} h</span>}
         </span>
         <span className="hidden truncate text-[13px] tabular-nums md:block">{esBAU(p) ? <span className="hub-etiqueta hub-ge rounded-full px-2 py-0.5 text-[12px] font-bold" title="Sin SDATOOL: cada persona lo imputa a mano">BAU</span> : p.sdatool}</span>
-        <span className={`hidden truncate text-[13px] tabular-nums md:block ${p.feature ? "" : "text-sand/75"}`}>{p.feature || "sin feature"}</span>
+        <span className={`hidden min-w-0 text-[13px] tabular-nums md:grid md:justify-items-start md:gap-0.5 ${p.feature ? "" : "text-sand/75"}`}>
+          <span className="max-w-full truncate">{p.feature || "sin feature"}</span>
+          {p.feature && <EstadoFeature estado={estadoDe(p.feature)?.estado} />}
+        </span>
         <span className="hidden gap-[3px] min-[1400px]:flex" aria-label="Estados por quincena">
           {qs.map((x) => { const v = (p.estados || {})[x.n] || NIVEL2_ANALISIS; return <Estado key={x.n} letra={LETRA[v] || "A"} nombre={NOMBRE_EST[v] || v} quincena={x.label} hoy={x.n === qActualN && hoyQ >= 1 && hoyQ <= 6} />; })}
         </span>
