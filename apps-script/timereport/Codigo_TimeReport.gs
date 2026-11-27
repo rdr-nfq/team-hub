@@ -179,7 +179,7 @@ function _serveTR(e) {
     var data;
     switch (action) {
       case 'ping': data = { ok: 1 }; break;
-      case 'snapshot': data = getSnapshotTR(p.q, _eqTR(p.equipo)); break;
+      case 'snapshot': data = _conBloqueoTR(function () { return getSnapshotTR(p.q, _eqTR(p.equipo)); }); break;
       case 'guardarProyectos': data = guardarProyectos(p.q, _eqTR(p.equipo), p.proyectos, p.borrados); break;
       case 'guardarReparto': data = guardarReparto(p.q, _eqTR(p.equipo), p.desdeQuincena, p.filas); break;
       case 'guardarBloqueadas': data = guardarBloqueadas(p.q, _eqTR(p.equipo), p.personas); break;
@@ -209,6 +209,14 @@ function _filasTR(sh) {
 function _q(v) { return String(v || '').replace(/[_\s]+/g, '').toUpperCase(); }
 
 /* ────────────────────────── Snapshot y guardados ────────────────────────── */
+
+/* Lee con el mismo bloqueo que los guardados: un guardado borra las filas del Q y luego escribe las nuevas,
+   y una lectura a mitad veía la lista vacía o a medias (y si esa página guardaba después, se perdían proyectos). */
+function _conBloqueoTR(fn) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try { return fn(); } finally { lock.releaseLock(); }
+}
 
 function getSnapshotTR(q, eq) {
   q = _q(q);
