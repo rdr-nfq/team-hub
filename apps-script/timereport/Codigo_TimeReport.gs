@@ -46,8 +46,11 @@
  *
  *  API (GET query o POST text/plain JSON; todas aceptan `equipo`):
  *   ?action=snapshot&q=2026Q3 -> { proyectos, reparto, bloqueadas, qs }
- *   POST { action:'guardarProyectos', q, proyectos:[{id,sdatool,nombre,feature,horas,estados,personas,incurridas,inicio,fin}] }
- *        (inicio/fin: quincenas 1..6 que acotan el reparto del proyecto; fin 0 = automático)
+ *   POST { action:'guardarProyectos', q, proyectos:[{id,sdatool,nombre,feature,horas,estados,personas,incurridas,inicio,fin}],
+ *          borrados:[ids] }
+ *        (añade o actualiza los proyectos que llegan y borra SOLO los de «borrados»: no pisa los que otra
+ *         persona haya creado mientras tanto; devuelve { n, proyectos } con la lista resultante.
+ *         inicio/fin: quincenas 1..6 que acotan el reparto del proyecto; fin 0 = automático)
  *   POST { action:'guardarReparto',  q, desdeQuincena, filas:[{quincena,persona,proyectoId,dias}] }
  *        (borra las filas del Q con quincena >= desdeQuincena y escribe las nuevas;
  *         las filas de personas bloqueadas que se conservan YA vienen incluidas)
@@ -177,7 +180,7 @@ function _serveTR(e) {
     switch (action) {
       case 'ping': data = { ok: 1 }; break;
       case 'snapshot': data = getSnapshotTR(p.q, _eqTR(p.equipo)); break;
-      case 'guardarProyectos': data = guardarProyectos(p.q, _eqTR(p.equipo), p.proyectos); break;
+      case 'guardarProyectos': data = guardarProyectos(p.q, _eqTR(p.equipo), p.proyectos, p.borrados); break;
       case 'guardarReparto': data = guardarReparto(p.q, _eqTR(p.equipo), p.desdeQuincena, p.filas); break;
       case 'guardarBloqueadas': data = guardarBloqueadas(p.q, _eqTR(p.equipo), p.personas); break;
       case 'guardarEstadoFeature': data = guardarEstadoFeature(_eqTR(p.equipo), p.feature, p.estado, p.por); break;
@@ -217,19 +220,11 @@ function getSnapshotTR(q, eq) {
     var rq = _q(r[0]);
     if (rq) qsSet[rq] = 1;
     if (rq !== q) return;
-    var estados = {}, personasProy = [];
-    try { estados = JSON.parse(r[6] || '{}'); } catch (e2) {}
-    try { personasProy = JSON.parse(r[8] || '[]'); } catch (e5) {}
     // Un proyecto guardado dos veces (guardados que se pisaron): la última fila gana.
     var id = String(r[1]);
     if (posId[id] != null) proyectos.splice(posId[id], 1, null);
     posId[id] = proyectos.length;
-    proyectos.push({
-      id: id, sdatool: String(r[2] || ''), nombre: String(r[3] || ''), feature: String(r[4] || ''),
-      horas: Number(r[5]) || 0, estados: estados, personas: personasProy,
-      incurridas: Number(r[9]) || 0,
-      inicio: Number(r[10]) || 1, fin: Number(r[11]) || 0
-    });
+    proyectos.push(_proyectoDeFilaTR(r));
   });
   proyectos = proyectos.filter(Boolean);
   var reparto = [];
@@ -268,7 +263,24 @@ function _borrarDelQ(sh, clave, q, eq, filtroExtra) {
   }
 }
 
-function guardarProyectos(q, eq, proyectos) {
+/* Un proyecto tal como lo usa la web, desde su fila de TR_Proyectos. */
+function _proyectoDeFilaTR(r) {
+  var estados = {}, personasProy = [];
+  try { estados = JSON.parse(r[6] || '{}'); } catch (e2) {}
+  try { personasProy = JSON.parse(r[8] || '[]'); } catch (e5) {}
+  return {
+    id: String(r[1]), sdatool: String(r[2] || ''), nombre: String(r[3] || ''), feature: String(r[4] || ''),
+    horas: Number(r[5]) || 0, estados: estados, personas: personasProy,
+    incurridas: Number(r[9]) || 0,
+    inicio: Number(r[10]) || 1, fin: Number(r[11]) || 0
+  };
+}
+
+/* Guarda proyectos del Q SIN pisar los de los demás: añade o actualiza los que llegan y solo borra los de
+   «borrados». Antes se reescribía el Q entero con la lista de la página, y una página abierta desde antes
+   borraba los proyectos que otra persona había creado mientras tanto (su reparto se quedaba sin nombre).
+   Devuelve la lista resultante para que la página se ponga al día. */
+function guardarProyectos(q, eq, proyectos, borrados) {
   q = _q(q);
   if (!q) throw new Error('Falta el Q.');
   var sh = _hojaTR('proyectos');
@@ -276,22 +288,33 @@ function guardarProyectos(q, eq, proyectos) {
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-  _borrarDelQ(sh, 'proyectos', q, eq);
+  // Lo que hay ahora en la hoja para este Q y equipo (la última fila de cada id gana).
+  var actuales = {}, orden = [];
+  _filasTR(sh).forEach(function (r) {
+    if (_eqFila(r, 'proyectos') !== eq || _q(r[0]) !== q) return;
+    var id = String(r[1]);
+    if (!(id in actuales)) orden.push(id);
+    actuales[id] = _proyectoDeFilaTR(r);
+  });
+  (proyectos || []).forEach(function (p) {
+    var id = String(p && p.id || '');
+    if (!id) return;
+    if (!(id in actuales)) orden.push(id);
+    actuales[id] = p;
+  });
+  var fuera = {};
+  (borrados || []).forEach(function (id) { fuera[String(id)] = 1; });
   var now = new Date();
-  var vistos = {};
-  var rows = (proyectos || []).filter(function (p) {
-    var id = String(p && p.id);
-    if (vistos[id]) return false;
-    vistos[id] = 1;
-    return true;
-  }).map(function (p) {
+  var lista = orden.filter(function (id) { return !fuera[id]; }).map(function (id) { return actuales[id]; });
+  var rows = lista.map(function (p) {
     return [q, String(p.id), String(p.sdatool || ''), String(p.nombre || ''), String(p.feature || ''), Number(p.horas) || 0,
       JSON.stringify(p.estados || {}), now, JSON.stringify(p.personas || []), Number(p.incurridas) || 0,
       Number(p.inicio) || 1, Number(p.fin) || 0, eq];
   });
+  _borrarDelQ(sh, 'proyectos', q, eq);
   if (rows.length) sh.getRange(sh.getLastRow() + 1, 1, rows.length, cab.length).setValues(rows);
   SpreadsheetApp.flush(); // antes de soltar el bloqueo: si no, el siguiente guardado lee la hoja sin estos cambios y duplica filas
-  return { n: rows.length };
+  return { n: rows.length, proyectos: rows.map(_proyectoDeFilaTR) };
   } finally { lock.releaseLock(); }
 }
 

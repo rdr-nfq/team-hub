@@ -258,9 +258,13 @@ export default function GestionRoute() {
         reload();
       });
   };
-  const aplicaProyectos = (next) => {
+  /* Guarda sin pisar a nadie: el backend añade o actualiza estos proyectos y solo borra los de «borrados».
+     Después la página se pone al día con lo que hay (por si otra persona ha creado proyectos mientras tanto). */
+  const aplicaProyectos = (next, borrados = []) => {
     setProyectos(next);
-    salva(() => post("guardarProyectos", { q, proyectos: next }));
+    salva(() => post("guardarProyectos", { q, proyectos: next, borrados }).then((d) => {
+      if (Array.isArray(d?.proyectos) && pendientesRef.current <= 1) setProyectos(d.proyectos);
+    }));
   };
 
   /* Aviso con «Deshacer» (10 s) para el reparto y los borrados. */
@@ -353,7 +357,7 @@ export default function GestionRoute() {
   const borraProyecto = () => {
     const antes = proyectos;
     const p = proyectos.find((x) => x.id === abierto);
-    aplicaProyectos(proyectos.filter((x) => x.id !== abierto));
+    aplicaProyectos(proyectos.filter((x) => x.id !== abierto), [abierto]);
     cerrarEditor();
     focoTras.current = "trg-nuevo";
     ofrecerDeshacer(`«${p?.nombre}» eliminado`, () => { aplicaProyectos(antes); showToast(`«${p?.nombre}» recuperado`); });
