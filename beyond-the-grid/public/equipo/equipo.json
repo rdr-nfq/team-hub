@@ -303,6 +303,19 @@
       "track": "funcional",
       "coordinador": true,
       "activo": true
+    },
+    {
+      "id": "",
+      "nombre": "Santiago Lafuente Sáez-Benito",
+      "email": "santiago.lafuente@nfq.es",
+      "emailBBVA": "",
+      "equipos": [
+        "rdr"
+      ],
+      "equipoTR": "rdr",
+      "track": "funcional",
+      "coordinador": false,
+      "activo": true
     }
   ]
 }
