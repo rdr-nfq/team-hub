@@ -1,4 +1,4 @@
-name: Monitor de pases (.vsix y .exe)
+name: RDR Coding (.vsix y .exe)
 
 # Empaqueta monitor-pases/ como plugin de VS Code (MonitorPases.vsix: el motor en
 # Python va dentro y usa el Python de la VDI; no lleva ningún ejecutable) y como
@@ -63,7 +63,7 @@ jobs:
             if ($r.StatusCode -ne 200) { throw "Falta $f en el .exe" }
           }
           Get-Process MonitorPases -ErrorAction SilentlyContinue | Stop-Process -Force  # el .exe de un solo fichero son dos procesos
-          if ($html -notmatch "Monitor de pases") { throw "La página no es la del monitor" }
+          if ($html -notmatch "RDR Coding") { throw "La página no es la de RDR Coding" }
           $mb = [math]::Round((Get-Item dist/MonitorPases.exe).Length / 1MB, 1)
           "MonitorPases.exe $env:VERSION ($mb MB) arranca y sirve la app." | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
 
@@ -77,15 +77,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $notas = "Monitor de pases $env:VERSION · commit $($env:GITHUB_SHA.Substring(0,7))`n`nPlugin de VS Code: descarga MonitorPases.vsix y en VS Code, Extensiones → … → Instalar desde VSIX (usa el Python de la VDI). También MonitorPases.exe para quien pueda ejecutarlo. Instrucciones en monitor-pases/README.md."
+          $notas = "RDR Coding by NFQ $env:VERSION · commit $($env:GITHUB_SHA.Substring(0,7))`n`nPlugin de VS Code: descarga MonitorPases.vsix y en VS Code, Extensiones → … → Instalar desde VSIX (usa el Python de la VDI). También MonitorPases.exe para quien pueda ejecutarlo. Instrucciones en monitor-pases/README.md."
           gh release view monitor-pases *> $null
           $existe = ($LASTEXITCODE -eq 0)
           if ($existe) {
             gh release upload monitor-pases dist/MonitorPases.exe --clobber
             if ($LASTEXITCODE -ne 0) { throw "No se pudo subir el .exe" }
-            gh release edit monitor-pases --title "Monitor de pases $env:VERSION" --notes "$notas"
+            gh release edit monitor-pases --title "RDR Coding $env:VERSION" --notes "$notas"
           } else {
-            gh release create monitor-pases dist/MonitorPases.exe --target $env:GITHUB_SHA --title "Monitor de pases $env:VERSION" --notes "$notas" --latest=false
+            gh release create monitor-pases dist/MonitorPases.exe --target $env:GITHUB_SHA --title "RDR Coding $env:VERSION" --notes "$notas" --latest=false
           }
           if ($LASTEXITCODE -ne 0) { throw "No se pudo publicar la release" }
 
