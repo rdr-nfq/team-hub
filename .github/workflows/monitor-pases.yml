@@ -40,6 +40,7 @@ jobs:
           python-version: "3.12"
 
       - name: Pruebas (contra el GitHub simulado)
+        timeout-minutes: 15
         run: python -m unittest discover -s pruebas -v
 
       - name: Compilar MonitorPases.exe

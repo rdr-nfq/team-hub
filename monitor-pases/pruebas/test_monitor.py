@@ -17,6 +17,10 @@ import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+if os.environ.get("CI"):  # en la CI, si algo se cuelga, se ve dónde (todos los hilos) y se acaba
+    import faulthandler
+    faulthandler.dump_traceback_later(600, exit=True)
+
 from mp import clasificar as C  # noqa: E402
 from mp import pase as P  # noqa: E402
 
