@@ -2,7 +2,7 @@
   "name": "monitor-pases",
   "displayName": "Monitor de pases",
   "description": "GitHub BBVA, Jira, DPs y el pase en VS Code (BBVA × NFQ).",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "publisher": "nfq",
   "private": true,
   "license": "SEE LICENSE IN LICENSE.txt",

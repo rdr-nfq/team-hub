@@ -230,7 +230,8 @@ export function VistaDPs({ estado, f, setF, setFacetas, ir, aviso }) {
           ${d.soloProd?.enComun ? html` <span class="chip chip-mal" title="Producción ha cambiado ficheros que este DP también cambia: revisa la comprobación del DP">pisaría cambios de producción</span>`
             : d.soloProd?.commits ? html` <span class="chip chip-borde" title="Producción tiene commits que este DP no lleva (no tocan sus ficheros)">producción va por delante</span>` : ""}
           ${d.nIguales ? html` <span class="chip chip-borde" title="Ficheros que ya están iguales en producción: no cuentan">${d.nIguales} ya en producción</span>` : ""}
-          ${d.nFuera ? html` <span class="chip chip-borde" title="Cambian, pero el package descriptor no los nombra: no se instalan y no cuentan">${d.nFuera} fuera del descriptor</span>` : ""}</span>
+          ${d.nFuera ? html` <span class="chip chip-borde" title="Cambian, pero el package descriptor no los nombra: no se instalan y no cuentan">${d.nFuera} fuera del descriptor</span>` : ""}
+          ${d.descriptor?.ruta && !d.descriptor.aplica ? html` <span class="chip chip-mal" title=${(d.descriptor.error || "El descriptor no nombra ningún fichero del DP") + ": no se ha filtrado nada. Abre el DP y envía el diagnóstico del descriptor."}>descriptor sin entender</span>` : ""}</span>
         <${EstadoPublicado} d=${d} nfq=${datos.nfq} />
       </li>`)}</ul>
     </section>`)}

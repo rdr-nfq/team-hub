@@ -13,6 +13,7 @@ import time
 from . import VERSION
 from .clasificar import componentes
 from .ghe import ErrorGHE
+from .descriptor import LECTOR as DESC_LECTOR
 from .pase import cliente_nfq
 
 _cerrojo = threading.Lock()
@@ -24,7 +25,7 @@ def _ahora():
 
 # 2: los componentes salen del package descriptor (si el repositorio tiene uno). Un DP publicado con un
 # cálculo anterior se vuelve a publicar una vez (antes salían ficheros que el DP no instala).
-CALCULO = 2
+CALCULO = 3  # 3: el descriptor se lee también en UTF-16/cp1252, con DTD o entidades, y fuera de la raíz
 
 
 def documento(info, cfg, usuario):
@@ -62,7 +63,8 @@ def publicar_dps(monitor, config, usuario="", forzar=False):
                           if (not v.get("publicado") or (v["publicado"].get("calculo") or 1) < CALCULO)
                           and v.get("conclusion") in ("success", None)
                           # Aún sin mirar su package descriptor: se publica cuando se sepa qué instala.
-                          and not (v.get("ficheros") and v.get("descriptor") is None)]
+                          and not (v.get("ficheros") and (v.get("descriptor") is None
+                                                           or (v["descriptor"].get("v") or 1) < DESC_LECTOR))]
         if not pendientes:
             return {"publicados": 0, "yaEstaban": 0, "errores": []}
         cli = cliente_nfq(cfg)

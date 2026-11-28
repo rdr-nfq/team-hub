@@ -17,6 +17,7 @@ import re
 import xml.etree.ElementTree as ET
 
 ALGORITMO = 1  # sube si cambia cómo se cruzan entradas y ficheros (se recalcula todo)
+LECTOR = 2  # sube si cambia cómo se lee el XML (se vuelve a pedir el descriptor de cada DP)
 PATRON_DEFECTO = r"(?i)(descriptor[^/]*|^package[^/]*)\.xml$"
 MAX_ENTRADAS = 20000
 MAX_BYTES = 4 * 1024 * 1024
@@ -30,11 +31,12 @@ def _re(patron):
         return re.compile(PATRON_DEFECTO)
 
 
-def elegir(rutas, patron=""):
-    """El descriptor entre los ficheros de la raíz ("" si no hay): mejor si dice «descriptor»."""
+def elegir(rutas, patron="", en_raiz=True):
+    """El descriptor entre los ficheros ("" si no hay): en la raíz (o, si no, el menos profundo),
+    mejor si dice «descriptor»."""
     p = _re(patron)
-    cands = [r for r in rutas or [] if r and "/" not in r and p.search(r)]
-    cands.sort(key=lambda r: ("descriptor" not in r.lower(), "package" not in r.lower(), len(r), r))
+    cands = [r for r in rutas or [] if r and (not en_raiz or "/" not in r) and p.search(r.rsplit("/", 1)[-1])]
+    cands.sort(key=lambda r: (r.count("/"), "descriptor" not in r.lower(), "package" not in r.lower(), len(r), r))
     return cands[0] if cands else ""
 
 
@@ -42,17 +44,44 @@ def _sin_ns(nombre):
     return nombre.rsplit("}", 1)[-1] if "}" in nombre else nombre
 
 
+_DTD = re.compile(r"<!DOCTYPE[^\[>]*(\[.*?\])?\s*>", re.S | re.I)
+_DTD_B = re.compile(rb"<!DOCTYPE[^\[>]*(\[.*?\])?\s*>", re.S | re.I)
+_DECL = re.compile(r"^\s*<\?xml[^>]*\?>")
+_ENTIDAD = re.compile(r"&(?!(?:amp|lt|gt|quot|apos);|#)[A-Za-z_][\w.-]*;")
+
+
+def _analizar(datos):
+    """El XML tal como venga: UTF-8, UTF-16 (habitual en herramientas de Windows), Latin-1/cp1252,
+    con DTD o con entidades que no están definidas. -> (raíz, "") o (None, error)."""
+    if isinstance(datos, str):
+        datos = datos.encode("utf-8")
+    datos = (datos or b"")[:MAX_BYTES]
+    error = "vacío"
+    # 1. Los bytes tal cual (sin DTD): el analizador respeta el BOM y la codificación que declare el XML.
+    try:
+        return ET.fromstring(_DTD_B.sub(b"", datos)), ""
+    except ET.ParseError as e:
+        error = str(e).split(":")[0]
+    # 2. Como texto, probando codificaciones, sin la declaración, sin DTD y sin entidades desconocidas.
+    utf16 = datos[:2] in (b"\xff\xfe", b"\xfe\xff") or b"\x00" in datos[:200]
+    for cod in (["utf-16"] if utf16 else []) + ["utf-8-sig", "cp1252"]:
+        try:
+            t = datos.decode(cod)
+        except UnicodeDecodeError:
+            continue
+        t = _ENTIDAD.sub(" ", _DTD.sub("", _DECL.sub("", t.lstrip("﻿"))))
+        try:
+            return ET.fromstring(t), ""
+        except ET.ParseError as e:
+            error = str(e).split(":")[0]
+    return None, error
+
+
 def leer(datos):
     """Bytes del XML -> {"entradas": [[donde, valor], ...], "error": ""}."""
-    if isinstance(datos, bytes):
-        datos = datos[:MAX_BYTES].decode("utf-8", "replace")
-    texto = (datos or "").lstrip("﻿")
-    # Sin DTD: ni entidades externas ni expansiones (no hacen falta para leer nombres).
-    texto = re.sub(r"<!DOCTYPE[^\[>]*(\[.*?\])?\s*>", "", texto, flags=re.S | re.I)
-    try:
-        raiz = ET.fromstring(texto)
-    except ET.ParseError as e:
-        return {"entradas": [], "error": "El descriptor no es un XML válido (%s)." % str(e).split(":")[0]}
+    raiz, error = _analizar(datos)
+    if raiz is None:
+        return {"entradas": [], "error": "El descriptor no es un XML válido (%s)." % error}
     out = []
 
     def poner(donde, valor):
@@ -122,14 +151,21 @@ class Indice:
             if not v or len(v) < 2:
                 continue
             self.n += 1
-            partes = v.split("/")
-            # Cada final de la ruta de la entrada (una ruta de instalación acaba en la del repositorio).
-            for i in range(len(partes)):
-                self.rutas.setdefault("/".join(partes[i:]), donde)
-            base = partes[-1]
-            if len(_sin_ext(base)) >= 3:
-                self.raices.setdefault(_sin_ext(base), donde)
-            self.nombres.setdefault(base, donde)
+            # El valor entero (hay nombres con espacios) y, si es una frase, cada trozo que parezca un fichero o una ruta.
+            for x in [v] + ([t.strip("\"'()[]") for t in v.split() if "/" in t or re.search(r"\.\w{1,6}$", t)] if " " in v else []):
+                self._poner(x, donde)
+
+    def _poner(self, v, donde):
+        if len(v) < 2:
+            return
+        partes = v.split("/")
+        # Cada final de la ruta de la entrada (una ruta de instalación acaba en la del repositorio).
+        for i in range(len(partes)):
+            self.rutas.setdefault("/".join(partes[i:]), donde)
+        base = partes[-1]
+        if len(_sin_ext(base)) >= 3:
+            self.raices.setdefault(_sin_ext(base), donde)
+        self.nombres.setdefault(base, donde)
 
     def buscar(self, ruta):
         """-> (cómo, dónde) si el fichero está en el descriptor; None si no."""

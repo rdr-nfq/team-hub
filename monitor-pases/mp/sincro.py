@@ -772,7 +772,9 @@ class Monitor:
             except ErrorGHE:
                 return k, None
         with self._cerrojo:
-            faltan = [k for k, i in self.dps_info.items() if i.get("sha") and i.get("ficheros") and i.get("descriptor") is None]
+            # También los que se leyeron con un lector anterior (se vuelve a pedir y a leer su descriptor).
+            faltan = [k for k, i in self.dps_info.items() if i.get("sha") and i.get("ficheros")
+                      and (i.get("descriptor") is None or (i["descriptor"].get("v") or 1) < DESC.LECTOR)]
         with ThreadPoolExecutor(POOL_RAMAS) as ex:
             for k, d in ex.map(descriptor_de, faltan[:200]):
                 if d is not None:
@@ -800,18 +802,18 @@ class Monitor:
         raiz = {x["path"]: x.get("sha") or "" for x in t.get("tree") or [] if x.get("type") == "blob" and "/" not in (x.get("path") or "")}
         ruta = DESC.elegir(list(raiz), cfgd.get("patron"))
         if not ruta:
-            return {"ruta": "", "buscado": _ahora()}
-        blob = raiz[ruta] or ("%s:%s" % (sha, ruta))
+            # No está en la raíz: el menos profundo del repositorio (una llamada más, solo en este caso).
+            t = cli.get("repos/%s/git/trees/%s" % (repo, sha), {"recursive": "1"}, etag=False)[0] or {}
+            raiz = {x["path"]: x.get("sha") or "" for x in t.get("tree") or [] if x.get("type") == "blob"}
+            ruta = DESC.elegir(list(raiz), cfgd.get("patron"), en_raiz=False)
+        if not ruta:
+            return {"ruta": "", "buscado": _ahora(), "v": DESC.LECTOR}
+        blob = "%s.v%d" % (raiz[ruta] or ("%s:%s" % (sha, ruta)), DESC.LECTOR)
         if self._entradas_descriptor(blob) is None:
-            try:
-                datos = cli.crudo("repos/%s/contents/%s" % (repo, urllib.parse.quote(ruta, safe="/")), {"ref": sha}, limite=DESC.MAX_BYTES)
-                leido = DESC.leer(datos)
-            except ErrorCuota:
-                raise
-            except ErrorGHE as e:
-                leido = {"entradas": [], "error": "No se ha podido leer el descriptor (%s)." % e}
-            self._guardar_entradas(blob, leido)
-        return {"ruta": ruta, "blob": blob, "buscado": _ahora()}
+            # Un fallo al pedirlo (red, permisos) no se guarda: se vuelve a intentar en la próxima sincronización.
+            datos = cli.crudo("repos/%s/contents/%s" % (repo, urllib.parse.quote(ruta, safe="/")), {"ref": sha}, limite=DESC.MAX_BYTES)
+            self._guardar_entradas(blob, DESC.leer(datos))
+        return {"ruta": ruta, "blob": blob, "buscado": _ahora(), "v": DESC.LECTOR}
 
     def _descriptor_seguro(self, cli, repo, sha):
         """Como _buscar_descriptor, pero un fallo (que no sea la cuota) no impide calcular el DP: se reintenta."""
@@ -927,7 +929,8 @@ class Monitor:
             propios = {f["ruta"] for f in ficheros_reales(i)}
             i["soloProd"] = {"commits": sp.get("commits") or 0, "enComun": len(propios & set(sp.get("ficheros") or []))}
             de = i.get("descriptor") or {}
-            i["descriptor"] = {"ruta": de.get("ruta") or "", "aplica": bool(de.get("aplica")), "fuera": de.get("fuera") or 0}
+            i["descriptor"] = {"ruta": de.get("ruta") or "", "aplica": bool(de.get("aplica")), "fuera": de.get("fuera") or 0,
+                               "error": de.get("error") or ""}
             i["nFuera"] = len([f for f in i.get("ficheros") or [] if f.get("fueraDescriptor")])
             i.pop("ficheros", None)
             i.pop("commits", None)

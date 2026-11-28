@@ -96,8 +96,20 @@ class TestGspYDescriptor(unittest.TestCase):
         self.assertEqual(ind.buscar("gs/MODULO_A/def.gsp")[0], "carpeta")
         self.assertTrue(ind.buscar("objetos/T_SEIS.sql"))
         self.assertIsNone(ind.buscar("objetos/T_CUATRO.sql"))
-        self.assertIsNone(ind.buscar("gs/otro.gsp"))  # «gs» sola no nombra a todos
+        self.assertIsNone(ind.buscar("gs/otro.gsp"))
+        self.assertTrue(D.Indice([["c", "Insert_Update PORTFOLIO.gsp"]]).buscar("gs/Insert_Update PORTFOLIO.gsp"))  # «gs» sola no nombra a todos
         self.assertTrue(D.leer(b"<roto")["error"])
+        # Como lo guardan las herramientas de Windows: UTF-16 con BOM, cp1252 con entidades sin definir, DTD.
+        xml16 = '<?xml version="1.0" encoding="UTF-16"?><PackageDescriptor><Component Name="RDR_Agreements.gsp"/></PackageDescriptor>'
+        for datos in (b"\xff\xfe" + xml16.encode("utf-16-le"), xml16.encode("utf-16-le"),
+                      '<?xml version="1.0" encoding="windows-1252"?><!DOCTYPE p SYSTEM "x.dtd"><p><c>Año&nbsp;RDR_Agreements.gsp</c></p>'.encode("cp1252"),
+                      '<p><c>Año RDR_Agreements.gsp</c></p>'.encode("cp1252")):
+            r = D.leer(datos)
+            self.assertFalse(r["error"], datos[:40])
+            self.assertTrue(any("RDR_Agreements.gsp" in v for _, v in r["entradas"]), r)
+            self.assertEqual(D.Indice(r["entradas"]).buscar("gs/RDR_Agreements.gsp")[0], "nombre")
+        self.assertEqual(D.elegir(["a/b/PackageDescriptor.xml", "src/PackageDescriptor.xml", "README.md"], en_raiz=False), "src/PackageDescriptor.xml")
+        self.assertEqual(D.elegir(["PackageDescriptor.xml", "x.xml"]), "PackageDescriptor.xml")
         solo = D.Indice(e["entradas"], ["item@name"])
         self.assertTrue(solo.buscar("PROC_TRES.gsp") and not solo.buscar("src/objetos/T_UNO.sql"))
 
@@ -709,7 +721,7 @@ class TestConGitHubSimulado(unittest.TestCase):
         info["publicado"] = {"fecha": "2026-01-01T00:00:00Z", "url": "x"}
         self.assertEqual(self.app.publicar(forzar=True)["publicados"], 1)
         nuevo = json.loads(self.datos.contenidos[ck]["texto"])
-        self.assertEqual(nuevo["calculo"], 2)
+        self.assertEqual(nuevo["calculo"], 3)
         self.assertNotIn("V_RDR_PRUEBAS_LOCAL", json.dumps(nuevo))
         self.assertEqual(self.app.publicar(forzar=True)["publicados"], 0)
 
