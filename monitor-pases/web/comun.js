@@ -215,3 +215,35 @@ export function ChipJira({ k, conTitulo }) {
   return url ? html`<a class=${cls} href=${url} target="_blank" rel="noopener noreferrer" title=${titulo} onClick=${(e) => e.stopPropagation()}>${cuerpo}</a>`
     : html`<span class=${cls} title=${titulo}>${cuerpo}</span>`;
 }
+
+/* ── Dentro del panel del plugin de VS Code (la app va en un iframe) ──
+   Los enlaces de fuera y el portapapeles los hace VS Code: desde el iframe no siempre se puede. */
+export const EMBEBIDA = (() => { try { return window.parent !== window; } catch { return true; } })();
+export const alPadre = (msg) => { if (EMBEBIDA) window.parent.postMessage({ deMonitor: true, ...msg }, "*"); };
+export function abrirFuera(url) {
+  if (EMBEBIDA) alPadre({ tipo: "abrir", url: String(url) });
+  else window.open(url, "_blank", "noopener");
+}
+export function copiarTexto(t) {
+  if (EMBEBIDA) { alPadre({ tipo: "copiar", texto: String(t) }); return Promise.resolve(); }
+  return navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject(new Error("Sin portapapeles"));
+}
+if (EMBEBIDA) {
+  // Un enlace a otra web (GitHub, Jira, Actions…) se abre en el navegador, no dentro del panel.
+  document.addEventListener("click", (e) => {
+    const a = e.target.closest?.("a[href]");
+    if (!a) return;
+    let u;
+    try { u = new URL(a.getAttribute("href"), location.href); } catch { return; }
+    if (u.origin !== location.origin) { e.preventDefault(); abrirFuera(u.href); }
+  }, true);
+  window.open = (u) => { abrirFuera(u); return null; };
+  // El tema sigue al de VS Code.
+  window.addEventListener("message", (e) => {
+    const d = e.data;
+    if (e.source === window.parent && d && d.paraMonitor && d.tipo === "tema" && (d.tema === "dark" || d.tema === "light")) {
+      document.documentElement.dataset.theme = d.tema;
+      window.dispatchEvent(new CustomEvent("mp-tema", { detail: d.tema }));
+    }
+  });
+}

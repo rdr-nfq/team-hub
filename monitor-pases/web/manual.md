@@ -8,10 +8,16 @@ El Monitor de pases es una app para la **VDI de BBVA**. Junta en un solo sitio l
 - las historias y features de Jira;
 - la preparación del pase.
 
-### Abrir y cerrar
-- **Abrir:** doble clic en `MonitorPases.exe`. No se instala nada y no se abre ninguna ventana negra: la app se abre en el navegador, en `http://127.0.0.1:8765`.
-- **Cerrar:** cierra la pestaña. La app se apaga sola unos segundos después de cerrar su última pestaña. Recargar la página no la cierra.
-- **Volver a abrirla:** otra vez doble clic en el .exe. Si ya estaba abierta, solo abre la pestaña.
+### Abrir y cerrar (plugin de VS Code)
+1. Instala `MonitorPases.vsix`: en VS Code, **Extensiones → ⋯ → Instalar desde VSIX…**.
+2. Pulsa **Monitor de pases** en la barra de estado (abajo a la izquierda) o su icono en la barra lateral: la app se abre en un panel de VS Code.
+3. Todo está también en `Ctrl+Shift+P` → «Monitor de pases»: *Iniciar sesión en Jira (abre Chrome)*, *Actualizar ahora*, *Abrir en el navegador*, *Probar la demo*, *Ver el registro*…
+
+> **Consejo:** los enlaces a GitHub, Jira o Actions se abren en tu navegador, y el tema claro u oscuro sigue al de VS Code.
+
+- **Cerrar:** cierra el panel; el motor sigue en segundo plano y se apaga al cerrar VS Code (o con *Detener el motor*).
+- **Python:** el plugin usa el de la VDI (3.8 o superior). Si no lo encuentra, *Elegir Python…*.
+- **Con el `.exe`** (si se puede ejecutar): doble clic y se abre en el navegador; se apaga al cerrar su última pestaña.
 
 ### Iniciar sesión
 Al abrirla comprueba si ya tienes las sesiones y, si están, entra sola. Si falta alguna, pulsa **Conectar todo**: abre una tras otra las ventanas de inicio de sesión que falten y solo tienes que entrar como siempre en cada una.

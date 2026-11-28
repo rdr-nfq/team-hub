@@ -1,9 +1,10 @@
-name: Monitor de pases (.exe)
+name: Monitor de pases (.vsix y .exe)
 
-# Compila monitor-pases/ en un único MonitorPases.exe (Python, la app y la
-# interfaz dentro: no hay que instalar nada para usarlo), lo prueba y lo
-# publica en la release «monitor-pases» del repositorio. El enlace de descarga
-# no cambia entre versiones:
+# Empaqueta monitor-pases/ como plugin de VS Code (MonitorPases.vsix: el motor en
+# Python va dentro y usa el Python de la VDI; no lleva ningún ejecutable) y como
+# MonitorPases.exe (para quien pueda ejecutarlo), los prueba en Windows y los
+# publica en la release «monitor-pases» del repositorio. Enlaces fijos:
+#   https://github.com/rdr-nfq/team-hub/releases/download/monitor-pases/MonitorPases.vsix
 #   https://github.com/rdr-nfq/team-hub/releases/download/monitor-pases/MonitorPases.exe
 
 on:
@@ -75,7 +76,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $notas = "Monitor de pases $env:VERSION · commit $($env:GITHUB_SHA.Substring(0,7))`n`nDescarga MonitorPases.exe y ábrelo: no hay que instalar nada. Instrucciones en monitor-pases/README.md."
+          $notas = "Monitor de pases $env:VERSION · commit $($env:GITHUB_SHA.Substring(0,7))`n`nPlugin de VS Code: descarga MonitorPases.vsix y en VS Code, Extensiones → … → Instalar desde VSIX (usa el Python de la VDI). También MonitorPases.exe para quien pueda ejecutarlo. Instrucciones en monitor-pases/README.md."
           gh release view monitor-pases *> $null
           $existe = ($LASTEXITCODE -eq 0)
           if ($existe) {
@@ -86,3 +87,53 @@ jobs:
             gh release create monitor-pases dist/MonitorPases.exe --target $env:GITHUB_SHA --title "Monitor de pases $env:VERSION" --notes "$notas" --latest=false
           }
           if ($LASTEXITCODE -ne 0) { throw "No se pudo publicar la release" }
+
+  vsix:
+    needs: exe  # la release la crea (o actualiza) el trabajo del .exe
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: monitor-pases/vscode
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.8"  # el mínimo que pide el plugin: si funciona con 3.8, funciona con el de la VDI
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Empaquetar MonitorPases.vsix
+        run: |
+          node empaquetar.js
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo empaquetar" }
+          "VERSION=$((Get-Content package.json -Raw | ConvertFrom-Json).version)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Probar el motor como lo arranca el plugin (desde el .vsix)
+        run: |
+          Expand-Archive MonitorPases.vsix -DestinationPath $env:RUNNER_TEMP/vsix
+          node prueba-motor.js "$env:RUNNER_TEMP/vsix/extension/motor"
+          if ($LASTEXITCODE -ne 0) { throw "El motor no arranca desde el .vsix" }
+
+      - name: Probar la extensión (VS Code simulado)
+        run: |
+          node prueba-extension.js
+          if ($LASTEXITCODE -ne 0) { throw "La extensión falla" }
+          $kb = [math]::Round((Get-Item MonitorPases.vsix).Length / 1KB)
+          "MonitorPases.vsix $env:VERSION ($kb KB): el motor arranca desde el plugin con Python 3.8 y la extensión responde." | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MonitorPases-vsix-${{ env.VERSION }}
+          path: monitor-pases/vscode/MonitorPases.vsix
+
+      - name: Publicar en la release «monitor-pases»
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload monitor-pases MonitorPases.vsix --clobber
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo subir el .vsix" }

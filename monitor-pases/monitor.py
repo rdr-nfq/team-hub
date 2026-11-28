@@ -73,13 +73,55 @@ def _ya_abierta(puerto):
         return False
 
 
+def _listo(url, puerto, propio):
+    """Línea que espera el plugin de VS Code para mostrar la app."""
+    print("MONITOR_LISTO " + json.dumps({"url": url, "puerto": puerto, "version": VERSION, "propio": propio}), flush=True)
+
+
+def _vivo(pid):
+    if os.name == "nt":
+        import ctypes
+        k = ctypes.windll.kernel32
+        h = k.OpenProcess(0x00100000, False, pid)  # SYNCHRONIZE
+        if not h:
+            return False
+        try:
+            return k.WaitForSingleObject(h, 0) == 0x102  # WAIT_TIMEOUT: sigue vivo
+        finally:
+            k.CloseHandle(h)
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _vigilar_padre(pid, mon):
+    """Si VS Code se cierra (o se cae) sin parar el motor, el motor guarda y se cierra solo."""
+    import threading
+
+    def bucle():
+        while _vivo(pid):
+            time.sleep(5)
+        h = threading.Thread(target=mon.guardar, daemon=True)
+        h.start()
+        h.join(10)
+        os._exit(0)
+
+    threading.Thread(target=bucle, name="padre", daemon=True).start()
+
+
 def main():
     ap = argparse.ArgumentParser(description="Monitor de pases (GitHub BBVA → .json del pase)")
     ap.add_argument("--puerto", type=int, default=None, help="puerto local (por defecto 8765)")
     ap.add_argument("--sin-navegador", action="store_true", help="no abrir el navegador")
     ap.add_argument("--demo", action="store_true", help="datos inventados con un GitHub simulado")
+    ap.add_argument("--vscode", action="store_true", help="lo arranca el plugin de VS Code (sin navegador; avisa al estar listo)")
+    ap.add_argument("--padre", type=int, default=0, help="se cierra solo si termina este proceso (el de VS Code)")
     ap.add_argument("--version", action="version", version="Monitor de pases " + VERSION)
     a = ap.parse_args()
+    if a.vscode:
+        a.sin_navegador = True
     _titulo("Monitor de pases" + (" (demo)" if a.demo else ""))
 
     from mp.config import Config
@@ -100,6 +142,9 @@ def main():
     puerto = a.puerto or (8775 if a.demo else int(cfg.get().get("puerto") or 8765))
     if _ya_abierta(puerto):
         url = "http://127.0.0.1:%d/" % puerto
+        if a.vscode:  # otra ventana de VS Code ya lo tiene abierto: se usa ese
+            _listo(url, puerto, propio=False)
+            return
         print("El monitor ya está abierto en %s: lo abro en el navegador." % url)
         if not a.sin_navegador:
             webbrowser.open(url)
@@ -131,7 +176,11 @@ def main():
     print("  Abierto en  %s" % url)
     print("  Datos en    %s" % cfg.dir)
     print()
-    if a.sin_navegador:
+    if a.vscode:
+        if a.padre:
+            _vigilar_padre(a.padre, mon)
+        _listo(url, app.puerto, propio=True)
+    elif a.sin_navegador:
         print("  Para salir, cierra esta ventana o pulsa Ctrl+C.")
     else:
         print("  Se cierra solo al cerrar la última pestaña de la app.")

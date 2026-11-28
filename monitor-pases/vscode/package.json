@@ -1,0 +1,123 @@
+{
+  "name": "monitor-pases",
+  "displayName": "Monitor de pases",
+  "description": "GitHub BBVA, Jira, DPs y el pase en VS Code (BBVA × NFQ).",
+  "version": "2.0.0",
+  "publisher": "nfq",
+  "private": true,
+  "license": "SEE LICENSE IN LICENSE.txt",
+  "icon": "media/icono.png",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "monitorPases.abrir",
+        "title": "Abrir el monitor",
+        "category": "Monitor de pases",
+        "icon": "$(git-pull-request)"
+      },
+      {
+        "command": "monitorPases.iniciarJira",
+        "title": "Iniciar sesión en Jira (abre Chrome)",
+        "category": "Monitor de pases"
+      },
+      {
+        "command": "monitorPases.sincronizar",
+        "title": "Actualizar ahora",
+        "category": "Monitor de pases",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "monitorPases.abrirNavegador",
+        "title": "Abrir en el navegador",
+        "category": "Monitor de pases"
+      },
+      {
+        "command": "monitorPases.abrirDemo",
+        "title": "Probar la demo (datos inventados)",
+        "category": "Monitor de pases"
+      },
+      {
+        "command": "monitorPases.reiniciar",
+        "title": "Reiniciar el motor",
+        "category": "Monitor de pases"
+      },
+      {
+        "command": "monitorPases.detener",
+        "title": "Detener el motor",
+        "category": "Monitor de pases"
+      },
+      {
+        "command": "monitorPases.verRegistro",
+        "title": "Ver el registro",
+        "category": "Monitor de pases"
+      },
+      {
+        "command": "monitorPases.carpetaDatos",
+        "title": "Abrir la carpeta de datos",
+        "category": "Monitor de pases"
+      },
+      {
+        "command": "monitorPases.elegirPython",
+        "title": "Elegir Python…",
+        "category": "Monitor de pases"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "monitorPases",
+          "title": "Monitor de pases",
+          "icon": "media/icono.svg"
+        }
+      ]
+    },
+    "views": {
+      "monitorPases": [
+        {
+          "type": "webview",
+          "id": "monitorPases.inicio",
+          "name": "Monitor de pases"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "monitorPases.sincronizar",
+          "when": "view == monitorPases.inicio",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Monitor de pases",
+      "properties": {
+        "monitorPases.python": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Ruta de `python.exe` (3.8 o superior). Vacío: el lanzador `py -3` o el `python` del PATH."
+        },
+        "monitorPases.puerto": {
+          "type": "number",
+          "default": 0,
+          "description": "Puerto local del motor. 0: el de siempre (8765, o el siguiente libre)."
+        },
+        "monitorPases.abrirAlIniciar": {
+          "type": "boolean",
+          "default": false,
+          "description": "Abrir el monitor al arrancar VS Code."
+        }
+      }
+    }
+  }
+}

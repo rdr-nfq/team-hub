@@ -1,0 +1,9 @@
+empaquetar.js
+prueba-motor.js
+*.vsix
+motor/**/__pycache__/**
+motor/pruebas/**
+motor/build/**
+motor/dist/**
+.gitignore
+prueba-extension.js

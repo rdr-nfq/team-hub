@@ -1,7 +1,7 @@
 // Monitor de pases · interfaz. Preact + htm vendorizados: nada se descarga de internet.
 import { html, render, useState, useEffect, useMemo, useRef, useCallback } from "./vendor/preact-htm.mjs";
 import {
-  BotonTema, CLAVE, ChipDP, ponerJira, ESTADO_PR, EstadoRun, FUENTE, Icono, Marca, Rama, api, clonar, colorDe, corto, fCorta, fLarga, hace, leerLS, plural, ponerColores, ponerIr, ponerLS, proximoSabado, uniq,
+  BotonTema, CLAVE, ChipDP, copiarTexto, ponerJira, ESTADO_PR, EstadoRun, FUENTE, Icono, Marca, Rama, api, clonar, colorDe, corto, fCorta, fLarga, hace, leerLS, plural, ponerColores, ponerIr, ponerLS, proximoSabado, uniq,
 } from "./comun.js";
 import { VistaCommits, VistaCommit, VistaDiffRama } from "./diffs.js";
 import { PantallaEntrada, FilaSesion } from "./entrada.js";
@@ -278,7 +278,7 @@ function Detalle({ id, onCerrar, aviso, recargar, ir, jira }) {
       recargar();
     } catch (e) { aviso(e.message, "mal"); }
   };
-  const copiar = (t) => navigator.clipboard?.writeText(t).then(() => aviso(`${t} copiado`), () => {});
+  const copiar = (t) => copiarTexto(t).then(() => aviso(`${t} copiado`), () => {});
   return html`<div class="velo" onMouseDown=${(e) => e.target === e.currentTarget && onCerrar()}>
     <aside class="panel" role="dialog" aria-modal="true" aria-labelledby="det-t">
       <div class="panel-cab">
@@ -669,7 +669,7 @@ function VistaAjustes({ estado, aviso, recargar, jira, recargarJira }) {
     try {
       const r = await api("config/equipo");
       const t = JSON.stringify(r.equipo, null, 1);
-      await navigator.clipboard.writeText(t);
+      await copiarTexto(t);
       aviso("Copiado. Pásalo para guardarlo en monitor-pases/config-equipo.json del repositorio.");
     } catch (e) { aviso("No se pudo copiar: " + e.message, "mal"); }
   };
@@ -886,6 +886,11 @@ function App() {
   const [, setTic] = useState(0);
   const [dentro, setDentro] = useState(false);
   const [tema, setTema] = useState(() => document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
+  useEffect(() => {  // en VS Code, el tema sigue al del editor
+    const f = (e) => setTema(e.detail);
+    addEventListener("mp-tema", f);
+    return () => removeEventListener("mp-tema", f);
+  }, []);
 
   // Navegación: commits y diferencias son pantallas dentro de la pestaña de
   // la que se viene; «Volver» y el botón Atrás del navegador deshacen el paso.

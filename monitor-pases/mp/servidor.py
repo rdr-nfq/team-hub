@@ -383,7 +383,8 @@ class App:
                     datos = datos.replace(b"__CLAVE__", app.clave.encode())
                     tipo = "text/html; charset=utf-8"
                 csp = ("default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
-                       "font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'")
+                       "font-src 'self'; connect-src 'self'; frame-ancestors 'self' vscode-webview: vscode-file:; base-uri 'none'")
+                # frame-ancestors: solo la propia app y el panel del plugin de VS Code pueden mostrarla dentro.
                 self._enviar(200, datos, tipo, {"Content-Security-Policy": csp})
 
             def _api(self, metodo):

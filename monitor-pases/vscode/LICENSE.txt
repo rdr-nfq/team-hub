@@ -1,0 +1,2 @@
+Monitor de pases — uso interno del equipo NFQ para BBVA.
+No se distribuye fuera del equipo.

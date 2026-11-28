@@ -8,17 +8,29 @@ App para **la VDI de BBVA**. Te deja ver los repositorios de GitHub BBVA (`bbva.
 
 Además sigue los **DPs de cada release** (qué componentes lleva cada uno y qué modificaciones), los publica en [`rdr-nfq/pases-datos`](https://github.com/rdr-nfq/pases-datos) y prepara el **.json del pase**. Tiene dos asistentes con **Copilot CLI**: uno de consulta y otro que modifica features.
 
-**Es un único `MonitorPases.exe`**, sin instalar nada. El código vive aquí, en `monitor-pases/`. Cada vez que cambia en `main`, GitHub Actions lo compila, lo prueba y publica el ejecutable nuevo.
+**Es un plugin de VS Code (`MonitorPases.vsix`)**: la app se ve en un panel de VS Code y el motor (Python, solo librería estándar) va dentro del plugin y usa el **Python de la VDI**. No lleva ningún ejecutable. El código vive aquí, en `monitor-pases/` (el plugin, en `monitor-pases/vscode/`). Cada vez que cambia en `main`, GitHub Actions lo empaqueta, lo prueba en Windows y lo publica. También se sigue publicando `MonitorPases.exe` para quien pueda ejecutarlo.
 
-## Descargar y abrir
+## Instalar el plugin de VS Code
 
-1. Descarga **[MonitorPases.exe](https://github.com/rdr-nfq/team-hub/releases/download/monitor-pases/MonitorPases.exe)**. El enlace no cambia entre versiones; la versión se ve en la [release «monitor-pases»](https://github.com/rdr-nfq/team-hub/releases/tag/monitor-pases).
-2. Ábrelo con doble clic. Se abre el navegador en `http://127.0.0.1:8765`; no hay ninguna ventana más. **La app se cierra sola unos segundos después de cerrar su última pestaña** (recargar la página no la cierra). Para volver, abre otra vez el .exe. Si algo falla al arrancar, sale un aviso de Windows y el detalle queda en `monitor.log`, en la carpeta de datos.
-3. **Inicia sesión** con tu GitHub de BBVA y tu GitHub de NFQ (ver abajo).
+1. Descarga **[MonitorPases.vsix](https://github.com/rdr-nfq/team-hub/releases/download/monitor-pases/MonitorPases.vsix)**. El enlace no cambia entre versiones; la versión se ve en la [release «monitor-pases»](https://github.com/rdr-nfq/team-hub/releases/tag/monitor-pases).
+2. En VS Code: **Extensiones** (`Ctrl+Shift+X`) → **⋯** (arriba a la derecha) → **Instalar desde VSIX…** → elige el fichero. O en una terminal: `code --install-extension MonitorPases.vsix`.
+3. Pulsa **Monitor de pases** en la barra de estado (abajo a la izquierda) o su icono en la barra lateral. Se abre la app en un panel.
+4. La primera vez, **Conectar todo** (GitHub BBVA, Jira y GitHub NFQ). **Jira se abre en Chrome** (Edge si no hay Chrome) desde el plugin: entras con tu usuario de BBVA y la ventana se cierra sola.
 
-Para verlo con datos inventados, sin red: `MonitorPases.exe --demo`. Otras opciones: `--puerto 8800`, `--sin-navegador` (no abre el navegador ni se cierra solo) y `--version`.
+Para actualizar, instala el `.vsix` nuevo encima (VS Code pide recargar la ventana).
 
-> **Si Windows lo bloquea:** es un ejecutable sin firma digital. SmartScreen puede pedir «Más información → Ejecutar de todas formas» y algunos antivirus corporativos frenan este tipo de ejecutables. Si pasa, hay que pedir a sistemas que lo permitan o firmarlo con un certificado de la empresa.
+**Requisitos:** Python 3.8 o superior. El plugin prueba `py -3`, `python` y `python3`; si no lo encuentra, **Monitor de pases: Elegir Python…** o el ajuste `monitorPases.python`. Git con Git Credential Manager, como para `git pull`.
+
+**Comandos** (`Ctrl+Shift+P` → «Monitor de pases»): *Abrir el monitor*, *Iniciar sesión en Jira (abre Chrome)*, *Actualizar ahora*, *Abrir en el navegador*, *Probar la demo*, *Reiniciar* y *Detener el motor*, *Ver el registro*, *Abrir la carpeta de datos* y *Elegir Python…*.
+
+**Cómo funciona:** el plugin arranca `python monitor.py --vscode --padre <pid de VS Code>` y enseña la app (la misma web) en un panel; el motor solo escucha en `127.0.0.1` y se cierra solo si VS Code se cierra. Si otra ventana de VS Code ya tiene el motor abierto, se usa ese. Los enlaces a GitHub, Jira o Actions se abren en el navegador, el portapapeles lo pone VS Code y el tema claro u oscuro sigue al de VS Code. Datos y sesiones en `%USERPROFILE%\.monitor-pases`, los mismos que con el `.exe`.
+
+## El .exe (si se puede ejecutar)
+
+1. Descarga **[MonitorPases.exe](https://github.com/rdr-nfq/team-hub/releases/download/monitor-pases/MonitorPases.exe)** y ábrelo con doble clic. Se abre el navegador en `http://127.0.0.1:8765` y **se cierra sola unos segundos después de cerrar su última pestaña**. Si algo falla al arrancar, sale un aviso de Windows y el detalle queda en `monitor.log`, en la carpeta de datos.
+2. Para verlo con datos inventados, sin red: `MonitorPases.exe --demo`. Otras opciones: `--puerto 8800`, `--sin-navegador` y `--version`.
+
+> **Si Windows lo bloquea** (ejecutable sin firma; algunos antivirus corporativos lo frenan): usa el plugin de VS Code.
 
 ## Inicio de sesión
 
@@ -160,7 +172,11 @@ Lo común (organización, patrones, nombres de proyectos, reglas y `pases-datos`
 python -m unittest discover -s pruebas     # GitHub simulado; Copilot falso con git real (hace falta node y git)
 python monitor.py --demo                   # la app con datos inventados (http://127.0.0.1:8775)
 python build/compilar.py                   # el .exe (en Windows, con pip install pyinstaller)
+cd vscode && node empaquetar.js            # el .vsix (copia el motor a vscode/motor/ y usa npx @vscode/vsce)
+node prueba-motor.js && node prueba-extension.js   # el motor como lo arranca el plugin y la extensión con un VS Code simulado
 ```
+
+- `vscode/` es el plugin: `extension.js` (panel con la app en un iframe, barra lateral, comandos, barra de estado), `motor.js` (buscar Python, arrancar el motor y su API; sin dependencias de VS Code) y `package.json`. La web sabe que está en el panel (`EMBEBIDA` en `comun.js`) y pide a VS Code abrir enlaces y copiar; el motor permite que lo enseñe el panel (`frame-ancestors`).
 
 - `mp/` es el backend, en Python y solo con su librería estándar:
   - `sesion.py`: Git Credential Manager.
@@ -184,4 +200,4 @@ python build/compilar.py                   # el .exe (en Windows, con pip instal
   - `paleta.js`: «Ir a…» (`Ctrl K`).
   - `jira.js`: Proyectos, Releases y la conexión con Jira.
 - `mp/demo.py` simula unos 170 repositorios (157 con `uuaa=KYTL0000` y otros de otra UUAA que el filtro deja fuera).
-- Al cambiar algo, sube `VERSION` en `mp/__init__.py`. Al subir a `main`, el workflow publica el `.exe` nuevo en el mismo enlace.
+- Al cambiar algo, sube `VERSION` en `mp/__init__.py` (también es la versión del plugin). Al subir a `main`, el workflow publica el `.vsix` y el `.exe` nuevos en los mismos enlaces.
