@@ -110,6 +110,21 @@ class TestGspYDescriptor(unittest.TestCase):
             self.assertEqual(D.Indice(r["entradas"]).buscar("gs/RDR_Agreements.gsp")[0], "nombre")
         self.assertEqual(D.elegir(["a/b/PackageDescriptor.xml", "src/PackageDescriptor.xml", "README.md"], en_raiz=False), "src/PackageDescriptor.xml")
         self.assertEqual(D.elegir(["PackageDescriptor.xml", "x.xml"]), "PackageDescriptor.xml")
+        # Como el de objetos-gs: <Locations> con carpetas y <Tasks> con un deployGSP por componente. Solo cuentan
+        # las tareas (antes las carpetas de <Locations> hacían casar casi todos los ficheros).
+        gs = D.leer(b"""<?xml version="1.0"?><PackageDescriptor name="KYTL" version="2.109.0">
+          <Locations><Location name="GSDMDataModel" path="workflows/Custom"/><Location name="PackageZip" path="GS"/></Locations>
+          <Tasks><unzip description="Unzip package archive temporarily" name="Unzip Package" src="GS.zip" srcLoc="PackageZip"/>
+            <!-- Workflow -->
+            <deployGSP name="CorpEventACK.gsp" description="Deploy CorpEventACK.gsp Workflow" destLoc="GSDMDataModel" src="workflows/Custom/CorpEventACK.gsp"/>
+            <deployGSP name="RDR_PushCorporateEventsByIds.gsp" description="Deploy RDR_PushCorporateEventsByIds.gsp Query" destLoc="GSDMDataModel" src="queries/RDR_PushCorporateEventsByIds.gsp"/>
+          </Tasks></PackageDescriptor>""")
+        ind = D.Indice(gs["entradas"])
+        self.assertEqual(ind.seccion, "tasks")
+        fich = ["GS/workflows/Custom/CorpEventACK.gsp", "GS/queries/RDR_PushCorporateEventsByIds.gsp",
+                "GS/workflows/Custom/RDR_Agreements.gsp", "GS/workflows/Custom/OLAP_Counterparties.gsp", "GS/sql/EMISORES_REU.sql"]
+        self.assertEqual([f for f in fich if ind.buscar(f)], fich[:2])
+        self.assertEqual(D.forma(gs["entradas"], fich)["nCasan"], 2)
         solo = D.Indice(e["entradas"], ["item@name"])
         self.assertTrue(solo.buscar("PROC_TRES.gsp") and not solo.buscar("src/objetos/T_UNO.sql"))
 
@@ -126,7 +141,7 @@ class TestNavegador(unittest.TestCase):
         roto.write_text("@exit 1\n" if os.name == "nt" else "#!/bin/sh\nexit 1\n")
         roto.chmod(0o755)
         antes = navegador.buscar_navegadores
-        navegador.buscar_navegadores = lambda propio="": [str(roto), real]
+        navegador.buscar_navegadores = lambda propio="", preferido="": [str(roto), real]
         try:
             nav = navegador.Navegador(d / "perfil")
             ws = nav.abrir("about:blank", visible=False, espera=10)
@@ -235,7 +250,14 @@ class TestConGitHubSimulado(unittest.TestCase):
         j.perfil = Path(self.dir) / "perfil-navegador"
         self.datos_jira.sso_automatico = True
         try:
-            cab, yo = j._por_navegador(False, espera=40)
+            usado = {}
+            cab, yo = j._por_navegador(False, espera=40, nuevo=True, usado=usado)
+            self.assertEqual(usado["exe"], navegador.buscar_navegador())  # se recuerda con cuál se ha entrado
+            j.nav_ultimo = usado["exe"]
+            j.guardar()
+            self.assertEqual(Jira(self.cfg, self.mon).nav_ultimo, usado["exe"])
+            v = j.vista()
+            self.assertTrue(v["entrar"].endswith("/secure/ViewProfile.jspa") and v["navegador"] and "/" not in v["navegador"])
             self.assertIn("JSESSIONID=", cab)
             self.assertEqual(yo["name"], "usuario-demo")
             j._iniciada(("cookie", cab), yo)
@@ -721,7 +743,7 @@ class TestConGitHubSimulado(unittest.TestCase):
         info["publicado"] = {"fecha": "2026-01-01T00:00:00Z", "url": "x"}
         self.assertEqual(self.app.publicar(forzar=True)["publicados"], 1)
         nuevo = json.loads(self.datos.contenidos[ck]["texto"])
-        self.assertEqual(nuevo["calculo"], 3)
+        self.assertEqual(nuevo["calculo"], 4)
         self.assertNotIn("V_RDR_PRUEBAS_LOCAL", json.dumps(nuevo))
         self.assertEqual(self.app.publicar(forzar=True)["publicados"], 0)
 

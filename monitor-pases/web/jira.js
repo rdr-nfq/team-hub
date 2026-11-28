@@ -2,7 +2,7 @@
 // SDATOOL y sus historias, releases del proyecto (RDR) con las historias de
 // Jira frente a las de los commits, conexión y diagnóstico.
 import { html, useState, useEffect, useMemo, useRef } from "./vendor/preact-htm.mjs";
-import { api, ChipJira, Icono, colorDe, corto, fCorta, hace, historiasEn, issueJira, plural, uniq, urlJira } from "./comun.js";
+import { api, ChipJira, Icono, colorDe, copiarTexto, corto, fCorta, hace, historiasEn, issueJira, plural, uniq, urlJira } from "./comun.js";
 import { Volver } from "./diffs.js";
 
 /* ── Qué historias cita GitHub y dónde ── */
@@ -52,13 +52,8 @@ export function ConectarJira({ estado, jira, recargar, aviso, compacto, paso, et
   const url = jira?.url || "";
   const [vivo, setVivo] = useState(null);  // sesión mientras se entra con el navegador
   const ses = vivo || ses0;
-  const [otra, setOtra] = useState(null);  // "usuario" | "cookie" | "token"
-  const [token, setToken] = useState("");
-  const [usuario, setUsuario] = useState("");
-  const [clave, setClave] = useState("");
-  const [cookie, setCookie] = useState("");
-  const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState(null);
+  const [copiado, setCopiado] = useState(false);
   const entrando = ses.estado === "entrando" || ses.estado === "comprobando";
   useEffect(() => {
     if (!entrando) return;
@@ -75,73 +70,40 @@ export function ConectarJira({ estado, jira, recargar, aviso, compacto, paso, et
   }, [entrando]);
   if (!url) return html`<p class="suave" style="margin:0">Pon la dirección de Jira en Ajustes → Jira.</p>`;
   const host = new URL(url).host;
-  const conNavegador = async () => {
+  const nav = jira?.navegador || "";
+  // 1. En el último navegador con el que se entró; 3. cerrando lo que haya abierto y con una ventana nueva.
+  const abrir = async (nuevo) => {
     setError(null);
-    try { setVivo(await api("jira/navegador", {})); } catch (err) { setError(err.message); }
+    try { setVivo(await api("jira/navegador", nuevo ? { nuevo: true } : {})); } catch (err) { setError(err.message); }
   };
-  const conectar = async (e) => {
-    e.preventDefault();
-    setOcupado(true); setError(null);
-    try {
-      await api("jira/conectar", otra === "usuario" ? { usuario, clave } : otra === "cookie" ? { cookie } : { token });
-      setToken(""); setClave(""); setCookie("");
-      aviso?.("Jira conectado. Leyendo historias, features y releases…");
-      recargar?.();
-    } catch (err) { setError(err.message + (err.pista ? " " + err.pista : "")); } finally { setOcupado(false); }
+  // 2. El enlace de entrada, para pegarlo en la ventana de la app (si se ha quedado en blanco o en otra página).
+  const copiar = async () => {
+    try { await copiarTexto(jira?.entrar || url); setCopiado(true); setTimeout(() => setCopiado(false), 2500); }
+    catch { setError("No se ha podido copiar: el enlace es " + (jira?.entrar || url)); }
   };
   const desconectar = async () => { try { await api("jira/cerrar", {}); recargar?.(); } catch (err) { aviso?.(err.message, "mal"); } };
   if (ses.estado === "iniciada")
     return html`<div class="fila-sesion ok">
       <span class="ico-sesion" aria-hidden="true"><${Icono} n="ok" /></span>
       <div class="t"><b>Jira</b> <span class="mono tenue">${host}</span>
-        <span>Conectado como <b>${ses.nombre || ses.usuario}</b> (${METODO[ses.metodo] || ses.metodo})${ses.guardada === false && ses.metodo !== "cookie" ? " · no se ha podido guardar en Git: habrá que conectarlo en cada arranque" : ""}</span></div>
+        <span>Conectado como <b>${ses.nombre || ses.usuario}</b> (${METODO[ses.metodo] || ses.metodo})</span></div>
       ${!compacto && html`<button class="btn btn-s" onClick=${desconectar}>Desconectar</button>`}
     </div>`;
-  const fallo = ses.fallo === "navegador";
-  const listo = otra === "usuario" ? usuario && clave : otra === "cookie" ? cookie.trim() : token.trim();
   return html`<div class="fila-sesion jira-conectar">
     <span class="ico-sesion" aria-hidden="true">${paso ? html`<b class="num-paso">${paso}</b>` : html`<${Icono} n="candado" />`}</span>
     <div class="t">
       <b>Jira</b> <span class="mono tenue">${host}</span> ${etiqueta ? html`<span class="chip chip-borde">${etiqueta}</span>` : ""}
       <span>Para ver las historias de cada commit, las features con su SDATOOL y las releases.</span>
-      ${ses.estado === "comprobando" ? html`<div class="entrando-jira" role="status"><${Icono} n="actualizar" cls="gira" />
-          <span>Comprobando si ya tienes la sesión de Jira…</span></div>`
-        : entrando ? html`<div class="entrando-jira" role="status"><${Icono} n="actualizar" cls="gira" />
-          <span><b>Se ha abierto Jira en el navegador.</b> Entra como siempre (usuario de BBVA). Cuando estés dentro, la ventana se cierra sola y esto se conecta.</span></div>`
-        : html`<div class="acc-jira">
-          <button class="btn btn-pri" type="button" onClick=${conNavegador}><${Icono} n="externo" /> Iniciar sesión en Jira</button>
-          <span class="tenue nota-jira">Se abre Jira en Chrome (o Edge si no tienes Chrome): entras con tu usuario de BBVA y la app recoge la sesión. Solo la primera vez; después entra sola.</span>
-        </div>`}
-      ${ses.aviso && !entrando ? html`<span class="error-sesion" role="alert">${ses.aviso}${fallo ? " Prueba una de las otras formas de entrar." : ""}</span>` : ""}
-      <details class="otras-jira" open=${fallo || !!otra}>
-        <summary>Otras formas de entrar</summary>
-        <div class="segmento" role="group" aria-label="Forma de entrar">
-          <button type="button" aria-pressed=${otra === "usuario"} onClick=${() => { setOtra("usuario"); setError(null); }}>Usuario y contraseña</button>
-          <button type="button" aria-pressed=${otra === "cookie"} onClick=${() => { setOtra("cookie"); setError(null); }}>Copiar la sesión del navegador</button>
-          <button type="button" aria-pressed=${otra === "token"} onClick=${() => { setOtra("token"); setError(null); }}>Token personal</button>
-        </div>
-        ${otra && html`<form class="form-jira" onSubmit=${conectar}>
-          ${otra === "usuario" ? html`
-            <p class="que-token">Tu usuario de Jira (el de tu perfil, p. ej. <span class="mono">nombre.apellido.contractor</span>) y tu contraseña de BBVA. Se guarda en el almacén de credenciales de Windows. Si Jira no la acepta, es que solo admite el SSO: usa otra forma.</p>
-            <label class="sr" for="j-usu">Usuario de Jira</label><input id="j-usu" class="inp" autocomplete="username" placeholder="Usuario" value=${usuario} onInput=${(e) => setUsuario(e.target.value)} />
-            <label class="sr" for="j-cla">Contraseña</label><input id="j-cla" class="inp" type="password" autocomplete="current-password" placeholder="Contraseña" value=${clave} onInput=${(e) => setClave(e.target.value)} />`
-          : otra === "cookie" ? html`
-            <ol class="pasos-jira">
-              <li><span>Abre Jira en tu navegador y entra como siempre.</span>
-                <a class="btn btn-s" href=${url} target="_blank" rel="noopener noreferrer"><${Icono} n="externo" /> Abrir Jira</a></li>
-              <li><span>Pulsa <kbd>F12</kbd> → pestaña <b>Aplicación</b> <span class="tenue">(Application)</span> → <b>Cookies</b> → <span class="mono">${url}</span>.</span></li>
-              <li><span>Busca <b class="mono">JSESSIONID</b>, haz doble clic en su <b>valor</b> y cópialo.</span></li>
-              <li><span>Pégalo aquí y pulsa <b>Conectar</b>:</span>
-                <label class="sr" for="j-coo">Valor de JSESSIONID</label><input id="j-coo" class="inp mono" type="password" autocomplete="off" placeholder="Valor de JSESSIONID" value=${cookie} onInput=${(e) => setCookie(e.target.value)} /></li>
-            </ol>
-            <p class="que-token">Dura lo que dure tu sesión de Jira (horas); cuando caduque, la app te lo pedirá otra vez. No se guarda.</p>`
-          : html`
-            <p class="que-token">Solo si en tu perfil de Jira aparece <b>«Tokens de acceso personal»</b> (en el vuestro puede estar desactivado): <b>Crear token</b>, cópialo y pégalo aquí.</p>
-            <a class="btn btn-s" style="justify-self:start" href=${url + (jira?.pats || "")} target="_blank" rel="noopener noreferrer"><${Icono} n="externo" /> Abrir mi perfil de Jira</a>
-            <label class="sr" for="j-tok">Token de Jira</label><input id="j-tok" class="inp mono" type="password" autocomplete="off" placeholder="Pega aquí el token" value=${token} onInput=${(e) => setToken(e.target.value)} />`}
-          <div class="acc-jira"><button class="btn btn-pri btn-s" type="submit" disabled=${ocupado || !listo}>${ocupado ? "Conectando…" : "Conectar"}</button></div>
-        </form>`}
-      </details>
+      ${entrando ? html`<div class="entrando-jira" role="status"><${Icono} n="actualizar" cls="gira" />
+          <span><b>Se ha abierto Jira en ${nav || "el navegador"}.</b> Entra como siempre (usuario de BBVA). Cuando estés dentro, la ventana se cierra sola y esto se conecta.</span></div>` : ""}
+      <div class="acc-jira">
+        ${!entrando ? html`<button class="btn btn-pri" type="button" onClick=${() => abrir(false)}><${Icono} n="externo" /> Iniciar sesión en Jira${nav ? " (" + nav + ")" : ""}</button>` : ""}
+        <button class="btn" type="button" onClick=${copiar} title=${jira?.entrar || url}><${Icono} n=${copiado ? "ok" : "copiar"} /> ${copiado ? "Enlace copiado" : "Copiar enlace"}</button>
+        <button class="btn" type="button" onClick=${() => abrir(true)} title="Cierra la ventana de Jira de la app, si hay una, y abre otra"><${Icono} n="actualizar" /> Abrir un navegador nuevo</button>
+      </div>
+      <span class="tenue nota-jira">${nav ? `Se abre en ${nav}, el último con el que entraste` : "Se abre en Chrome (o en Edge si no tienes Chrome)"}, con un perfil propio de la app: entras con tu usuario de BBVA y la app recoge la sesión.
+        La sesión solo se puede recoger de esa ventana: el enlace copiado sirve para pegarlo en ella si se queda en blanco o en otra página.</span>
+      ${ses.aviso && !entrando ? html`<span class="error-sesion" role="alert">${ses.aviso}</span>` : ""}
       ${error && html`<span class="error-sesion" role="alert">${error}</span>`}
       <span class="tenue" style="font-size:12px">Nada de Jira sale de la VDI.</span>
     </div>

@@ -193,7 +193,7 @@ class App:
             # Quién: el usuario de GitHub NFQ (lo que se comparte en pases-datos no lleva datos de BBVA).
             return self.jira.guardar_nfq(cuerpo.get("claves") or [], (self.ses.publica().get("nfq") or {}).get("usuario") or "")
         if metodo == "POST" and ruta == "/api/jira/navegador":
-            return self.jira.conectar_navegador()
+            return self.jira.conectar_navegador(nuevo=bool(cuerpo.get("nuevo")))
         if metodo == "POST" and ruta == "/api/jira/cerrar":
             return self.jira.cerrar()
         if metodo == "POST" and ruta == "/api/jira/sincronizar":

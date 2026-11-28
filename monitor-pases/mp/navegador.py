@@ -40,10 +40,19 @@ def es_edge(exe):
         or "microsoft-edge" in os.path.basename(exe or "").lower()
 
 
-def buscar_navegadores(propio=""):
-    """Los navegadores que se pueden usar, en orden: el de Ajustes, Chrome y Edge (si Chrome no puede, se prueba Edge)."""
+def buscar_navegadores(propio="", preferido=""):
+    """Los navegadores que se pueden usar, en orden: el de Ajustes, el último con el que se entró, Chrome y Edge
+    (si uno no puede, se prueba el siguiente)."""
     if propio and os.path.isfile(propio):
         return [propio]
+    xs = _navegadores()
+    if preferido in xs:
+        xs.remove(preferido)
+        xs.insert(0, preferido)
+    return xs
+
+
+def _navegadores():
     e = os.environ.get
     if os.name == "nt":
         cands = []
@@ -151,10 +160,12 @@ def _cookies_de(cookies, url):
 
 
 class Navegador:
-    def __init__(self, perfil, ruta_nav=""):
+    def __init__(self, perfil, ruta_nav="", preferido=""):
         self.perfil = str(perfil)
         self.ruta_nav = ruta_nav
+        self.preferido = preferido
         self.proc = None
+        self.exe = ""  # el navegador que se ha usado
 
     def _dir(self, exe):
         # Cada navegador, su perfil: Chrome en la carpeta de siempre y Edge en otra (mezclarlos la estropea).
@@ -178,7 +189,7 @@ class Navegador:
         - sin ventana: solo se leen sus cookies, no se abre nada;
         - con ventana: se trae al frente la pestaña de esa web (o se abre una, si no la hay). Si el que
           queda abierto es uno sin ventana (de una comprobación anterior), se cierra y se abre uno normal."""
-        exes = buscar_navegadores(self.ruta_nav)
+        exes = buscar_navegadores(self.ruta_nav, self.preferido)
         if not exes:
             raise ErrorNavegador("No se encuentra Google Chrome ni Microsoft Edge.")
         for exe in exes:
@@ -188,6 +199,7 @@ class Navegador:
             puerto, ruta, sin_ventana = ya
             ws = _WS(puerto, ruta)
             ws.reusado = True
+            self.exe = exe
             if not visible:
                 return ws
             if sin_ventana:
@@ -203,6 +215,7 @@ class Navegador:
         for exe in exes:
             ws = self._lanzar(exe, url, visible, espera)
             if ws:
+                self.exe = exe
                 return ws
         raise ErrorNavegador("El navegador no deja que la app lea la sesión (puede que lo impida una política de la empresa).")
 
@@ -250,6 +263,25 @@ class Navegador:
         self.matar()
         return None
 
+    def cerrar_abiertos(self):
+        """Cierra los navegadores de la app que sigan abiertos (para empezar con una ventana nueva)."""
+        for exe in buscar_navegadores(self.ruta_nav, self.preferido):
+            ya = self._puerto_activo(self._dir(exe))
+            if not ya:
+                continue
+            try:
+                ws = _WS(*ya[:2])
+                try:
+                    ws.llamar("Browser.close")
+                finally:
+                    ws.cerrar()
+            except (OSError, ErrorNavegador):
+                pass
+            for _ in range(20):  # que suelte el perfil
+                if not self._puerto_activo(self._dir(exe)):
+                    break
+                time.sleep(0.25)
+
     def matar(self):
         if self.proc and self.proc.poll() is None:
             try:
@@ -262,12 +294,19 @@ class Navegador:
                     pass
 
 
-def iniciar_sesion(perfil, url_entrar, url_api, probar, visible=True, espera=300, ruta_nav="", parar=None, rendirse=10):
+def iniciar_sesion(perfil, url_entrar, url_api, probar, visible=True, espera=300, ruta_nav="", parar=None, rendirse=10,
+                   preferido="", nuevo=False, usado=None):
     """Abre `url_entrar` y espera a que haya cookies de `url_api` con las que `probar(cookie)` funcione
     (no lanza excepción). -> (cookie, lo que devuelve probar). Cierra la ventana al terminar.
-    Sin ventana nadie puede entrar: si en `rendirse` segundos las cookies no cambian y no valen, se deja."""
-    nav = Navegador(perfil, ruta_nav)
+    Sin ventana nadie puede entrar: si en `rendirse` segundos las cookies no cambian y no valen, se deja.
+    `preferido`: el navegador que se prueba primero (el último con el que se entró); `nuevo`: cierra los de la
+    app que sigan abiertos y abre uno nuevo; `usado` (dict): ahí se deja el navegador usado ("exe")."""
+    nav = Navegador(perfil, ruta_nav, preferido)
+    if nuevo:
+        nav.cerrar_abiertos()
     ws = nav.abrir(url_entrar, visible=visible)
+    if usado is not None:
+        usado["exe"] = nav.exe
     ultima, fin, cambio, ok = None, time.time() + espera, time.time(), False
     try:
         while time.time() < fin:

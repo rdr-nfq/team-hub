@@ -154,7 +154,7 @@ En la lista, dos avisos te dicen qué DPs mirar: **pisaría cambios de producci�
 5. Si el repositorio tiene **package descriptor** (un XML en la raíz, como en objetos-gs), el DP **solo instala lo que él nombra**. Un fichero que cambia pero no aparece en el descriptor sale marcado **no se instala** y no cuenta: ni como componente, ni en el pase, ni en `pases-datos`.
 
 ### El package descriptor
-La app busca en la raíz del commit del DP un `.xml` con «descriptor» en el nombre (o que empiece por «package») y lee todos sus textos y atributos. Un fichero del DP está en el descriptor si alguno lo nombra: por su ruta, por el final de su ruta, por su nombre (con o sin extensión) o por una carpeta suya.
+La app busca en la raíz del commit del DP un `.xml` con «descriptor» en el nombre (o que empiece por «package»), como `PackageDescriptor.xml`. Si tiene una sección de tareas (`<Tasks>`, con un `<deployGSP name=… src=…/>` por componente), solo cuenta lo de dentro: el nombre y el fichero de cada tarea. Lo demás (`<Locations>`, destinos, versiones) no nombra componentes. Un fichero del DP está en el descriptor si alguno lo nombra: por su ruta, por el final de su ruta, por su nombre (con o sin extensión) o por una carpeta suya.
 
 - En la lista de DPs, **N fuera del descriptor** dice cuántos ficheros cambian sin instalarse.
 - Si el descriptor no nombra **ninguno** de los ficheros del DP, la app no lo entiende y no aparta nada (la comprobación lo avisa).
@@ -274,10 +274,10 @@ Ruta de Copilot CLI, modelo, opciones y variables de entorno (proxy).
 
 Esa ventana usa un perfil de Chrome propio de la app: tu Chrome de siempre, con sus pestañas, no se toca (la app no puede leer la sesión de tu perfil normal, por eso es una ventana aparte). Ese perfil recuerda el inicio de sesión: al abrir la app no se comprueba nada (no se pierde tiempo) y, al pulsar *Iniciar sesión en Jira*, la ventana suele entrar sola y cerrarse en unos segundos. Si la sesión caduca mientras trabajas, la app te avisa y vuelves a pulsar el botón.
 
-**Otras formas de entrar** (debajo del botón), por si la ventana no se abre o no conecta:
-- **Usuario y contraseña**: tu usuario de Jira (el de tu perfil) y tu contraseña de BBVA. Solo vale si vuestro Jira la admite además del SSO.
-- **Copiar la sesión del navegador**: entras en Jira en tu navegador, `F12` → *Aplicación* → *Cookies* → copias el valor de `JSESSIONID` y lo pegas. Dura lo que tu sesión de Jira.
-- **Token personal**: solo si en tu perfil de Jira aparece *Tokens de acceso personal* (en BBVA suele estar desactivado).
+Hay tres botones:
+- **Iniciar sesión en Jira**: abre Jira en el **último navegador con el que entraste** (la primera vez, Chrome; Edge si no hay Chrome).
+- **Copiar enlace**: copia la dirección de entrada de Jira. La sesión solo se puede recoger de la ventana que abre la app, así que sirve para pegarla en esa ventana si se ha quedado en blanco o en otra página.
+- **Abrir un navegador nuevo**: cierra la ventana de Jira de la app, si hay una, y abre otra. Úsalo si la ventana se ha quedado colgada o no aparece.
 
 *Desconectar* (en *Ajustes → Jira*) borra la sesión guardada en ese perfil.
 
@@ -348,7 +348,7 @@ Si en una terminal te funciona `gh copilot`, escribe `gh copilot` en *Ajustes �
 Casi siempre es el proxy (`HTTPS_PROXY`, `HTTP_PROXY`, `NODE_EXTRA_CA_CERTS`).
 
 ### No se abre la ventana de Jira o no conecta
-Puede que una política de la empresa no deje a la app leer la sesión del navegador. Usa *Otras formas de entrar* (sección *Jira*).
+Pulsa **Abrir un navegador nuevo**. Si la ventana se abre pero no carga Jira, pulsa **Copiar enlace** y pégalo en ella. Si aun así no conecta, puede que una política de la empresa no deje a la app leer la sesión del navegador: avísanos.
 
 Si al pulsar otra vez ya hay una ventana de Jira de la app abierta, se usa esa: se trae al frente su pestaña, no se abren más. Si se te queda una ventana colgada, ciérrala y vuelve a pulsar *Iniciar sesión en Jira*.
 

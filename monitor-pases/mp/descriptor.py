@@ -16,7 +16,7 @@ coinciden: nunca valores, para que pueda salir de la VDI.
 import re
 import xml.etree.ElementTree as ET
 
-ALGORITMO = 1  # sube si cambia cómo se cruzan entradas y ficheros (se recalcula todo)
+ALGORITMO = 2  # sube si cambia cómo se cruzan entradas y ficheros (se recalcula todo)
 LECTOR = 2  # sube si cambia cómo se lee el XML (se vuelve a pedir el descriptor de cada DP)
 PATRON_DEFECTO = r"(?i)(descriptor[^/]*|^package[^/]*)\.xml$"
 MAX_ENTRADAS = 20000
@@ -137,6 +137,32 @@ def _vale(donde, etiquetas):
     return False
 
 
+# Secciones que listan lo que se instala (p. ej. <Tasks> con un <deployGSP name=… src=…/> por componente).
+# Si el descriptor tiene una, solo cuenta lo de dentro: el resto (<Locations>, rutas de destino, versiones…)
+# nombra carpetas y datos del paquete, no componentes, y hacía casar casi todos los ficheros.
+SECCIONES = ("tasks", "components", "componentes", "items", "deploy", "deployments", "artifacts")
+ATRIBUTOS = {"name", "nombre", "src", "source", "file", "filename", "fichero", "path", "ruta", "component", "componente"}
+
+
+def seccion(entradas):
+    """-> (nombre de la sección, ruta de etiquetas hasta ella) si el descriptor tiene una; si no, ("", "")."""
+    for sec in SECCIONES:
+        for donde, _ in entradas or []:
+            partes = donde.split("@")[0].split("/")
+            for i, p in enumerate(partes[:-1]):  # con algo dentro: la sección no es la última etiqueta
+                if p.lower() == sec:
+                    return sec, "/".join(partes[:i + 1])
+    return "", ""
+
+
+def _en_seccion(donde, raiz):
+    """¿La entrada es de un elemento dentro de la sección, y es su nombre, su fichero o su texto?"""
+    elem, _, attr = donde.partition("@")
+    if not elem.startswith(raiz + "/"):
+        return False
+    return (attr.lower() in ATRIBUTOS) if attr else True
+
+
 class Indice:
     """Las entradas de un descriptor, listas para preguntar si un fichero está."""
 
@@ -144,8 +170,12 @@ class Indice:
         self.rutas, self.nombres, self.raices = {}, {}, {}
         etiquetas = [e for e in (etiquetas or []) if e and e.strip()]
         self.n = 0
+        # Sin etiquetas en Ajustes: si hay una sección de tareas o componentes, solo cuenta lo de dentro.
+        self.seccion, raiz = ("", "") if etiquetas else seccion(entradas)
         for donde, valor in entradas or []:
             if not _vale(donde, etiquetas):
+                continue
+            if raiz and not _en_seccion(donde, raiz):
                 continue
             v = _norm(valor)
             if not v or len(v) < 2:
@@ -220,4 +250,5 @@ def forma(entradas, ficheros=None, etiquetas=None):
                 if r[1] in por:
                     por[r[1]]["casan"] += 1
     return {"etiquetas": sorted(por.values(), key=lambda x: -x["n"])[:200], "nEntradas": len(entradas or []),
+            "seccion": seccion(entradas)[0] if not etiquetas else "",
             "casanPor": como, "nFicheros": len(ficheros or []), "nCasan": sum(como.values())}

@@ -207,6 +207,16 @@ class ClienteJira:
         return out
 
 
+def _nombre_nav(exe):
+    """«Chrome», «Edge» o el nombre del ejecutable (sin la ruta: no hace falta en la página)."""
+    if not exe:
+        return ""
+    if navegador.es_edge(exe):
+        return "Edge"
+    b = exe.replace("\\", "/").rsplit("/", 1)[-1].lower()
+    return "Chrome" if "chrome" in b else "Chromium" if "chromium" in b else b.rsplit(".", 1)[0]
+
+
 class Jira:
     def __init__(self, config, monitor, demo=False):
         self.cfg, self.mon, self.demo = config, monitor, demo
@@ -222,6 +232,7 @@ class Jira:
         self.ultima_completa = d.get("ultimaCompleta", 0)
         self.sincro = d.get("sincro") or {"estado": "nunca"}
         self.metodo = d.get("metodo") or ""  # "navegador" si la última sesión fue con el navegador (sin secretos)
+        self.nav_ultimo = d.get("navegador") or ""  # ruta del último navegador con el que se entró (se abre ese primero)
         self.desarrollo = d.get("desarrollo", [])  # proyectos en desarrollo: Features/Tasks no desplegadas (compactos)
         self.desarrollo_info = d.get("desarrolloInfo") or {}
         self.nfq = d.get("nfq") or {"claves": [], "por": "", "fecha": ""}  # los proyectos que son de NFQ
@@ -233,6 +244,9 @@ class Jira:
         self._en_curso = False
         self._informes = {}
         self._entrando = False
+        self._intento = 0  # cada «Iniciar sesión» o «Navegador nuevo» es un intento; el último manda
+        self._en_ventana = False  # hay un hilo con la ventana de Jira abierta
+        self._cancelar = threading.Event()  # puesto = deja el intento con ventana (se va a abrir uno nuevo)
         self._silencioso = threading.Event()  # puesto = no hay un intento sin ventana en marcha
         self._silencioso.set()
         self._parar_silencioso = threading.Event()  # puesto = deja el intento sin ventana (la persona va a entrar)
@@ -253,14 +267,15 @@ class Jira:
     def _url_entrar(self):
         return (self.cfg.get()["jira"].get("url") or "").rstrip("/") + "/secure/ViewProfile.jspa"
 
-    def _por_navegador(self, visible, espera=300):
+    def _por_navegador(self, visible, espera=300, nuevo=False, usado=None):
         j = self.cfg.get()["jira"]
         url = (j.get("url") or "").rstrip("/")
-        # Sin ventana, se deja en cuanto alguien pulsa «Iniciar sesión en Jira» (no se le hace esperar).
-        parar = None if visible else self._parar_silencioso.is_set
+        # Sin ventana, se deja en cuanto alguien pulsa «Iniciar sesión en Jira»; con ventana, si pide una nueva.
+        parar = self._cancelar.is_set if visible else self._parar_silencioso.is_set
         return navegador.iniciar_sesion(self.perfil, self._url_entrar(), url + "/rest/api/2/myself",
                                         lambda cab: self._probar(("cookie", cab)), visible=visible, espera=espera,
-                                        ruta_nav=j.get("navegador") or "", parar=parar)
+                                        ruta_nav=j.get("navegador") or "", parar=parar, preferido=self.nav_ultimo,
+                                        nuevo=nuevo, usado=usado)
 
     def _renovar(self):
         """La cookie ha caducado. No se comprueba nada por detrás (sin ventana se perdía mucho tiempo): se avisa
@@ -272,37 +287,51 @@ class Jira:
                 self.sesion = {"estado": "sin sesión", "aviso": "La sesión de Jira ha caducado: pulsa «Iniciar sesión en Jira»."}
         return None
 
-    def conectar_navegador(self):
-        """Abre la ventana para entrar en Jira y vuelve enseguida; la página pregunta cómo va (sesion.estado)."""
+    def conectar_navegador(self, nuevo=False):
+        """Abre la ventana para entrar en Jira y vuelve enseguida; la página pregunta cómo va (sesion.estado).
+        Se abre en el último navegador con el que se entró. `nuevo`: deja el intento que haya en marcha, cierra
+        los navegadores de la app que sigan abiertos y abre uno nuevo."""
         if not (self.cfg.get()["jira"].get("url")):
             raise ValueError("Pon la dirección de Jira en Ajustes → Jira.")
         with self._c:
-            if self._entrando:
+            if self._entrando and not nuevo:
                 return self.publica()
+            self._intento += 1
+            intento = self._intento
+            if self._entrando:
+                self._cancelar.set()
             self._entrando = True
             self.sesion = {"estado": "entrando", "mensaje": "Se ha abierto una ventana de Jira: entra como siempre. Se cerrará sola."}
             self._parar_silencioso.set()  # si se estaba comprobando sin ventana, se deja ya
 
         def trabajo():
+            fin = time.time() + 20
+            while self._en_ventana and time.time() < fin:  # que acabe (y cierre su ventana) el intento anterior
+                time.sleep(0.2)
+            with self._c:
+                if intento != self._intento or self.sesion.get("estado") == "iniciada":
+                    return
+                self._en_ventana = True
+                self._cancelar.clear()
+            usado = {}
             try:
-                self._silencioso.wait(15)  # lo que tarde en soltar el perfil la comprobación sin ventana
-                with self._c:
-                    if self.sesion.get("estado") == "iniciada":
-                        return
-                    self.sesion = {"estado": "entrando", "mensaje": "Se ha abierto Jira en el navegador: entra como siempre. Se cerrará sola."}
-                cab, yo = self._por_navegador(True)
+                self._silencioso.wait(15)  # lo que tarde en soltar el perfil una comprobación sin ventana
+                cab, yo = self._por_navegador(True, nuevo=nuevo, usado=usado)
                 self._iniciada(("cookie", cab), yo)
                 with self._c:
                     self.metodo = "navegador"
+                    self.nav_ultimo = usado.get("exe") or self.nav_ultimo
                 self.guardar()
                 threading.Thread(target=self.sincronizar, name="jira", daemon=True).start()
             except Exception as e:
                 with self._c:
-                    if self.sesion.get("estado") != "iniciada":
+                    if intento == self._intento and self.sesion.get("estado") != "iniciada":
                         self.sesion = {"estado": "sin sesión", "aviso": str(e), "fallo": "navegador"}
             finally:
                 with self._c:
-                    self._entrando = False
+                    self._en_ventana = False
+                    if intento == self._intento:
+                        self._entrando = False
 
         threading.Thread(target=trabajo, name="jira-navegador", daemon=True).start()
         return self.publica()
@@ -889,7 +918,7 @@ class Jira:
             escribir_json(self.ruta, {"issues": dict(self.issues), "features": dict(self.features), "releases": list(self.releases),
                                       "relHistorias": dict(self.rel_historias), "campos": dict(self.campos),
                                       "noExisten": sorted(self.no_existen), "noExistenV": 2, "ultimaCompleta": self.ultima_completa, "sincro": self.sincro,
-                                      "metodo": self.metodo,
+                                      "metodo": self.metodo, "navegador": self.nav_ultimo,
                                       "desarrollo": list(self.desarrollo), "desarrolloInfo": dict(self.desarrollo_info), "nfq": dict(self.nfq)})
 
     # ── para la página ──────────────────────────────────────────────────────
@@ -897,6 +926,7 @@ class Jira:
         j = self.cfg.get()["jira"]
         with self._c:
             return {"sesion": dict(self.sesion), "url": (j.get("url") or "").rstrip("/"), "pats": PAGINA_PATS,
+                    "entrar": self._url_entrar(), "navegador": _nombre_nav(self.nav_ultimo),
                     "proyectoReleases": (self.campos.get("_proyRel") or {}).get("proyecto") or j.get("proyectoReleases") or "", "sincro": dict(self.sincro, enCurso=self._en_curso),
                     "issues": dict(self.issues), "features": {k: {kk: vv for kk, vv in v.items() if kk != "links"} for k, v in self.features.items()},
                     "releases": list(self.releases), "relHistorias": dict(self.rel_historias),

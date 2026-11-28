@@ -25,7 +25,7 @@ def _ahora():
 
 # 2: los componentes salen del package descriptor (si el repositorio tiene uno). Un DP publicado con un
 # cálculo anterior se vuelve a publicar una vez (antes salían ficheros que el DP no instala).
-CALCULO = 3  # 3: el descriptor se lee también en UTF-16/cp1252, con DTD o entidades, y fuera de la raíz
+CALCULO = 4  # 3: el descriptor se lee en UTF-16/cp1252, con DTD o entidades; 4: solo cuenta su sección <Tasks>
 
 
 def documento(info, cfg, usuario):
