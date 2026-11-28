@@ -235,17 +235,21 @@ class Jira:
         self._entrando = False
         self._silencioso = threading.Event()  # puesto = no hay un intento sin ventana en marcha
         self._silencioso.set()
+        self._parar_silencioso = threading.Event()  # puesto = deja el intento sin ventana (la persona va a entrar)
+        self._renovando = threading.Lock()
+        self._renovada = 0.0
+        self._fallo_renovar = 0.0
         self.perfil = config.dir / "navegador-jira"
 
     # ── sesión ──────────────────────────────────────────────────────────────
     def _host(self):
         return urllib.parse.urlparse(self.cfg.get()["jira"].get("url") or "").netloc
 
-    def _cliente(self, auth=None):
+    def _cliente(self, auth=None, renovable=True):
         j = self.cfg.get()["jira"]
         b = self.cfg.get()["bbva"]
         auth = auth or self._auth
-        renovar = self._renovar if auth and auth[0] == "cookie" and self.metodo == "navegador" else None
+        renovar = self._renovar if renovable and auth and auth[0] == "cookie" and self.metodo == "navegador" else None
         return ClienteJira(j.get("url"), auth, j.get("proxy") or b.get("proxy"), j.get("ca") or b.get("ca"), renovar=renovar)
 
     # Con el navegador: se abre Chrome o Edge (perfil de la app), la persona entra con su SSO y se recogen las cookies de Jira.
@@ -255,21 +259,41 @@ class Jira:
     def _por_navegador(self, visible, espera=300):
         j = self.cfg.get()["jira"]
         url = (j.get("url") or "").rstrip("/")
+        # Sin ventana, se deja en cuanto alguien pulsa «Iniciar sesión en Jira» (no se le hace esperar).
+        parar = None if visible else self._parar_silencioso.is_set
         return navegador.iniciar_sesion(self.perfil, self._url_entrar(), url + "/rest/api/2/myself",
                                         lambda cab: self._probar(("cookie", cab)), visible=visible, espera=espera,
-                                        ruta_nav=j.get("navegador") or "")
+                                        ruta_nav=j.get("navegador") or "", parar=parar)
+
+    def _sin_ventana(self, espera=25):
+        """Comprobación sin ventana con el SSO del perfil (una a la vez)."""
+        with self._c:
+            self._parar_silencioso.clear()
+            self._silencioso.clear()
+        try:
+            return self._por_navegador(False, espera=espera)
+        finally:
+            self._silencioso.set()
 
     def _renovar(self):
-        """La cookie ha caducado: se intenta sin ventana con el SSO del perfil. -> auth nueva o None."""
-        try:
-            cab, yo = self._por_navegador(False, espera=40)
-        except Exception:
-            with self._c:
-                self._auth = None
-                self.sesion = {"estado": "sin sesión", "aviso": "La sesión de Jira ha caducado: vuelve a entrar."}
-            return None
-        self._iniciada(("cookie", cab), yo)
-        return ("cookie", cab)
+        """La cookie ha caducado: se intenta sin ventana con el SSO del perfil. -> auth nueva o None.
+        Una sola renovación a la vez y, si falla, no se reintenta en 2 minutos: nunca se abren navegadores en cadena."""
+        with self._renovando:
+            if self._auth and self._auth[0] == "cookie" and time.time() - self._renovada < 5:
+                return self._auth  # otra llamada acaba de renovarla
+            if self._entrando or time.time() - self._fallo_renovar < 120:
+                return None
+            try:
+                cab, yo = self._sin_ventana()
+            except Exception:
+                self._fallo_renovar = time.time()
+                with self._c:
+                    self._auth = None
+                    self.sesion = {"estado": "sin sesión", "aviso": "La sesión de Jira ha caducado: vuelve a entrar."}
+                return None
+            self._iniciada(("cookie", cab), yo)
+            self._renovada = time.time()
+            return ("cookie", cab)
 
     def conectar_navegador(self):
         """Abre la ventana para entrar en Jira y vuelve enseguida; la página pregunta cómo va (sesion.estado)."""
@@ -280,10 +304,11 @@ class Jira:
                 return self.publica()
             self._entrando = True
             self.sesion = {"estado": "entrando", "mensaje": "Se ha abierto una ventana de Jira: entra como siempre. Se cerrará sola."}
+            self._parar_silencioso.set()  # si se estaba comprobando sin ventana, se deja ya
 
         def trabajo():
             try:
-                self._silencioso.wait(60)  # si se está comprobando sin ventana (mismo perfil), se espera
+                self._silencioso.wait(15)  # lo que tarde en soltar el perfil la comprobación sin ventana
                 with self._c:
                     if self.sesion.get("estado") == "iniciada":
                         return
@@ -310,7 +335,8 @@ class Jira:
             return dict(self.sesion)
 
     def _probar(self, auth):
-        return self._cliente(auth).get("rest/api/2/myself") or {}
+        # Sin renovar: probar una cookie nunca debe abrir otro navegador (eso abría pestañas sin fin).
+        return self._cliente(auth, renovable=False).get("rest/api/2/myself") or {}
 
     def _iniciada(self, auth, yo):
         with self._c:
@@ -327,14 +353,12 @@ class Jira:
             return False  # en la demo se enseña cómo se conecta
         with self._c:
             self.sesion = {"estado": "comprobando"}
-            self._silencioso.clear()
         try:
             return self._iniciar_guardada(j)
         finally:
             with self._c:
                 if self.sesion.get("estado") == "comprobando":
                     self.sesion = {"estado": "sin sesión"}
-            self._silencioso.set()
 
     def _iniciar_guardada(self, j):
         try:
@@ -342,7 +366,7 @@ class Jira:
                 auth = ("token", j["token"])
             elif self.metodo == "navegador":
                 try:
-                    cab, yo = self._por_navegador(False, espera=40)  # sin ventana, con el SSO que guarda el perfil
+                    cab, yo = self._sin_ventana()  # sin ventana, con el SSO que guarda el perfil
                 except Exception:
                     with self._c:
                         self.sesion = {"estado": "sin sesión", "aviso": "Vuelve a entrar en Jira: la sesión ha caducado."}

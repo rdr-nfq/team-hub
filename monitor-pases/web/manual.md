@@ -350,6 +350,8 @@ Casi siempre es el proxy (`HTTPS_PROXY`, `HTTP_PROXY`, `NODE_EXTRA_CA_CERTS`).
 ### No se abre la ventana de Jira o no conecta
 Puede que una política de la empresa no deje a la app leer la sesión del navegador. Usa *Otras formas de entrar* (sección *Jira*).
 
+Si al pulsar otra vez ya hay una ventana de Jira de la app abierta, se usa esa: se trae al frente su pestaña, no se abren más. Si se te queda una ventana colgada, ciérrala y vuelve a pulsar *Iniciar sesión en Jira*.
+
 ### «La sesión de Jira ha caducado»
 Pulsa otra vez *Iniciar sesión en Jira*.
 

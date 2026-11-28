@@ -76,6 +76,7 @@ class _WS:
         if b" 101 " not in cab.split(b"\r\n", 1)[0]:
             raise ErrorNavegador("El navegador no acepta la conexión de DevTools: %s" % cab.split(b"\r\n", 1)[0].decode(errors="replace"))
         self.n = 0
+        self.reusado = False  # True: el navegador ya estaba abierto (no lo ha abierto esta llamada)
 
     def _leer(self, n):
         while len(self.resto) < n:
@@ -160,32 +161,63 @@ class Navegador:
         return self.perfil + "-edge" if es_edge(exe) else self.perfil
 
     def _puerto_activo(self, carpeta=None):
+        """(puerto, ruta, sin_ventana) del navegador de la app que sigue abierto con ese perfil, o None."""
         f = os.path.join(carpeta or self.perfil, "DevToolsActivePort")
         try:
             with open(f, encoding="utf-8") as h:
                 puerto, ruta = h.read().split("\n")[:2]
-            urllib.request.urlopen("http://127.0.0.1:%s/json/version" % puerto, timeout=2).read()
-            return int(puerto), ruta.strip()
+            v = json.loads(urllib.request.urlopen("http://127.0.0.1:%s/json/version" % puerto, timeout=2).read() or b"{}")
+            return int(puerto), ruta.strip(), "headless" in str(v.get("User-Agent") or "").lower()
         except (OSError, ValueError):
             return None
 
     def abrir(self, url, visible=True, espera=25):
         """Abre `url` en el perfil de la app con DevTools en un puerto libre de 127.0.0.1. -> _WS del navegador.
-        Chrome primero; si no arranca o no deja leer la sesión, Edge."""
+        Chrome primero; si no arranca o no deja leer la sesión, Edge.
+        Si ya hay un navegador de la app abierto con ese perfil, se usa ese (nunca se apilan pestañas):
+        - sin ventana: solo se leen sus cookies, no se abre nada;
+        - con ventana: se trae al frente la pestaña de esa web (o se abre una, si no la hay). Si el que
+          queda abierto es uno sin ventana (de una comprobación anterior), se cierra y se abre uno normal."""
         exes = buscar_navegadores(self.ruta_nav)
         if not exes:
             raise ErrorNavegador("No se encuentra Google Chrome ni Microsoft Edge.")
         for exe in exes:
             ya = self._puerto_activo(self._dir(exe))
-            if ya:  # una ventana anterior de la app sigue abierta: nueva pestaña en ella
-                ws = _WS(*ya)
-                ws.llamar("Target.createTarget", {"url": url})
+            if not ya:
+                continue
+            puerto, ruta, sin_ventana = ya
+            ws = _WS(puerto, ruta)
+            ws.reusado = True
+            if not visible:
                 return ws
+            if sin_ventana:
+                try:
+                    ws.llamar("Browser.close")
+                except (OSError, ErrorNavegador):
+                    pass
+                ws.cerrar()
+                time.sleep(1)
+                continue
+            self._pestana(ws, url)
+            return ws
         for exe in exes:
             ws = self._lanzar(exe, url, visible, espera)
             if ws:
                 return ws
         raise ErrorNavegador("El navegador no deja que la app lea la sesión (puede que lo impida una política de la empresa).")
+
+    @staticmethod
+    def _pestana(ws, url):
+        """Trae al frente la pestaña de la web de `url` si ya está abierta; si no, abre una (solo una)."""
+        host = urllib.parse.urlparse(url).hostname or ""
+        try:
+            for t in ws.llamar("Target.getTargets").get("targetInfos") or []:
+                if t.get("type") == "page" and host and (urllib.parse.urlparse(t.get("url") or "").hostname or "") == host:
+                    ws.llamar("Target.activateTarget", {"targetId": t["targetId"]})
+                    return
+        except ErrorNavegador:
+            pass
+        ws.llamar("Target.createTarget", {"url": url})
 
     def _lanzar(self, exe, url, visible, espera):
         carpeta = self._dir(exe)
@@ -209,7 +241,7 @@ class Navegador:
             ya = self._puerto_activo(carpeta)
             if ya:
                 try:
-                    return _WS(*ya)
+                    return _WS(*ya[:2])
                 except (OSError, ErrorNavegador):
                     break
             if self.proc.poll() is not None and not os.path.exists(os.path.join(carpeta, "DevToolsActivePort")):
@@ -230,12 +262,13 @@ class Navegador:
                     pass
 
 
-def iniciar_sesion(perfil, url_entrar, url_api, probar, visible=True, espera=300, ruta_nav="", parar=None):
+def iniciar_sesion(perfil, url_entrar, url_api, probar, visible=True, espera=300, ruta_nav="", parar=None, rendirse=10):
     """Abre `url_entrar` y espera a que haya cookies de `url_api` con las que `probar(cookie)` funcione
-    (no lanza excepción). -> (cookie, lo que devuelve probar). Cierra la ventana al terminar."""
+    (no lanza excepción). -> (cookie, lo que devuelve probar). Cierra la ventana al terminar.
+    Sin ventana nadie puede entrar: si en `rendirse` segundos las cookies no cambian y no valen, se deja."""
     nav = Navegador(perfil, ruta_nav)
     ws = nav.abrir(url_entrar, visible=visible)
-    ultima, fin = None, time.time() + espera
+    ultima, fin, cambio, ok = None, time.time() + espera, time.time(), False
     try:
         while time.time() < fin:
             if parar and parar():
@@ -246,17 +279,25 @@ def iniciar_sesion(perfil, url_entrar, url_api, probar, visible=True, espera=300
                 raise ErrorNavegador("Se ha cerrado la ventana sin terminar de entrar en Jira.")
             cab = _cookies_de(cookies, url_api)
             if cab and cab != ultima:
-                ultima = cab
+                ultima, cambio = cab, time.time()
                 try:
-                    return cab, probar(cab)
+                    r = cab, probar(cab)
+                    ok = True
+                    return r
                 except Exception:
                     pass  # aún no ha terminado de entrar
-            time.sleep(1.5)
+            elif not visible and time.time() - cambio > rendirse:
+                break  # sin ventana y sin novedades: hace falta entrar
+            time.sleep(1 if visible else 0.5)
         raise ErrorNavegador("Ha pasado demasiado tiempo sin entrar en Jira." if visible else "Hace falta entrar en Jira.")
     finally:
-        try:
-            ws.llamar("Browser.close")
-        except Exception:
-            pass
+        # Se cierra lo que ha abierto esta llamada, y la ventana de entrar cuando ya se ha entrado.
+        # Un navegador que ya estaba abierto (la persona entrando en él) no se toca desde una comprobación sin ventana.
+        if not ws.reusado or (visible and ok):
+            try:
+                ws.llamar("Browser.close")
+            except Exception:
+                pass
         ws.cerrar()
-        nav.matar()
+        if not ws.reusado:
+            nav.matar()

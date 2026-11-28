@@ -247,6 +247,54 @@ class TestConGitHubSimulado(unittest.TestCase):
         finally:
             self.datos_jira.sso_automatico = False
 
+    def test_jira_navegador_sin_pestanas_en_cadena(self):
+        """Probar una cookie nunca abre otro navegador (eso abría pestañas sin fin), la comprobación sin ventana
+        se rinde pronto si hace falta entrar, una renovación fallida no se repite y un navegador de la app que
+        ya está abierto se reutiliza sin abrirle pestañas."""
+        from mp import navegador
+        from mp.jira import Jira
+        if not navegador.buscar_navegador():
+            self.skipTest("hace falta Edge, Chrome o Chromium")
+        j = Jira(self.cfg, self.mon)
+        j.perfil = Path(self.dir) / "perfil-cadena"
+        j.metodo = "navegador"
+        llamadas = []
+        real = navegador.iniciar_sesion
+        navegador.iniciar_sesion = lambda *a, **k: llamadas.append(k.get("visible")) or real(*a, **k)
+        try:
+            with self.assertRaises(Exception):
+                j._probar(("cookie", "JSESSIONID=caducada"))
+            self.assertEqual(llamadas, [])  # ni un navegador
+            t0 = time.time()
+            with self.assertRaises(Exception):
+                j._por_navegador(False, espera=60)  # sin SSO automático: hace falta entrar
+            self.assertLess(time.time() - t0, 30)
+            j._iniciada(("cookie", "JSESSIONID=caducada"), {"name": "x"})
+            n = len(llamadas)
+            for _ in range(3):  # la sincronización hace muchas llamadas: una sola renovación
+                with self.assertRaises(Exception):
+                    j._cliente().get("rest/api/2/myself")
+            self.assertEqual(len(llamadas) - n, 1)
+        finally:
+            navegador.iniciar_sesion = real
+        # Un navegador de la app ya abierto: sin ventana, solo se leen sus cookies (no se abren pestañas).
+        nav = navegador.Navegador(j.perfil)
+        ws = nav.abrir("about:blank", visible=False)
+        try:
+            paginas = lambda: [t for t in ws.llamar("Target.getTargets")["targetInfos"] if t["type"] == "page"]
+            antes = len(paginas())
+            ws2 = navegador.Navegador(j.perfil).abrir("about:blank", visible=False)
+            self.assertTrue(ws2.reusado)
+            ws2.cerrar()
+            self.assertEqual(len(paginas()), antes)
+        finally:
+            try:
+                ws.llamar("Browser.close")
+            except Exception:
+                pass
+            ws.cerrar()
+            nav.matar()
+
     def test_jira_como_el_de_bbva(self):
         """En Ajustes pone RDR, que no existe (las versiones están en CIBRDR), y el campo de la release no se
         llama tech-version: se encuentran el proyecto por sus versiones y el campo por sus valores."""
