@@ -1,4 +1,4 @@
-// Monitor de pases · DPs: cada release (release/x.y.z) es una subida y su
+// RDR Coding · DPs: cada release (release/x.y.z) es una subida y su
 // Action genera el DP. Qué componentes lleva cada DP y qué modificaciones.
 import { html, useState, useEffect, useMemo, useRef } from "./vendor/preact-htm.mjs";
 import { api, ChipJira, Icono, Rama, hace, fLarga, fCorta, corto, plural, colorDe, leerLS, ponerLS, uniq, jira, historiasEn, issueJira, copiarTexto } from "./comun.js";

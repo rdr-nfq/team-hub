@@ -1,4 +1,4 @@
-// Monitor de pases · commits y diferencias: la lista de todos los commits, el
+// RDR Coding · commits y diferencias: la lista de todos los commits, el
 // detalle de un commit, una rama frente a producción y el visor de diffs.
 import { html, useState, useEffect, useMemo, useRef } from "./vendor/preact-htm.mjs";
 import { api, Icono, Rama, ChipDP, ChipJira, historiasEn, hace, fLarga, corto, plural, colorDe, leerLS, ponerLS, uniq, copiarTexto } from "./comun.js";

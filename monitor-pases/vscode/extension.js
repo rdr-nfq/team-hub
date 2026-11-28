@@ -1,4 +1,4 @@
-// Monitor de pases · plugin de VS Code. Arranca el motor (Python, en «motor/»)
+// RDR Coding · plugin de VS Code. Arranca el motor (Python, en «motor/»)
 // con el Python de la VDI y enseña la app en un panel de VS Code. El inicio de
 // sesión en Jira abre Chrome (o Edge) desde el motor, como en la app de siempre.
 "use strict";
@@ -9,7 +9,7 @@ const crypto = require("crypto");
 const M = require("./motor");
 
 let ctx = null;
-let salida = null;      // canal «Monitor de pases» (registro del motor)
+let salida = null;      // canal «RDR Coding» (registro del motor)
 let barra = null;       // botón de la barra de estado
 let motor = null;       // { proc, url, puerto, version, propio, demo }
 let arrancando = null;  // promesa del arranque en curso
@@ -33,14 +33,14 @@ async function asegurarMotor({ demo = false } = {}) {
   if (motor && motor.demo !== demo) await detener();
   if (arrancando) return arrancando;
   arrancando = (async () => {
-    estadoBarra("$(sync~spin) Monitor de pases", "Arrancando el motor…");
+    estadoBarra("$(sync~spin) RDR Coding", "Arrancando el motor…");
     const propio = String(conf().get("python") || "").trim();
     let python;
     try {
       python = await M.buscarPython(propio ? [[propio]] : []);
     } catch (e) {
       const elegir = "Elegir Python…";
-      vscode.window.showErrorMessage(`Monitor de pases: ${e.message} Indica la ruta de python.exe en Ajustes (monitorPases.python).`, elegir, "Abrir Ajustes")
+      vscode.window.showErrorMessage(`RDR Coding: ${e.message} Indica la ruta de python.exe en Ajustes (monitorPases.python).`, elegir, "Abrir Ajustes")
         .then((r) => {
           if (r === elegir) elegirPython();
           else if (r) vscode.commands.executeCommand("workbench.action.openSettings", "monitorPases.python");
@@ -53,8 +53,8 @@ async function asegurarMotor({ demo = false } = {}) {
     });
     motor = m;
     clave = null;
-    if (m.proc) m.proc.on("exit", () => { if (motor === m) { motor = null; estadoBarra("$(circle-slash) Monitor de pases", "Motor parado: pulsa para abrirlo"); } });
-    estadoBarra(`$(git-pull-request) Monitor de pases${demo ? " (demo)" : ""}`, `Motor ${m.version} en ${m.url}${m.propio ? "" : " (abierto por otra ventana)"}`);
+    if (m.proc) m.proc.on("exit", () => { if (motor === m) { motor = null; estadoBarra("$(circle-slash) RDR Coding", "Motor parado: pulsa para abrirlo"); } });
+    estadoBarra(`$(git-pull-request) RDR Coding${demo ? " (demo)" : ""}`, `Motor ${m.version} en ${m.url}${m.propio ? "" : " (abierto por otra ventana)"}`);
     return m;
   })();
   try { return await arrancando; } finally { arrancando = null; }
@@ -67,7 +67,7 @@ async function detener() {
   if (m && m.proc && m.proc.exitCode == null) {
     try { m.proc.kill(); } catch { /* ya terminado */ }
   }
-  if (barra) estadoBarra("$(circle-slash) Monitor de pases", "Motor parado: pulsa para abrirlo");
+  if (barra) estadoBarra("$(circle-slash) RDR Coding", "Motor parado: pulsa para abrirlo");
 }
 
 async function llamar(ruta, cuerpo) {
@@ -89,7 +89,7 @@ function htmlPanel(webview, url) {
   return `<!doctype html><html lang="es"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; frame-src ${origen} http://127.0.0.1:* http://localhost:*; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 <style>html,body,iframe{margin:0;padding:0;border:0;width:100%;height:100%;overflow:hidden;background:var(--vscode-editor-background)}</style>
-</head><body><iframe id="app" src="${src}" title="Monitor de pases" allow="clipboard-read; clipboard-write"></iframe>
+</head><body><iframe id="app" src="${src}" title="RDR Coding" allow="clipboard-read; clipboard-write"></iframe>
 <script nonce="${nonce}">
   const vs = acquireVsCodeApi();
   const app = document.getElementById("app");
@@ -104,7 +104,7 @@ function htmlPanel(webview, url) {
 async function abrirPanel({ demo = false } = {}) {
   let m;
   try { m = await asegurarMotor({ demo }); } catch (e) {
-    vscode.window.showErrorMessage("Monitor de pases: " + e.message, "Ver el registro").then((r) => r && salida.show());
+    vscode.window.showErrorMessage("RDR Coding: " + e.message, "Ver el registro").then((r) => r && salida.show());
     return;
   }
   const externa = (await vscode.env.asExternalUri(vscode.Uri.parse(m.url))).toString();
@@ -113,7 +113,7 @@ async function abrirPanel({ demo = false } = {}) {
     panel.reveal();
     return;
   }
-  panel = vscode.window.createWebviewPanel("monitorPases", "Monitor de pases", vscode.ViewColumn.Active,
+  panel = vscode.window.createWebviewPanel("monitorPases", "RDR Coding", vscode.ViewColumn.Active,
     { enableScripts: true, retainContextWhenHidden: true });
   panel.iconPath = vscode.Uri.file(path.join(ctx.extensionPath, "media", "icono.png"));
   panel.mpUrl = externa;
@@ -144,7 +144,7 @@ class Lateral {
   .estado{font-size:12px;opacity:.75;margin-top:10px}
 </style></head><body>
   <p>GitHub BBVA, Jira, DPs y el pase, sin salir de VS Code.</p>
-  <button class="pri" data-c="monitorPases.abrir">Abrir el monitor</button>
+  <button class="pri" data-c="monitorPases.abrir">Abrir RDR Coding</button>
   <button data-c="monitorPases.iniciarJira">Iniciar sesión en Jira (abre Chrome)</button>
   <button data-c="monitorPases.sincronizar">Actualizar ahora</button>
   <button data-c="monitorPases.abrirNavegador">Abrir en el navegador</button>
@@ -177,18 +177,18 @@ async function elegirPython() {
   const ok = await M.probarPython([r[0].fsPath]);
   if (!ok) { vscode.window.showErrorMessage("Ese Python no vale: hace falta la versión 3.8 o superior."); return; }
   await conf().update("python", r[0].fsPath, vscode.ConfigurationTarget.Global);
-  vscode.window.showInformationMessage(`Monitor de pases usará Python ${ok.version}.`);
+  vscode.window.showInformationMessage(`RDR Coding usará Python ${ok.version}.`);
 }
 
 function activate(context) {
   ctx = context;
-  salida = vscode.window.createOutputChannel("Monitor de pases");
+  salida = vscode.window.createOutputChannel("RDR Coding");
   barra = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 40);
   barra.command = "monitorPases.abrir";
-  estadoBarra("$(git-pull-request) Monitor de pases", "Abrir el Monitor de pases");
+  estadoBarra("$(git-pull-request) RDR Coding", "Abrir RDR Coding");
   barra.show();
   const cmd = (id, fn) => context.subscriptions.push(vscode.commands.registerCommand(id, async (...a) => {
-    try { await fn(...a); } catch (e) { vscode.window.showErrorMessage("Monitor de pases: " + e.message, "Ver el registro").then((r) => r && salida.show()); }
+    try { await fn(...a); } catch (e) { vscode.window.showErrorMessage("RDR Coding: " + e.message, "Ver el registro").then((r) => r && salida.show()); }
   }));
   cmd("monitorPases.abrir", () => abrirPanel({ demo: false }));
   cmd("monitorPases.abrirDemo", () => abrirPanel({ demo: true }));
@@ -199,7 +199,7 @@ function activate(context) {
   });
   cmd("monitorPases.sincronizar", async () => {
     const r = await llamar("sincronizar", {});
-    vscode.window.setStatusBarMessage(r && r.pedida === false ? "Ya hay una sincronización en marcha" : "Actualizando el Monitor de pases…", 4000);
+    vscode.window.setStatusBarMessage(r && r.pedida === false ? "Ya hay una sincronización en marcha" : "Actualizando RDR Coding…", 4000);
   });
   cmd("monitorPases.abrirNavegador", async () => {
     const m = await asegurarMotor({ demo: !!(motor && motor.demo) });

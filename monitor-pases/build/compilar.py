@@ -28,12 +28,12 @@ def fichero_version(v):
   kids=[
     StringFileInfo([StringTable('0C0A04B0', [
       StringStruct('CompanyName', 'NFQ Advisory Services'),
-      StringStruct('FileDescription', 'Monitor de pases'),
+      StringStruct('FileDescription', 'RDR Coding'),
       StringStruct('FileVersion', '%(v)s'),
       StringStruct('InternalName', 'MonitorPases'),
       StringStruct('LegalCopyright', 'NFQ Advisory Services'),
       StringStruct('OriginalFilename', 'MonitorPases.exe'),
-      StringStruct('ProductName', 'Monitor de pases'),
+      StringStruct('ProductName', 'RDR Coding'),
       StringStruct('ProductVersion', '%(v)s')])]),
     VarFileInfo([VarStruct('Translation', [3082, 1200])])
   ]
@@ -58,7 +58,7 @@ def main():
            "--paths", str(RAIZ),
            "--distpath", str(RAIZ / "dist"), "--workpath", str(TMP / "obra"), "--specpath", str(TMP),
            str(RAIZ / "monitor.py")]
-    print("Compilando Monitor de pases", v)
+    print("Compilando RDR Coding", v)
     subprocess.run(cmd, check=True, cwd=RAIZ)
     if os.environ.get("GITHUB_ENV"):
         with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:

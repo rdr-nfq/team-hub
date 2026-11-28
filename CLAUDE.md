@@ -177,7 +177,7 @@ Todo el código Apps Script vive en **`apps-script/`** y es **un único proyecto
 
 ---
 
-## 10. Monitor de pases (app de la VDI, se reparte como .exe)
+## 10. RDR Coding by NFQ (antes «Monitor de pases»; app de la VDI, se reparte como .vsix)
 
 `monitor-pases/` es una app que se ejecuta **en la VDI de BBVA** (no en la web): navega los repositorios de GitHub BBVA como la web de GitHub (código, commits, diferencias, PRs), sigue los DPs de cada release (`release/x.y.z`), los publica en `rdr-nfq/pases-datos` (solo DPs, releases, features y componentes: nunca código), genera el `.json` del pase y tiene asistentes con Copilot CLI (consulta y modificación de features, con revisión antes del push). El inicio de sesión en GitHub BBVA y NFQ se pide a Git (Git Credential Manager). Mira los repos de la organización `free` con `props.uuaa:KYTL0000` (`filtroRepos` en `config-equipo.json`); con 150+ repos, la navegación se apoya en los filtros comunes de `web/filtros.js` y en «Ir a…» (`web/paleta.js`). Se integra con Jira (`mp/jira.py`, `web/jira.js`): historias de los commits, proyectos (Features y Tasks de CIBRDR no desplegadas, marcando los de NFQ) con SDATOOL y releases de CIBRDR (tech-version); de Jira solo sale de la VDI el diagnóstico sin contenido que la persona revisa y envía, y las claves de los proyectos marcados como de NFQ (`pases-datos/equipo/proyectos-nfq.json`). En los DPs solo cuenta lo que nombra el package descriptor del repositorio (XML de la raíz, `mp/descriptor.py`; su diagnóstico solo lleva nombres de etiquetas y cifras) y los `.gsp` se comparan sin el ruido de la herramienta (`mp/gsp.py`). Detalles en `monitor-pases/README.md`.
 

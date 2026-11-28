@@ -446,7 +446,7 @@ class Asistente:
     def _contexto(self, t):
         """Lo que sabe el monitor (sin tokens): para que Copilot no tenga que adivinar."""
         ctx = t["contexto"] or {}
-        lineas = ["# Contexto del Monitor de pases", ""]
+        lineas = ["# Contexto de RDR Coding", ""]
         alias = self.cfg.get().get("proyectos") or {}
         if ctx.get("tipo") == "rama":
             with self.mon._cerrojo:
@@ -570,7 +570,7 @@ class Asistente:
             cmd = self._lanzador()[0]
             if not cmd:
                 raise RuntimeError("No se encuentra Copilot CLI: mira la pestaña Copilot.")
-            prompt = ("Eres la ayuda de la aplicación «Monitor de pases». Responde en español, claro y breve, a alguien que "
+            prompt = ("Eres la ayuda de la aplicación «RDR Coding». Responde en español, claro y breve, a alguien que "
                       "usa la app. Básate SOLO en manual.md y en situacion.md (y en conversacion.md si existe) de %s. "
                       "Di en qué pestaña y con qué botones se hace, paso a paso si hace falta. Si el manual no lo cubre, "
                       "dilo y sugiere a quién preguntar; no inventes funciones. No modifiques ningún fichero.\n\n"

@@ -1,8 +1,8 @@
-# Manual del Monitor de pases
+# Manual de RDR Coding
 
 ## Primeros pasos {#inicio}
 
-El Monitor de pases es una app para la **VDI de BBVA**. Junta en un solo sitio lo que hoy está repartido entre GitHub BBVA y Jira:
+El RDR Coding es una app para la **VDI de BBVA**. Junta en un solo sitio lo que hoy está repartido entre GitHub BBVA y Jira:
 - las ramas y los commits de vuestros repositorios;
 - las releases y sus DPs;
 - las historias y features de Jira;
@@ -10,8 +10,8 @@ El Monitor de pases es una app para la **VDI de BBVA**. Junta en un solo sitio l
 
 ### Abrir y cerrar (plugin de VS Code)
 1. Instala `MonitorPases.vsix`: en VS Code, **Extensiones → ⋯ → Instalar desde VSIX…**.
-2. Pulsa **Monitor de pases** en la barra de estado (abajo a la izquierda) o su icono en la barra lateral: la app se abre en un panel de VS Code.
-3. Todo está también en `Ctrl+Shift+P` → «Monitor de pases»: *Iniciar sesión en Jira (abre Chrome)*, *Actualizar ahora*, *Abrir en el navegador*, *Probar la demo*, *Ver el registro*…
+2. Pulsa **RDR Coding** en la barra de estado (abajo a la izquierda) o su icono en la barra lateral: la app se abre en un panel de VS Code.
+3. Todo está también en `Ctrl+Shift+P` → «RDR Coding»: *Iniciar sesión en Jira (abre Chrome)*, *Actualizar ahora*, *Abrir en el navegador*, *Probar la demo*, *Ver el registro*…
 
 > **Consejo:** los enlaces a GitHub, Jira o Actions se abren en tu navegador, y el tema claro u oscuro sigue al de VS Code.
 

@@ -1,4 +1,4 @@
-// Monitor de pases · filtros comunes a Ramas, Actividad, Commits, DPs y Repos.
+// RDR Coding · filtros comunes a Ramas, Actividad, Commits, DPs y Repos.
 // Facetas con recuento (proyecto, repositorio, persona y las propiedades de
 // los repos, como la UUAA), multi-selección, chips de lo que está activo,
 // periodo y vistas guardadas. Pensado para 150+ repositorios.

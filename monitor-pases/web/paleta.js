@@ -1,4 +1,4 @@
-// Monitor de pases · «Ir a…» (Ctrl+K): salta a cualquier repositorio, rama,
+// RDR Coding · «Ir a…» (Ctrl+K): salta a cualquier repositorio, rama,
 // proyecto, DP o commit escribiendo un trozo de su nombre.
 import { html, useState, useEffect, useMemo, useRef } from "./vendor/preact-htm.mjs";
 import { Icono, Rama, colorDe, corto, hace, jira, urlJira } from "./comun.js";

@@ -1,4 +1,4 @@
-// Monitor de pases · piezas comunes de la interfaz (API, utilidades, iconos).
+// RDR Coding · piezas comunes de la interfaz (API, utilidades, iconos).
 import { html } from "./vendor/preact-htm.mjs";
 
 export const CLAVE = document.querySelector('meta[name="clave"]')?.content || "";

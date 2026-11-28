@@ -1,8 +1,8 @@
 {
   "name": "monitor-pases",
-  "displayName": "Monitor de pases",
-  "description": "GitHub BBVA, Jira, DPs y el pase en VS Code (BBVA × NFQ).",
-  "version": "2.2.1",
+  "displayName": "RDR Coding",
+  "description": "RDR Coding by NFQ: GitHub BBVA, Jira, DPs y el pase en VS Code.",
+  "version": "2.3.0",
   "publisher": "nfq",
   "private": true,
   "license": "SEE LICENSE IN LICENSE.txt",
@@ -21,62 +21,62 @@
     "commands": [
       {
         "command": "monitorPases.abrir",
-        "title": "Abrir el monitor",
-        "category": "Monitor de pases",
+        "title": "Abrir RDR Coding",
+        "category": "RDR Coding",
         "icon": "$(git-pull-request)"
       },
       {
         "command": "monitorPases.iniciarJira",
         "title": "Iniciar sesión en Jira (abre Chrome)",
-        "category": "Monitor de pases"
+        "category": "RDR Coding"
       },
       {
         "command": "monitorPases.sincronizar",
         "title": "Actualizar ahora",
-        "category": "Monitor de pases",
+        "category": "RDR Coding",
         "icon": "$(sync)"
       },
       {
         "command": "monitorPases.abrirNavegador",
         "title": "Abrir en el navegador",
-        "category": "Monitor de pases"
+        "category": "RDR Coding"
       },
       {
         "command": "monitorPases.abrirDemo",
         "title": "Probar la demo (datos inventados)",
-        "category": "Monitor de pases"
+        "category": "RDR Coding"
       },
       {
         "command": "monitorPases.reiniciar",
         "title": "Reiniciar el motor",
-        "category": "Monitor de pases"
+        "category": "RDR Coding"
       },
       {
         "command": "monitorPases.detener",
         "title": "Detener el motor",
-        "category": "Monitor de pases"
+        "category": "RDR Coding"
       },
       {
         "command": "monitorPases.verRegistro",
         "title": "Ver el registro",
-        "category": "Monitor de pases"
+        "category": "RDR Coding"
       },
       {
         "command": "monitorPases.carpetaDatos",
         "title": "Abrir la carpeta de datos",
-        "category": "Monitor de pases"
+        "category": "RDR Coding"
       },
       {
         "command": "monitorPases.elegirPython",
         "title": "Elegir Python…",
-        "category": "Monitor de pases"
+        "category": "RDR Coding"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
           "id": "monitorPases",
-          "title": "Monitor de pases",
+          "title": "RDR Coding",
           "icon": "media/icono.svg"
         }
       ]
@@ -86,7 +86,7 @@
         {
           "type": "webview",
           "id": "monitorPases.inicio",
-          "name": "Monitor de pases"
+          "name": "RDR Coding"
         }
       ]
     },
@@ -100,7 +100,7 @@
       ]
     },
     "configuration": {
-      "title": "Monitor de pases",
+      "title": "RDR Coding",
       "properties": {
         "monitorPases.python": {
           "type": "string",
@@ -115,12 +115,12 @@
         "monitorPases.abrirAlPulsarIcono": {
           "type": "boolean",
           "default": true,
-          "description": "Al pulsar el icono de la barra de actividad, abrir el monitor directamente (sin la barra lateral)."
+          "description": "Al pulsar el icono de la barra de actividad, abrir RDR Coding directamente (sin la barra lateral)."
         },
         "monitorPases.abrirAlIniciar": {
           "type": "boolean",
           "default": false,
-          "description": "Abrir el monitor al arrancar VS Code."
+          "description": "Abrir RDR Coding al arrancar VS Code."
         }
       }
     }

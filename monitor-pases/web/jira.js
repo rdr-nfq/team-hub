@@ -1,4 +1,4 @@
-// Monitor de pases · Jira integrado con GitHub: proyectos (features) con su
+// RDR Coding · Jira integrado con GitHub: proyectos (features) con su
 // SDATOOL y sus historias, releases del proyecto (RDR) con las historias de
 // Jira frente a las de los commits, conexión y diagnóstico.
 import { html, useState, useEffect, useMemo, useRef } from "./vendor/preact-htm.mjs";

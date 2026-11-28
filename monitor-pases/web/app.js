@@ -1,4 +1,4 @@
-// Monitor de pases · interfaz. Preact + htm vendorizados: nada se descarga de internet.
+// RDR Coding · interfaz. Preact + htm vendorizados: nada se descarga de internet.
 import { html, render, useState, useEffect, useMemo, useRef, useCallback } from "./vendor/preact-htm.mjs";
 import {
   BotonTema, CLAVE, ChipDP, copiarTexto, ponerJira, ESTADO_PR, EstadoRun, FUENTE, Icono, Marca, Rama, api, clonar, colorDe, corto, fCorta, fLarga, hace, leerLS, plural, ponerColores, ponerIr, ponerLS, proximoSabado, uniq,
@@ -44,7 +44,7 @@ function Cabecera({ estado, vista, setVista, onSync, tema, cambiarTema, abrirPal
   const pctSincro = sc.enCurso && sc.repos?.[1] ? Math.round((100 * sc.repos[0]) / sc.repos[1]) : null;
   return html`<header class="cab">
     ${pctSincro != null && !sc.primeraCarga ? html`<span class="barra-sincro" aria-hidden="true"><span style=${{ width: pctSincro + "%" }} /></span>` : ""}
-    <div class="marca"><${Marca} /> Monitor de pases ${estado?.demo ? html`<small>Demo</small>` : html`<small>BBVA × NFQ</small>`}</div>
+    <div class="marca"><${Marca} /> RDR Coding ${estado?.demo ? html`<small>Demo</small>` : html`<small>by NFQ</small>`}</div>
     <nav class="pestanas" aria-label="Secciones">
       ${vistas.map(([id, t]) => html`<button key=${id} aria-current=${vista === id ? "page" : undefined} onClick=${() => setVista(id)}>${t}</button>`)}
     </nav>
@@ -870,7 +870,7 @@ function VistaAjustes({ estado, aviso, recargar, jira, recargarJira }) {
       <div class="prueba"><button class="btn" onClick=${() => probar("nfq")} disabled=${estado.demo}>Probar conexión</button><${Resultado} r=${res.nfq} /></div>
     </section>
 
-    <p class="tenue" style="margin:0;font-size:12px">Monitor de pases ${estado.version} · Registro de sincronizaciones (sin nombres ni código, por si hay que revisar algo):
+    <p class="tenue" style="margin:0;font-size:12px">RDR Coding ${estado.version} · Registro de sincronizaciones (sin nombres ni código, por si hay que revisar algo):
       <span class="mono">${estado.carpeta}${estado.carpeta?.includes("\\") ? "\\" : "/"}sincro.log</span></p>
 
     ${sucio && html`<div class="barra-guardar" role="status"><span>Hay cambios sin guardar.</span>
@@ -998,7 +998,7 @@ function App() {
     return () => removeEventListener("keydown", t);
   }, []);
 
-  if (!estado) return html`<p class="arranque" role=${errorCarga ? "alert" : "status"}>${errorCarga ? "No se puede hablar con la app: " + errorCarga : "Cargando el monitor…"}</p>`;
+  if (!estado) return html`<p class="arranque" role=${errorCarga ? "alert" : "status"}>${errorCarga ? "No se puede hablar con la app: " + errorCarga : "Cargando RDR Coding…"}</p>`;
   if (!dentro) return html`${ayuda && html`<${Ayuda} cerrar=${() => setAyuda(false)} vista="portada" estado=${estado} jira=${jiraDatos} />`}<${PantallaEntrada} abrirAyuda=${() => setAyuda(true)} estado=${estado} jira=${jiraDatos} recargarJira=${cargarJira} tema=${tema} cambiarTema=${cambiarTema} entrar=${() => { setDentro(true); cargar(); }} />`;
   const conLateral = ["ramas", "actividad", "commits", "dps", "repos"].includes(vista);
   const comun = { estado, f: filtros, setF: setFiltros, setFacetas, ir };

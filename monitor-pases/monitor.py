@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Monitor de pases · arranca la app local y abre el navegador.
+"""RDR Coding · arranca la app local y abre el navegador.
 
     MonitorPases.exe                  (o: python monitor.py)
     MonitorPases.exe --demo           datos inventados, sin red ni token
@@ -38,7 +38,7 @@ def _log_a_fichero():
         if ruta.exists() and ruta.stat().st_size > 1_000_000:
             ruta.replace(ruta.with_name("monitor.log.1"))
         f = open(ruta, "a", encoding="utf-8", buffering=1)
-        f.write("\n--- %s · Monitor de pases %s ---\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), VERSION))
+        f.write("\n--- %s · RDR Coding %s ---\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), VERSION))
         sys.stdout = sys.stderr = f
     except OSError:
         sys.stdout = sys.stderr = open(os.devnull, "w")
@@ -50,7 +50,7 @@ def _avisar(texto):
     if SIN_CONSOLA and os.name == "nt":
         try:
             import ctypes
-            ctypes.windll.user32.MessageBoxW(0, str(texto), "Monitor de pases", 0x40)
+            ctypes.windll.user32.MessageBoxW(0, str(texto), "RDR Coding", 0x40)
         except Exception:
             pass
 
@@ -112,17 +112,17 @@ def _vigilar_padre(pid, mon):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Monitor de pases (GitHub BBVA → .json del pase)")
+    ap = argparse.ArgumentParser(description="RDR Coding (GitHub BBVA → .json del pase)")
     ap.add_argument("--puerto", type=int, default=None, help="puerto local (por defecto 8765)")
     ap.add_argument("--sin-navegador", action="store_true", help="no abrir el navegador")
     ap.add_argument("--demo", action="store_true", help="datos inventados con un GitHub simulado")
     ap.add_argument("--vscode", action="store_true", help="lo arranca el plugin de VS Code (sin navegador; avisa al estar listo)")
     ap.add_argument("--padre", type=int, default=0, help="se cierra solo si termina este proceso (el de VS Code)")
-    ap.add_argument("--version", action="version", version="Monitor de pases " + VERSION)
+    ap.add_argument("--version", action="version", version="RDR Coding " + VERSION)
     a = ap.parse_args()
     if a.vscode:
         a.sin_navegador = True
-    _titulo("Monitor de pases" + (" (demo)" if a.demo else ""))
+    _titulo("RDR Coding" + (" (demo)" if a.demo else ""))
 
     from mp.config import Config
     if a.demo:
@@ -171,7 +171,7 @@ def main():
     threading.Thread(target=lambda: app.jira.iniciar_guardada() and app.jira.sincronizar(), name="jira", daemon=True).start()
     mon.arrancar()
     url = "http://127.0.0.1:%d/" % app.puerto
-    print("Monitor de pases %s%s" % (VERSION, " · DEMO con datos inventados" if a.demo else ""))
+    print("RDR Coding %s%s" % (VERSION, " · DEMO con datos inventados" if a.demo else ""))
     print()
     print("  Abierto en  %s" % url)
     print("  Datos en    %s" % cfg.dir)

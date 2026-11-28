@@ -1,5 +1,7 @@
-# Monitor de pases
+# RDR Coding · by NFQ
 
+
+*Antes «Monitor de pases». Los identificadores internos (`monitorPases.*`, `monitor-pases/`, `MonitorPases.vsix`) no cambian, para no romper instalaciones ni enlaces.*
 App para **la VDI de BBVA**. Te deja ver los repositorios de GitHub BBVA (`bbva.ghe.com`) como en la web de GitHub:
 - **Código:** cualquier rama, etiqueta o commit.
 - **Historial** de una rama o de un fichero.
@@ -14,14 +16,14 @@ Además sigue los **DPs de cada release** (qué componentes lleva cada uno y qu�
 
 1. Descarga **[MonitorPases.vsix](https://github.com/rdr-nfq/team-hub/releases/download/monitor-pases/MonitorPases.vsix)**. El enlace no cambia entre versiones; la versión se ve en la [release «monitor-pases»](https://github.com/rdr-nfq/team-hub/releases/tag/monitor-pases).
 2. En VS Code: **Extensiones** (`Ctrl+Shift+X`) → **⋯** (arriba a la derecha) → **Instalar desde VSIX…** → elige el fichero. O en una terminal: `code --install-extension MonitorPases.vsix`.
-3. Pulsa **Monitor de pases** en la barra de estado (abajo a la izquierda) o su icono en la barra lateral. Se abre la app en un panel.
+3. Pulsa **RDR Coding** en la barra de estado (abajo a la izquierda) o su icono en la barra lateral. Se abre la app en un panel.
 4. La primera vez, **Conectar todo** (GitHub BBVA, Jira y GitHub NFQ). **Jira se abre en Chrome** (Edge si no hay Chrome) desde el plugin: entras con tu usuario de BBVA y la ventana se cierra sola.
 
 Para actualizar, instala el `.vsix` nuevo encima (VS Code pide recargar la ventana).
 
-**Requisitos:** Python 3.8 o superior. El plugin prueba `py -3`, `python` y `python3`; si no lo encuentra, **Monitor de pases: Elegir Python…** o el ajuste `monitorPases.python`. Git con Git Credential Manager, como para `git pull`.
+**Requisitos:** Python 3.8 o superior. El plugin prueba `py -3`, `python` y `python3`; si no lo encuentra, **RDR Coding: Elegir Python…** o el ajuste `monitorPases.python`. Git con Git Credential Manager, como para `git pull`.
 
-**Comandos** (`Ctrl+Shift+P` → «Monitor de pases»): *Abrir el monitor*, *Iniciar sesión en Jira (abre Chrome)*, *Actualizar ahora*, *Abrir en el navegador*, *Probar la demo*, *Reiniciar* y *Detener el motor*, *Ver el registro*, *Abrir la carpeta de datos* y *Elegir Python…*.
+**Comandos** (`Ctrl+Shift+P` → «RDR Coding»): *Abrir el monitor*, *Iniciar sesión en Jira (abre Chrome)*, *Actualizar ahora*, *Abrir en el navegador*, *Probar la demo*, *Reiniciar* y *Detener el motor*, *Ver el registro*, *Abrir la carpeta de datos* y *Elegir Python…*.
 
 **Cómo funciona:** el plugin arranca `python monitor.py --vscode --padre <pid de VS Code>` y enseña la app (la misma web) en un panel; el motor solo escucha en `127.0.0.1` y se cierra solo si VS Code se cierra. Si otra ventana de VS Code ya tiene el motor abierto, se usa ese. Los enlaces a GitHub, Jira o Actions se abren en el navegador, el portapapeles lo pone VS Code y el tema claro u oscuro sigue al de VS Code. Datos y sesiones en `%USERPROFILE%\.monitor-pases`, los mismos que con el `.exe`.
 

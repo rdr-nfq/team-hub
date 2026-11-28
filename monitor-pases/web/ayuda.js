@@ -1,4 +1,4 @@
-// Monitor de pases · ayuda: el manual (web/manual.md), que se abre en la
+// RDR Coding · ayuda: el manual (web/manual.md), que se abre en la
 // sección de la pestaña en la que estás, con buscador y avisos según la
 // situación, y un chat que responde con Copilot CLI leyendo ese manual.
 import { html, useState, useEffect, useMemo, useRef } from "./vendor/preact-htm.mjs";
@@ -253,7 +253,7 @@ export function Ayuda({ cerrar, vista, estado, jira, irVista }) {
     <aside class="panel panel-ayuda" role="dialog" aria-modal="true" aria-labelledby="ay-t">
       <div class="panel-cab cab-ayuda">
         <div class="fila1">
-          <h2 id="ay-t" tabindex="-1" ref=${caja}><span class="marca-ayuda"><${Icono} n="ayuda" /></span> Manual del Monitor de pases</h2>
+          <h2 id="ay-t" tabindex="-1" ref=${caja}><span class="marca-ayuda"><${Icono} n="ayuda" /></span> Manual de RDR Coding</h2>
           <button class="btn btn-t btn-s" onClick=${cerrar} aria-label="Cerrar la ayuda"><${Icono} n="cerrar" /></button>
         </div>
         <div class="fila2">

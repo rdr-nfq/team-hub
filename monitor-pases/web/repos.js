@@ -1,4 +1,4 @@
-// Monitor de pases · repositorios como en la web de GitHub: código (árbol y
+// RDR Coding · repositorios como en la web de GitHub: código (árbol y
 // ficheros en cualquier rama, etiqueta o commit), historial, pull requests con
 // su conversación y comparar dos referencias.
 import { html, useState, useEffect, useMemo, useRef } from "./vendor/preact-htm.mjs";

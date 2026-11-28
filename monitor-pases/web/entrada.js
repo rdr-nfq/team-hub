@@ -1,4 +1,4 @@
-// Monitor de pases · inicio de sesión con GitHub BBVA y GitHub NFQ (a través
+// RDR Coding · inicio de sesión con GitHub BBVA y GitHub NFQ (a través
 // del gestor de credenciales de Git: la misma sesión que usa git pull).
 import { html, useState, useEffect } from "./vendor/preact-htm.mjs";
 import { api, BotonTema, Icono, Marca } from "./comun.js";
@@ -65,7 +65,7 @@ export function PantallaEntrada({ estado, entrar, tema, cambiarTema, jira, recar
   const entrarSinNfq = () => { try { localStorage.setItem(SIN_NFQ, "1"); } catch { /* sin almacenamiento */ } entrar(); };
   return html`<div class="entrada">
     <div class="caja-entrada">
-      <div class="cab-entrada"><div class="marca grande"><${Marca} /> Monitor de pases ${estado.demo ? html`<small>Demo</small>` : ""}</div>
+      <div class="cab-entrada"><div class="marca grande"><${Marca} /> RDR Coding ${estado.demo ? html`<small>Demo</small>` : html`<small>by NFQ</small>`}</div>
         <span class="acc-entrada"><button class="btn-tema" onClick=${abrirAyuda} title="Manual y ayuda (F1)" aria-label="Abrir el manual y la ayuda (F1)"><${Icono} n="ayuda" /></button>
         <${BotonTema} tema=${tema} cambiar=${cambiarTema} /></span></div>
       <h1>Inicia sesión</h1>

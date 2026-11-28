@@ -1,4 +1,4 @@
-// Monitor de pases · el motor (Python, en la carpeta «motor» del plugin): encontrar
+// RDR Coding · el motor (Python, en la carpeta «motor» del plugin): encontrar
 // Python, arrancarlo y hablar con él. Sin dependencias de VS Code: lo usa la
 // extensión y también la prueba de la CI (node prueba-motor.js).
 "use strict";
@@ -53,7 +53,7 @@ function arrancarMotor({ dir, python, demo = false, puerto = 0, padre = process.
     const reloj = setTimeout(() => {
       if (listo) return;
       try { proc.kill(); } catch { /* ya terminado */ }
-      reject(new Error("El motor no ha arrancado en " + Math.round(espera / 1000) + " s. Mira «Monitor de pases: ver el registro»."));
+      reject(new Error("El motor no ha arrancado en " + Math.round(espera / 1000) + " s. Mira «RDR Coding: ver el registro»."));
     }, espera);
     const linea = (l) => {
       log(l);

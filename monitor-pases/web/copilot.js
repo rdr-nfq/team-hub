@@ -1,4 +1,4 @@
-// Monitor de pases · asistentes con GitHub Copilot CLI: consulta (solo lee el
+// RDR Coding · asistentes con GitHub Copilot CLI: consulta (solo lee el
 // código) y modificación de features (los cambios se revisan aquí y se suben
 // solo cuando la persona lo confirma).
 import { html, useState, useEffect, useRef } from "./vendor/preact-htm.mjs";
