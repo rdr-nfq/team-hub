@@ -236,9 +236,6 @@ class Jira:
         self._silencioso = threading.Event()  # puesto = no hay un intento sin ventana en marcha
         self._silencioso.set()
         self._parar_silencioso = threading.Event()  # puesto = deja el intento sin ventana (la persona va a entrar)
-        self._renovando = threading.Lock()
-        self._renovada = 0.0
-        self._fallo_renovar = 0.0
         self.perfil = config.dir / "navegador-jira"
 
     # ── sesión ──────────────────────────────────────────────────────────────
@@ -265,35 +262,15 @@ class Jira:
                                         lambda cab: self._probar(("cookie", cab)), visible=visible, espera=espera,
                                         ruta_nav=j.get("navegador") or "", parar=parar)
 
-    def _sin_ventana(self, espera=25):
-        """Comprobación sin ventana con el SSO del perfil (una a la vez)."""
-        with self._c:
-            self._parar_silencioso.clear()
-            self._silencioso.clear()
-        try:
-            return self._por_navegador(False, espera=espera)
-        finally:
-            self._silencioso.set()
-
     def _renovar(self):
-        """La cookie ha caducado: se intenta sin ventana con el SSO del perfil. -> auth nueva o None.
-        Una sola renovación a la vez y, si falla, no se reintenta en 2 minutos: nunca se abren navegadores en cadena."""
-        with self._renovando:
-            if self._auth and self._auth[0] == "cookie" and time.time() - self._renovada < 5:
-                return self._auth  # otra llamada acaba de renovarla
-            if self._entrando or time.time() - self._fallo_renovar < 120:
-                return None
-            try:
-                cab, yo = self._sin_ventana()
-            except Exception:
-                self._fallo_renovar = time.time()
-                with self._c:
-                    self._auth = None
-                    self.sesion = {"estado": "sin sesión", "aviso": "La sesión de Jira ha caducado: vuelve a entrar."}
-                return None
-            self._iniciada(("cookie", cab), yo)
-            self._renovada = time.time()
-            return ("cookie", cab)
+        """La cookie ha caducado. No se comprueba nada por detrás (sin ventana se perdía mucho tiempo): se avisa
+        y la persona pulsa «Iniciar sesión en Jira»; con el SSO recordado en el perfil, la ventana entra y se cierra sola.
+        -> None (la llamada que ha fallado no se repite)."""
+        with self._c:
+            if self._auth and self._auth[0] == "cookie":
+                self._auth = None
+                self.sesion = {"estado": "sin sesión", "aviso": "La sesión de Jira ha caducado: pulsa «Iniciar sesión en Jira»."}
+        return None
 
     def conectar_navegador(self):
         """Abre la ventana para entrar en Jira y vuelve enseguida; la página pregunta cómo va (sesion.estado)."""
@@ -365,14 +342,11 @@ class Jira:
             if j.get("token"):
                 auth = ("token", j["token"])
             elif self.metodo == "navegador":
-                try:
-                    cab, yo = self._sin_ventana()  # sin ventana, con el SSO que guarda el perfil
-                except Exception:
-                    with self._c:
-                        self.sesion = {"estado": "sin sesión", "aviso": "Vuelve a entrar en Jira: la sesión ha caducado."}
-                    return False
-                self._iniciada(("cookie", cab), yo)
-                return True
+                # Sin comprobar nada (sin ventana se perdía mucho tiempo): el botón abre el navegador de primeras
+                # y, con el SSO recordado en su perfil, entra y se cierra solo.
+                with self._c:
+                    self.sesion = {"estado": "sin sesión"}
+                return False
             else:
                 d = _git_credencial("fill", self._host(), None, interactiva=False, timeout=30)
                 auth = ("token", d["password"]) if d.get("username") == MARCA_TOKEN else ("usuario", d.get("username", ""), d["password"])

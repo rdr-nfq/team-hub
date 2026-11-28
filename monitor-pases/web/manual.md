@@ -272,7 +272,7 @@ Ruta de Copilot CLI, modelo, opciones y variables de entorno (proxy).
 2. Se abre Jira en **Chrome** (en **Edge** si no tienes Chrome). Entra como siempre, con tu usuario de BBVA.
 3. En cuanto estás dentro, la ventana **se cierra sola** y la app queda conectada.
 
-Esa ventana usa un perfil de Chrome propio de la app: tu Chrome de siempre, con sus pestañas, no se toca (la app no puede leer la sesión de tu perfil normal, por eso es una ventana aparte). Ese perfil recuerda el inicio de sesión, así que en los siguientes arranques la app entra **sola, sin ventana**. Si un día la sesión ha caducado del todo, te avisa y vuelves a pulsar *Iniciar sesión en Jira*.
+Esa ventana usa un perfil de Chrome propio de la app: tu Chrome de siempre, con sus pestañas, no se toca (la app no puede leer la sesión de tu perfil normal, por eso es una ventana aparte). Ese perfil recuerda el inicio de sesión: al abrir la app no se comprueba nada (no se pierde tiempo) y, al pulsar *Iniciar sesión en Jira*, la ventana suele entrar sola y cerrarse en unos segundos. Si la sesión caduca mientras trabajas, la app te avisa y vuelves a pulsar el botón.
 
 **Otras formas de entrar** (debajo del botón), por si la ventana no se abre o no conecta:
 - **Usuario y contraseña**: tu usuario de Jira (el de tu perfil) y tu contraseña de BBVA. Solo vale si vuestro Jira la admite además del SSO.

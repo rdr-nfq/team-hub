@@ -229,15 +229,21 @@ class TestConGitHubSimulado(unittest.TestCase):
             j._iniciada(("cookie", cab), yo)
             j.metodo = "navegador"
             self.assertEqual(j.publica()["metodo"], "navegador")
-            # La sesión caduca en Jira: la siguiente llamada la renueva sola, sin ventana.
+            # La sesión caduca en Jira: no se comprueba nada por detrás, se pide entrar (el botón abre el navegador).
             self.datos_jira.sesiones.clear()
-            self.assertEqual(j._cliente().get("rest/api/2/myself")["name"], "usuario-demo")
-            self.assertNotEqual(j._auth[1], cab)
-            # Al arrancar la app: sin ventana, con el SSO.
+            with self.assertRaises(Exception):
+                j._cliente().get("rest/api/2/myself")
+            self.assertEqual(j.publica()["estado"], "sin sesión")
+            self.assertIn("caducado", j.publica()["aviso"])
+            # Al arrancar la app: ni comprueba ni abre nada; queda lista para abrir el navegador de primeras.
             j2 = Jira(self.cfg, self.mon)
             j2.perfil, j2.metodo = j.perfil, "navegador"
-            self.assertTrue(j2.iniciar_guardada())
-            self.assertEqual(j2.sesion["estado"], "iniciada")
+            t0 = time.time()
+            self.assertFalse(j2.iniciar_guardada())
+            self.assertLess(time.time() - t0, 1)
+            self.assertEqual(j2.sesion["estado"], "sin sesión")
+            cab, yo = j2._por_navegador(False, espera=40)  # (en la prueba, el SSO entra solo)
+            j2._iniciada(("cookie", cab), yo)
             # Cookie copiada a mano: vale el valor suelto de JSESSIONID.
             sid = next(iter(self.datos_jira.sesiones))
             self.assertEqual(j2._probar(("cookie", "JSESSIONID=" + sid))["name"], "usuario-demo")
@@ -271,10 +277,10 @@ class TestConGitHubSimulado(unittest.TestCase):
             self.assertLess(time.time() - t0, 30)
             j._iniciada(("cookie", "JSESSIONID=caducada"), {"name": "x"})
             n = len(llamadas)
-            for _ in range(3):  # la sincronización hace muchas llamadas: una sola renovación
+            for _ in range(3):  # la sincronización hace muchas llamadas: ninguna abre un navegador
                 with self.assertRaises(Exception):
                     j._cliente().get("rest/api/2/myself")
-            self.assertEqual(len(llamadas) - n, 1)
+            self.assertEqual(len(llamadas) - n, 0)
         finally:
             navegador.iniciar_sesion = real
         # Un navegador de la app ya abierto: sin ventana, solo se leen sus cookies (no se abren pestañas).
