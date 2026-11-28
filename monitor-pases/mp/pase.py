@@ -26,6 +26,7 @@ def propuesta(monitor, features):
     producción, con el DP más reciente de su rama."""
     cfg = monitor.cfg.get()
     reglas, subidas, alias = cfg.get("reglas") or [], cfg.get("reposSubida") or {}, cfg.get("proyectos") or {}
+    monitor.descriptores_al_dia()
     with monitor._cerrojo:
         ramas = [r for r in monitor.ramas.values() if not r.get("esBase")]
         # DPs de release que aún no están en producción: el código de la feature viaja en ellos.
@@ -33,8 +34,10 @@ def propuesta(monitor, features):
                    if v.get("release") and not v.get("congelado") and v.get("conclusion") in ("success", None)]
 
     iguales_prod = {}  # repo -> ficheros que ya están iguales en producción (según los DPs de release)
+    fuera_desc = {}  # repo -> ficheros que el DP de release no instala (no están en su package descriptor)
     for d in dps_rel:
         iguales_prod.setdefault(d["repo"], set()).update(f["ruta"] for f in d.get("ficheros") or [] if f.get("igualProduccion"))
+        fuera_desc.setdefault(d["repo"], set()).update(f["ruta"] for f in d.get("ficheros") or [] if f.get("fueraDescriptor"))
 
     def dp_de_release(repo, feature, rutas):
         """El DP de release más reciente de ese repo que lleva la feature y alguno de esos ficheros."""
@@ -60,12 +63,15 @@ def propuesta(monitor, features):
                 if rel and not any(x["cod"] == rel["cod"] and x["repo"] == rel["repo"] for x in dps):
                     dps.append({"cod": rel["cod"], "repo": rel["repo"], "rama": rel["rama"], "run": rel.get("run"),
                                 "fecha": rel.get("fecha"), "fuente": rel.get("fuente"), "url": rel.get("url")})
+                ya = set(c["ficheros"]) <= iguales_prod.get(r["repo"], set())
+                fuera = not ya and bool(rel) and set(c["ficheros"]) <= (iguales_prod.get(r["repo"], set()) | fuera_desc.get(r["repo"], set()))
                 comps.append({
                     "id": "%s:%s:%s" % (r["repo"], r["rama"], c["clave"]),
                     "nom": c["nombre"], "tipo": c["tipo"], "subida": c["subida"], "cod": rel["cod"] if rel else cod, "resp": "", "us": "",
                     "dpDe": ("release " + rel["release"]) if rel else ("rama" if cod else ""),
-                    "com": "Se borra" if c["borrado"] else ("Ya está igual en producción" if set(c["ficheros"]) <= iguales_prod.get(r["repo"], set()) else ""),
-                    "yaEnProduccion": set(c["ficheros"]) <= iguales_prod.get(r["repo"], set()), "repo": r["repo"], "rama": r["rama"],
+                    "com": "Se borra" if c["borrado"] else ("Ya está igual en producción" if ya else
+                                                            "No está en el package descriptor: no se instala" if fuera else ""),
+                    "yaEnProduccion": ya, "fueraDescriptor": fuera, "repo": r["repo"], "rama": r["rama"],
                     "commit": (r.get("sha") or "")[:7], "ficheros": c["ficheros"], "dpsRama": [d["cod"] for d in dps_r],
                     "regla": c["regla"],
                 })

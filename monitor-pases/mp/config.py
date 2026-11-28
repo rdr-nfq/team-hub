@@ -58,6 +58,10 @@ POR_DEFECTO = {
     "proyectos": {},
     "reglas": REGLAS_POR_DEFECTO,
     "reposSubida": {},
+    # Package descriptor: XML de la raíz que dice qué instala cada DP (lo que no nombra no es componente).
+    "descriptor": {"activo": True, "patron": "", "etiquetas": "", "repos": ""},
+    # Comparador de .gsp: aparta el ruido (espacios, saltos de línea, orden, ids, fechas y versiones).
+    "gsp": {"extensiones": ".gsp", "ruidoPorDefecto": True, "ruido": []},
     "puerto": 8765,
 }
 
@@ -177,7 +181,7 @@ class Config:
         """Ajustes para config-equipo.json: sin tokens ni nada de este equipo."""
         d = self.get()
         out = {s: {k: d[s][k] for k in campos if k in d[s]} for s, campos in CAMPOS_EQUIPO.items()}
-        out.update({k: d[k] for k in ("proyectos", "reglas", "reposSubida")})
+        out.update({k: d[k] for k in ("proyectos", "reglas", "reposSubida", "descriptor", "gsp") if k in d})
         return out
 
     def _guardar(self):

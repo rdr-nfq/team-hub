@@ -206,6 +206,52 @@ def _fichero_api(ruta, a, b):
     return {"filename": ruta, "status": estado, "additions": mas, "deletions": menos, "changes": mas + menos, "patch": patch}
 
 
+def _gsp(nombre, pasos, guardado, id_, version, crlf=False, sangria="  ", orden=None):
+    """Un .gsp inventado tal como lo guarda la herramienta: cabecera con fecha y versión, ids generados."""
+    ps = [pasos[i] for i in (orden or range(len(pasos)))]
+    out = ["# Generado por Disenador GS %s el %s" % (version, guardado),
+           "proceso %s id=%d version=%d" % (nombre, id_, id_ % 97)]
+    for i, (paso, args) in enumerate(ps):
+        out.append("%spaso %s %s" % (sangria, paso, args))
+        out.append("%s%snodo id=%d" % (sangria, sangria, id_ * 10 + i))
+    out += ["fin", "modified=%s" % guardado]
+    return [l + "\r" for l in out] if crlf else out
+
+
+def _objetos_gs(prod, rel, files, vivos, version, hoy):
+    """objetos-gs como de verdad: un package descriptor en la raíz que dice qué instala el DP (y un fichero de la
+    release que no aparece en él) y dos .gsp que la herramienta ha reescrito (uno con un cambio real y otro solo ruido)."""
+    pasos = [("LEER", 'origen="RDR_OPERACIONES"'), ("FILTRAR", 'condicion="importe > 0"'),
+             ("CRUZAR", 'con="RDR_CONTRAPARTIDAS" por="cpty"'), ("ESCRIBIR", 'destino="RDR_SALIDA"')]
+    ayer, hoy_s = (hoy - dt.timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S"), (hoy - dt.timedelta(hours=5)).strftime("%Y-%m-%d %H:%M:%S")
+    nuevos = list(pasos)
+    nuevos[3] = ("ESCRIBIR", 'destino="RDR_SALIDA_DIARIA"')  # el único cambio de verdad
+    params = [("PARAM", 'lote="500"'), ("PARAM", 'reintentos="3"'), ("PARAM", 'hora="06:30"')]
+    gs = {
+        "gs/CARGA_RDR.gsp": (_gsp("CARGA_RDR", pasos, ayer, 4821, "4.5.2"),
+                             _gsp("CARGA_RDR", nuevos, hoy_s, 5107, "4.6.0", crlf=True, sangria="\t", orden=[1, 0, 2, 3])),
+        "gs/PARAMETROS_RDR.gsp": (_gsp("PARAMETROS_RDR", params, ayer, 3310, "4.5.2"),
+                                  _gsp("PARAMETROS_RDR", params, hoy_s, 3398, "4.6.0", crlf=True, orden=[2, 0, 1])),
+    }
+    sql = [v for v in vivos if v.startswith("objetos/")]
+    desc = lambda ver, comps, gsps: (['<?xml version="1.0" encoding="UTF-8"?>',
+                                      '<package id="KYTL-%s" version="%s" created="%s">' % (ver.replace(".", ""), ver, hoy_s),
+                                      "  <components>"]
+                                     + ['    <component type="OBJETO" file="%s"/>' % c for c in comps]
+                                     + ['    <process>%s</process>' % g for g in gsps]
+                                     + ["  </components>", "</package>"])
+    prod["package-descriptor.xml"] = desc("2.107.0", ["objetos/T_RDR_BASE.sql"], ["PARAMETROS_RDR"])
+    rel["package-descriptor.xml"] = desc(version, sql + ["objetos/T_RDR_BASE.sql"], ["CARGA_RDR", "PARAMETROS_RDR"])
+    files.append(_fichero_api("package-descriptor.xml", prod["package-descriptor.xml"], rel["package-descriptor.xml"]))
+    for ruta, (a, b) in gs.items():
+        prod[ruta], rel[ruta] = a, b
+        files.append(_fichero_api(ruta, a, b))
+    # Una prueba que alguien dejó en la release: cambia, pero el descriptor no la nombra (no se instala).
+    prueba = ["-- Prueba local, no se despliega", "SELECT COUNT(*) FROM RDR_OPERACIONES;"]
+    rel["objetos/V_RDR_PRUEBAS_LOCAL.sql"] = prueba
+    files.append(_fichero_api("objetos/V_RDR_PRUEBAS_LOCAL.sql", [], prueba))
+
+
 def _blob(ruta, lineas):
     """SHA (inventado pero estable) del contenido de un fichero, como el «sha» de blob de GitHub."""
     return _sha("blob", ruta, "\n".join(lineas)) if lineas else None
@@ -416,6 +462,7 @@ class Datos:
                         base_vers[vivos[0]] = list(vers[vivos[0]])
                         ramas["release/" + rel[1]]["behind"] = 1
                         self.hotfix_prod[(full, padre)] = [vivos[1]]
+                    _objetos_gs(base_vers, self.versiones[(full, padre)], ramas["release/" + rel[1]]["files"], vivos, rel[1], hoy)
                 prs.append({"number": pr_n[0], "title": "Release " + rel[1], "state": "open", "merged_at": None, "draft": False,
                             "html_url": "https://demo.invalid/%s/pull/%d" % (full, pr_n[0]), "head": {"ref": "release/" + rel[1]},
                             "base": {"ref": "master"}, "updated_at": cuando(0, 3)})
@@ -779,7 +826,8 @@ class _H(BaseHTTPRequestHandler):
         if metodo == "GET":
             if not actual:
                 return self._json(404, {"message": "Not Found"})
-            return self._json(200, {"sha": actual["sha"], "path": ruta})
+            return self._json(200, {"sha": actual["sha"], "path": ruta, "html_url": "https://demo.invalid/%s/blob/main/%s" % (full, ruta),
+                                    "content": base64.b64encode(actual["texto"].encode()).decode()})
         n = int(self.headers.get("Content-Length") or 0)
         cuerpo = json.loads(self.rfile.read(n) or b"{}")
         if actual and cuerpo.get("sha") != actual["sha"]:
@@ -809,6 +857,7 @@ REGLAS_DEMO = [
     {"patron": r"(?P<nombre>[^/]+)\.java$", "tipo": "Java", "subida": "Java"},
     {"patron": r"^workstation/(?P<nombre>[^/]+)/", "tipo": "Workstation", "subida": "Workstation"},
     {"patron": r"^objetos/(?P<nombre>[^/]+)\.(sql|ddl)$", "tipo": "Objeto GS", "subida": "Paquete Custom"},
+    {"patron": r"^gs/(?P<nombre>[^/]+)\.gsp$", "tipo": "Proceso GS", "subida": "Paquete Custom"},
     {"patron": r"^estaticos/", "tipo": "Estático", "subida": "Estáticos"},
     {"patron": r"^datax/(?P<nombre>[^/]+)\.json$", "tipo": "DataX", "subida": "DataX"},
     {"patron": r"^cadenas/(?P<nombre>[^/.]+)", "tipo": "Cadena", "subida": "Cadenas"},

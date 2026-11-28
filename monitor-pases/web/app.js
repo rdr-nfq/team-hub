@@ -780,6 +780,28 @@ function VistaAjustes({ estado, aviso, recargar, jira, recargarJira }) {
         <datalist id="dl-sub-aj">${(estado.subidas || []).map((s) => html`<option value=${s} />`)}</datalist></details>` : ""}
     </section>
 
+    <section class="caja" aria-labelledby="aj-desc">
+      <h2 id="aj-desc">Package descriptor y .gsp</h2>
+      <p>Si un repositorio tiene un package descriptor (un XML en la raíz), un DP solo instala lo que él nombra: lo demás no cuenta como componente.
+        Y los .gsp se comparan sin el ruido que mete la herramienta al guardar (orden, espacios y saltos de línea, ids, fechas y versiones).</p>
+      <div class="rejilla">
+        <label class="interruptor ancho"><input type="checkbox" checked=${cfg.descriptor?.activo !== false} onChange=${(e) => set(["descriptor", "activo"], e.target.checked)} />
+          Usar el package descriptor para saber qué instala cada DP</label>
+        <label class="campo"><span>Nombre del descriptor (expresión regular)</span><input class="inp mono" value=${cfg.descriptor?.patron || ""} onInput=${(e) => set(["descriptor", "patron"], e.target.value)}
+          placeholder="Vacío = *descriptor*.xml o package*.xml" /></label>
+        <label class="campo"><span>Solo en estos repositorios (expresión regular)</span><input class="inp mono" value=${cfg.descriptor?.repos || ""} onInput=${(e) => set(["descriptor", "repos"], e.target.value)}
+          placeholder="Vacío = en todos los que lo tengan" /></label>
+        <label class="campo ancho"><span>Etiquetas que nombran componentes</span><input class="inp mono" value=${cfg.descriptor?.etiquetas || ""} onInput=${(e) => set(["descriptor", "etiquetas"], e.target.value)}
+          placeholder="Vacío = todas. Ej.: component@file, process" />
+          <small>Solo si hiciera falta afinar: los nombres salen en el diagnóstico del descriptor de cada DP.</small></label>
+        <label class="campo"><span>Extensiones con comparador sin ruido</span><input class="inp mono" value=${cfg.gsp?.extensiones ?? ".gsp"} onInput=${(e) => set(["gsp", "extensiones"], e.target.value)} placeholder=".gsp" /></label>
+        <label class="interruptor"><input type="checkbox" checked=${cfg.gsp?.ruidoPorDefecto !== false} onChange=${(e) => set(["gsp", "ruidoPorDefecto"], e.target.checked)} />
+          Apartar ids, fechas y versiones conocidos</label>
+        <label class="campo ancho"><span>Más ruido que apartar (una expresión regular por línea)</span>
+          <textarea class="inp mono" rows="2" value=${(cfg.gsp?.ruido || []).join("\n")} onInput=${(e) => set(["gsp", "ruido"], e.target.value.split("\n"))} placeholder="sesion=[A-Z0-9]+" /></label>
+      </div>
+    </section>
+
     <section class="caja" aria-labelledby="aj-jira">
       <h2 id="aj-jira">Jira</h2>
       <p>Historias de cada commit, features con su SDATOOL y releases. Lo de Jira se queda en la VDI.</p>
@@ -994,7 +1016,7 @@ function App() {
         ${vista === "actividad" && html`<${VistaActividad} ...${comun} setAbierta=${setAbierta} />`}
         ${vista === "commits" && html`<${VistaCommits} ...${comun} />`}
         ${vista === "dps" && html`<${VistaDPs} ...${comun} aviso=${aviso} />`}
-        ${vista === "dp" && html`<${VistaDP} key=${ruta.repo + ruta.cod} repo=${ruta.repo} cod=${ruta.cod} volver=${volver} ir=${ir} estado=${estado} />`}
+        ${vista === "dp" && html`<${VistaDP} key=${ruta.repo + ruta.cod} repo=${ruta.repo} cod=${ruta.cod} volver=${volver} ir=${ir} estado=${estado} aviso=${aviso} />`}
         ${vista === "repos" && html`<${VistaRepos} ...${comun} />`}
         ${vista === "repo" && html`<${VistaRepo} key=${ruta.repo} repo=${ruta.repo} sub=${ruta.sub} refName=${ruta.ref} ruta=${ruta.ruta} ir=${ir} volver=${volver} />`}
         ${vista === "pr" && html`<${VistaPR} key=${ruta.repo + ruta.n} repo=${ruta.repo} n=${ruta.n} volver=${volver} ir=${ir} estado=${estado} />`}

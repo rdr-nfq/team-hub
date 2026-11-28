@@ -9,7 +9,9 @@ cada cosa se pide a GitHub una sola vez.
 import hashlib
 import re
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 
+from . import gsp as GSP
 from .config import escribir_json, leer_json
 from .ghe import ErrorGHE
 from .sincro import _commit_ligero, cliente_bbva
@@ -44,6 +46,17 @@ class Diffs:
             escribir_json(ruta, d)
         return d
 
+    def _gsp(self):
+        return self.cfg.get().get("gsp") or {}
+
+    def _marcar(self, d):
+        """Señala los ficheros que tienen comparador propio (.gsp), para que la página lo ofrezca."""
+        cg = self._gsp()
+        for f in d.get("ficheros") or []:
+            if GSP.es_gsp(f.get("ruta"), cg) or GSP.es_gsp(f.get("antes"), cg):
+                f["gsp"] = True
+        return d
+
     def _repo_conocido(self, repo):
         with self.mon._cerrojo:
             if repo not in self.mon.repos:
@@ -72,7 +85,7 @@ class Diffs:
                     "padres": [p.get("sha") for p in d.get("parents") or []], "url": d.get("html_url"),
                     "stats": d.get("stats") or {}, "ficheros": _ficheros(files)}
 
-        return self._cache(("commit", repo, sha.lower()), traer)
+        return self._marcar(self._cache(("commit", repo, sha.lower()), traer))
 
     def rama(self, rid):
         with self.mon._cerrojo:
@@ -91,7 +104,7 @@ class Diffs:
                     "commits": [_commit_ligero(c) for c in d.get("commits") or []],
                     "ficheros": _ficheros(files), "truncado": len(files) >= 300}
 
-        d = self._cache(("rama", repo, base_sha, sha), traer)
+        d = self._marcar(self._cache(("rama", repo, base_sha, sha), traer))
         return dict(d, id=rid, repo=repo, rama=r["rama"], base=r.get("base"), baseSha=base_sha, sha=sha,
                     feature=r.get("feature"), url=r.get("comparar"))
 
@@ -109,7 +122,7 @@ class Diffs:
                     "commits": [_commit_ligero(c) for c in d.get("commits") or []],
                     "ficheros": _ficheros(files), "truncado": len(files) >= 300}
 
-        return dict(self._cache(("comparar", repo, base_sha, sha), traer), repo=repo, baseSha=base_sha, sha=sha)
+        return self._marcar(dict(self._cache(("comparar", repo, base_sha, sha), traer), repo=repo, baseSha=base_sha, sha=sha))
 
     def dp(self, repo, cod):
         """Las modificaciones de un DP: lo que trae frente a producción (o a la
@@ -122,9 +135,58 @@ class Diffs:
         d = self.comparar(repo, info["frenteSha"], info["sha"])
         # Los ficheros que ya son iguales en producción no son modificaciones del DP: se apartan.
         iguales = {f["ruta"] for f in info.get("ficheros") or [] if f.get("igualProduccion")}
-        fs = d.get("ficheros") or []
-        return dict(d, ficheros=[f for f in fs if (f.get("ruta") or f.get("filename")) not in iguales],
-                    iguales=sorted(iguales), cod=cod, frente=info.get("frente"), rama=info.get("rama"), release=info.get("release"))
+        # Los que no están en el package descriptor no se instalan: se enseñan, pero marcados.
+        fuera = {f["ruta"] for f in info.get("ficheros") or [] if f.get("fueraDescriptor")}
+        fs = [dict(f, fueraDescriptor=True) if f.get("ruta") in fuera else f
+              for f in d.get("ficheros") or [] if (f.get("ruta") or f.get("filename")) not in iguales]
+        fs.sort(key=lambda f: bool(f.get("fueraDescriptor")))
+        return dict(d, ficheros=fs, iguales=sorted(iguales), fuera=len(fuera), cod=cod, frente=info.get("frente"),
+                    rama=info.get("rama"), release=info.get("release"))
+
+    # ── comparador de .gsp ──────────────────────────────────────────────────
+    def _texto(self, repo, ref, ruta):
+        if not ref or not ruta:
+            return ""
+        d = self.fichero(repo, ref, ruta)
+        if not d.get("existe") or d.get("binario"):
+            return ""
+        return d.get("texto") or ""
+
+    def gsp(self, repo, antes, despues, ruta, ruta_antes=""):
+        """Compara un .gsp entre dos commits apartando el ruido (orden, espacios, ids, fechas, versiones)."""
+        self._repo_conocido(repo)
+        if (antes and not RE_SHA.match(antes)) or not RE_SHA.match(despues or ""):
+            raise ValueError("Referencias no válidas.")
+        cg = self._gsp()
+        clave = ("gsp", str(GSP.ALGORITMO), repo, (antes or "").lower(), despues.lower(), ruta, ruta_antes or "",
+                 hashlib.sha1(repr(sorted(cg.items())).encode()).hexdigest()[:10])
+
+        def traer():
+            a = self._texto(repo, antes, ruta_antes or ruta)
+            b = self._texto(repo, despues, ruta)
+            return GSP.comparar(a, b, cg)
+        return dict(self._cache(clave, traer), repo=repo, ruta=ruta, antes=antes, despues=despues)
+
+    def gsp_dp(self, repo, cod):
+        """Resumen del comparador para los .gsp de un DP: cuántos cambios reales tiene cada uno."""
+        info = self.mon.dp(repo, cod)
+        if not info:
+            raise KeyError("Ese DP no está entre los detectados.")
+        if not info.get("frenteSha"):
+            return {"ficheros": []}
+        cg = self._gsp()
+        fs = [f for f in info.get("ficheros") or [] if not f.get("igualProduccion") and f.get("estado") != "removed"
+              and GSP.es_gsp(f.get("ruta"), cg)][:120]
+
+        def uno(f):
+            try:
+                r = self.gsp(repo, info["frenteSha"] if f.get("estado") != "added" else "", info["sha"], f["ruta"], f.get("antes") or "")
+                return {"ruta": f["ruta"], "brutas": r["brutas"], "real": r["real"], "sinCambiosReales": r["sinCambiosReales"],
+                        "ruido": r["ruido"]}
+            except (ErrorGHE, ValueError) as e:
+                return {"ruta": f["ruta"], "error": str(e)}
+        with ThreadPoolExecutor(4) as ex:
+            return {"ficheros": list(ex.map(uno, fs))}
 
     def fichero(self, repo, ref, ruta):
         self._repo_conocido(repo)

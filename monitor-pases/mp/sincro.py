@@ -17,6 +17,7 @@ import urllib.parse
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 
+from . import descriptor as DESC
 from .clasificar import buscar_dps, clave_version, componentes, feature_de_rama, features_en, version_release
 from .config import escribir_json, leer_json
 from .ghe import Cliente, ErrorCuota, ErrorGHE, api_de_host
@@ -65,8 +66,15 @@ def _repo_de_clave(k):
 
 
 def ficheros_reales(info):
-    """Los ficheros de un DP que de verdad cambian frente a producción (sin los que ya son iguales)."""
-    return [f for f in info.get("ficheros") or [] if not f.get("igualProduccion")]
+    """Los ficheros que de verdad instala un DP: cambian frente a producción (sin los que ya son iguales)
+    y están en su package descriptor (si el repositorio tiene uno)."""
+    return [f for f in info.get("ficheros") or [] if not f.get("igualProduccion") and not f.get("fueraDescriptor")]
+
+
+def _lista(v):
+    if isinstance(v, str):
+        v = re.split(r"[,\n]+", v)
+    return [x.strip() for x in v or [] if x and str(x).strip()]
 
 
 # Una clave de Jira (PROYECTO-123) que no sea parte de otra.
@@ -98,6 +106,7 @@ class Monitor:
         self._despertar = threading.Event()
         self._en_curso = False
         self.despues_de_sincronizar = None  # p. ej. publicar los DPs nuevos en pases-datos
+        self._descriptores = {}  # blob -> {entradas, error} (también en disco: descriptores/)
 
     def _anotar(self, texto):
         """Una línea en sincro.log (carpeta de datos), para ver qué ha pasado sin depurar.
@@ -729,6 +738,7 @@ class Monitor:
                 if d and d["ahead"]:
                     info.update(d, frente=base, frenteSha=base_sha, calculado=_ahora(), congelado=False, yaEnProduccion=False)
                     info.pop("ahead", None)
+                    info["descriptor"] = self._descriptor_seguro(cli, r["repo"], x["sha"])
                 elif prev is not None and prev.get("ficheros") is not None and prev.get("frente") == base:
                     # Ya está en producción: se queda con lo último calculado antes de entrar.
                     info.update(congelado=True, enProduccion=_ahora(), yaEnProduccion=not prev.get("ficheros"))
@@ -743,6 +753,7 @@ class Monitor:
                         info.update({k2: v for k2, v in d.items() if k2 != "ahead"}, frente=ant["rama"], frenteSha=ant["sha"])
                     info["yaEnProduccion"] = not info.get("ficheros")
                     info["calculado"] = _ahora()
+                    info["descriptor"] = self._descriptor_seguro(cli, r["repo"], x["sha"])
             except ErrorGHE:  # también la cuota: se reintenta en la próxima sincronización
                 return None
             return k, info
@@ -752,15 +763,155 @@ class Monitor:
                 if res:
                     with self._cerrojo:
                         self.dps_info[res[0]] = res[1]
+
+        # DPs calculados antes de mirar el package descriptor (o cuando no se pudo leer): se busca en su commit.
+        def descriptor_de(k):
+            i = self.dps_info.get(k) or {}
+            try:
+                return k, self._buscar_descriptor(cli, i["repo"], i["sha"])
+            except ErrorGHE:
+                return k, None
+        with self._cerrojo:
+            faltan = [k for k, i in self.dps_info.items() if i.get("sha") and i.get("ficheros") and i.get("descriptor") is None]
+        with ThreadPoolExecutor(POOL_RAMAS) as ex:
+            for k, d in ex.map(descriptor_de, faltan[:200]):
+                if d is not None:
+                    with self._cerrojo:
+                        if k in self.dps_info:
+                            self.dps_info[k]["descriptor"] = d
         with self._cerrojo:
             for info in self.dps_info.values():
                 r = ramas.get("%s:%s" % (info["repo"], info["rama"])) or {"feature": "", "release": info.get("release")}
                 info["features"] = self._features_dp(info.get("commits"), r) or info.get("features") or []
 
+    # ── package descriptor ──────────────────────────────────────────────────
+    def _buscar_descriptor(self, cli, repo, sha):
+        """El package descriptor del commit del DP: un XML de la raíz. Se guardan sus entradas (en la
+        carpeta de datos, por su blob) y en el DP solo dónde está. -> {ruta, blob, buscado} ({ruta: ""} si no hay)."""
+        cfgd = self.cfg.get().get("descriptor") or {}
+        if cfgd.get("activo") is False:
+            return {"ruta": "", "buscado": _ahora(), "desactivado": True}
+        try:
+            if cfgd.get("repos") and not re.search(cfgd["repos"], repo):
+                return {"ruta": "", "buscado": _ahora()}
+        except re.error:
+            pass
+        t = cli.get("repos/%s/git/trees/%s" % (repo, sha), etag=False)[0] or {}
+        raiz = {x["path"]: x.get("sha") or "" for x in t.get("tree") or [] if x.get("type") == "blob" and "/" not in (x.get("path") or "")}
+        ruta = DESC.elegir(list(raiz), cfgd.get("patron"))
+        if not ruta:
+            return {"ruta": "", "buscado": _ahora()}
+        blob = raiz[ruta] or ("%s:%s" % (sha, ruta))
+        if self._entradas_descriptor(blob) is None:
+            try:
+                datos = cli.crudo("repos/%s/contents/%s" % (repo, urllib.parse.quote(ruta, safe="/")), {"ref": sha}, limite=DESC.MAX_BYTES)
+                leido = DESC.leer(datos)
+            except ErrorCuota:
+                raise
+            except ErrorGHE as e:
+                leido = {"entradas": [], "error": "No se ha podido leer el descriptor (%s)." % e}
+            self._guardar_entradas(blob, leido)
+        return {"ruta": ruta, "blob": blob, "buscado": _ahora()}
+
+    def _descriptor_seguro(self, cli, repo, sha):
+        """Como _buscar_descriptor, pero un fallo (que no sea la cuota) no impide calcular el DP: se reintenta."""
+        try:
+            return self._buscar_descriptor(cli, repo, sha)
+        except ErrorCuota:
+            raise
+        except ErrorGHE:
+            return None
+
+    def _fichero_descriptor(self, blob):
+        return self.cfg.dir / "descriptores" / (re.sub(r"[^A-Za-z0-9]", "_", blob)[:80] + ".json")
+
+    def _entradas_descriptor(self, blob):
+        if not blob:
+            return None
+        if blob not in self._descriptores:
+            d = leer_json(self._fichero_descriptor(blob))
+            if d is None:
+                return None
+            self._descriptores[blob] = d
+        return self._descriptores[blob]
+
+    def _guardar_entradas(self, blob, leido):
+        self._descriptores[blob] = leido
+        try:
+            self._fichero_descriptor(blob).parent.mkdir(parents=True, exist_ok=True)
+            escribir_json(self._fichero_descriptor(blob), leido)
+        except OSError:
+            pass
+
+    def _aplicar_descriptor(self, info):
+        """Marca qué ficheros del DP están en su descriptor y cuáles no (no se instalan). Solo se filtra si el
+        descriptor nombra algún fichero del DP: si no nombra ninguno, no se entiende y no se aparta nada."""
+        d = info.get("descriptor")
+        if not d:
+            return
+        etiquetas = _lista((self.cfg.get().get("descriptor") or {}).get("etiquetas"))
+        clave = "%s|%s|%s" % (DESC.ALGORITMO, d.get("blob") or "", ",".join(etiquetas))
+        if d.get("clave") == clave:
+            return
+        fs = info.get("ficheros") or []
+        for f in fs:
+            for x in ("fueraDescriptor", "enDescriptor", "esDescriptor"):
+                f.pop(x, None)
+        if not d.get("ruta"):
+            d.update(clave=clave, aplica=False)
+            return
+        e = self._entradas_descriptor(d.get("blob")) or {"entradas": [], "error": "No se ha podido leer el descriptor."}
+        ind = DESC.Indice(e.get("entradas"), etiquetas)
+        cand = [f for f in fs if not f.get("igualProduccion")]
+        casan = 0
+        for f in cand:
+            if f.get("ruta") == d["ruta"]:
+                f["esDescriptor"] = True
+                continue
+            r = ind.buscar(f.get("ruta")) or (ind.buscar(f["antes"]) if f.get("antes") else None)
+            if r:
+                f["enDescriptor"] = r[0]
+                casan += 1
+        aplica = bool(casan) and not e.get("error")
+        fuera = 0
+        if aplica:
+            for f in cand:
+                if not f.get("enDescriptor"):
+                    f["fueraDescriptor"] = True
+                    fuera += 1
+        d.update(clave=clave, aplica=aplica, error=e.get("error") or "", nEntradas=ind.n, casan=casan, fuera=fuera)
+
+    def descriptores_al_dia(self):
+        with self._cerrojo:
+            for info in self.dps_info.values():
+                self._aplicar_descriptor(info)
+
+    def forma_descriptor(self, repo, cod):
+        """Diagnóstico SIN contenido del descriptor de un DP: etiquetas, atributos y cuántos ficheros casan."""
+        with self._cerrojo:
+            i = self.dps_info.get("%s|%s" % (repo, cod))
+            i = dict(i) if i else None
+        if not i:
+            raise KeyError("Ese DP no está entre los detectados.")
+        d = i.get("descriptor") or {}
+        e = self._entradas_descriptor(d.get("blob")) or {"entradas": [], "error": ""}
+        cfgd = self.cfg.get().get("descriptor") or {}
+        fs = [f["ruta"] for f in i.get("ficheros") or [] if not f.get("igualProduccion") and f.get("ruta") != d.get("ruta")]
+        out = DESC.forma(e.get("entradas"), fs, _lista(cfgd.get("etiquetas")))
+        ext = Counter((f.rsplit(".", 1)[-1].lower() if "." in f.rsplit("/", 1)[-1] else "(sin)") for f in fs)
+        sin = Counter((f.rsplit(".", 1)[-1].lower() if "." in f.rsplit("/", 1)[-1] else "(sin)") for f in
+                      [x["ruta"] for x in i.get("ficheros") or [] if x.get("fueraDescriptor") and not x.get("esDescriptor")])
+        return dict(out, formato="monitor-pases/diagnostico-descriptor-1", hay=bool(d.get("ruta")),
+                    extensionDescriptor=(d.get("ruta") or "").rsplit(".", 1)[-1].lower() if d.get("ruta") else "",
+                    error=e.get("error") or "", aplica=bool(d.get("aplica")), extensionesDP=dict(ext.most_common(20)),
+                    extensionesFuera=dict(sin.most_common(20)), etiquetasAjustes=len(_lista(cfgd.get("etiquetas"))),
+                    profundidadMedia=round(sum(f.count("/") for f in fs) / max(1, len(fs)), 1))
+
     def dps(self):
         """Todos los DPs conocidos, con sus componentes según las reglas actuales."""
         cfg = self.cfg.get()
         reglas, subidas = cfg.get("reglas") or [], cfg.get("reposSubida") or {}
+        self.descriptores_al_dia()
         with self._cerrojo:
             infos = [dict(v) for v in self.dps_info.values()]
         out = []
@@ -773,7 +924,11 @@ class Monitor:
             i["mas"] = sum(f.get("mas") or 0 for f in ficheros_reales(i))
             i["menos"] = sum(f.get("menos") or 0 for f in ficheros_reales(i))
             sp = i.pop("soloProduccion", None) or {}
-            i["soloProd"] = {"commits": sp.get("commits") or 0, "enComun": len(sp.get("enComun") or [])}
+            propios = {f["ruta"] for f in ficheros_reales(i)}
+            i["soloProd"] = {"commits": sp.get("commits") or 0, "enComun": len(propios & set(sp.get("ficheros") or []))}
+            de = i.get("descriptor") or {}
+            i["descriptor"] = {"ruta": de.get("ruta") or "", "aplica": bool(de.get("aplica")), "fuera": de.get("fuera") or 0}
+            i["nFuera"] = len([f for f in i.get("ficheros") or [] if f.get("fueraDescriptor")])
             i.pop("ficheros", None)
             i.pop("commits", None)
             out.append(i)
@@ -781,6 +936,7 @@ class Monitor:
         return out
 
     def dp(self, repo, cod):
+        self.descriptores_al_dia()
         with self._cerrojo:
             i = self.dps_info.get("%s|%s" % (repo, cod))
             i = dict(i) if i else None
@@ -789,6 +945,9 @@ class Monitor:
         cfg = self.cfg.get()
         comps, ign = componentes(ficheros_reales(i), cfg.get("reglas") or [], (cfg.get("reposSubida") or {}).get(repo, ""))
         i["componentes"], i["ignorados"] = comps, ign
+        if i.get("soloProduccion"):
+            propios = {f["ruta"] for f in ficheros_reales(i)}
+            i["soloProduccion"] = dict(i["soloProduccion"], enComun=sorted(propios & set(i["soloProduccion"].get("ficheros") or []))[:100])
         return i
 
     def marcar_publicado(self, clave, info):

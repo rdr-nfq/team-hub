@@ -57,6 +57,47 @@ class TestReglas(unittest.TestCase):
             P.limpiar({"pase": "28/11/2026", "proyectos": []})
 
 
+class TestGspYDescriptor(unittest.TestCase):
+    def test_gsp_aparta_el_ruido(self):
+        from mp import gsp
+        a = "# guardado 2026-01-02 10:00:00\nproceso X id=123 version=4\n  paso A x=\"1\"\n  paso B y=\"2\"\nfin\n"
+        b = "# guardado 2026-02-03 11:30:00\r\nproceso X id=456 version=5\r\n\tpaso B   y = \"2\"\r\n\tpaso A x=\"1\"\r\nfin\r\n"
+        r = gsp.comparar(a, b)
+        self.assertTrue(r["sinCambiosReales"])
+        self.assertTrue(r["brutas"] >= 6 and r["ruido"]["orden"] and r["ruido"]["generado"] and r["ruido"]["espacios"])
+        r = gsp.comparar(a, b.replace('x="1"', 'x="9"'))
+        self.assertEqual((r["real"], r["quitadas"][0]["n"], r["anadidas"][0]["n"]), (2, 3, 4))
+        # Partir una línea en dos (o juntarlas) tampoco es un cambio.
+        self.assertTrue(gsp.comparar("a=1 b=2\nfin", "a=1\nb=2\nfin")["sinCambiosReales"])
+        # Ruido propio de Ajustes.
+        self.assertTrue(gsp.comparar("x\nsesion=AB", "x\nsesion=CD", {"ruido": [r"sesion=\w+"]})["sinCambiosReales"])
+        self.assertTrue(gsp.es_gsp("a/B.GSP") and not gsp.es_gsp("a/b.sql") and gsp.es_gsp("a/b.sql", {"extensiones": "gsp, sql"}))
+
+    def test_descriptor(self):
+        from mp import descriptor as D
+        self.assertEqual(D.elegir(["README.md", "package.xml", "pom.xml", "package-descriptor.xml", "x/descriptor.xml"]), "package-descriptor.xml")
+        self.assertEqual(D.elegir(["pom.xml"]), "")
+        x = (b'<?xml version="1.0"?><!DOCTYPE p [<!ENTITY e "x">]><ns:pkg xmlns:ns="urn:x"><items>'
+             b'<item path="src\\objetos\\T_UNO.sql"/><item>T_DOS</item><item name="PROC_TRES.gsp"/>'
+             b'<carpeta>/opt/inst/gs/MODULO_A</carpeta><lista>T_CINCO.sql, T_SEIS.sql</lista></items></ns:pkg>')
+        e = D.leer(x)
+        self.assertFalse(e["error"])
+        self.assertIn(["pkg/items/item@path", "src\\objetos\\T_UNO.sql"], e["entradas"])
+        ind = D.Indice(e["entradas"])
+        self.assertEqual(ind.buscar("src/objetos/T_UNO.sql")[0], "ruta")
+        self.assertEqual(ind.buscar("otra/src/objetos/t_uno.sql")[0], "final de la ruta")
+        self.assertEqual(ind.buscar("otra/T_UNO.sql")[0], "nombre")
+        self.assertEqual(ind.buscar("objetos/T_DOS.pkb")[0], "nombre sin extensión")
+        self.assertTrue(ind.buscar("procesos/PROC_TRES.gsp"))
+        self.assertEqual(ind.buscar("gs/MODULO_A/def.gsp")[0], "carpeta")
+        self.assertTrue(ind.buscar("objetos/T_SEIS.sql"))
+        self.assertIsNone(ind.buscar("objetos/T_CUATRO.sql"))
+        self.assertIsNone(ind.buscar("gs/otro.gsp"))  # «gs» sola no nombra a todos
+        self.assertTrue(D.leer(b"<roto")["error"])
+        solo = D.Indice(e["entradas"], ["item@name"])
+        self.assertTrue(solo.buscar("PROC_TRES.gsp") and not solo.buscar("src/objetos/T_UNO.sql"))
+
+
 class TestNavegador(unittest.TestCase):
     def test_si_chrome_no_arranca_se_usa_el_siguiente(self):
         """Chrome primero; si no arranca o no deja leer la sesión, el siguiente (Edge), con su propio perfil."""
@@ -537,8 +578,53 @@ class TestConGitHubSimulado(unittest.TestCase):
         viejos = [d for d in dps if d["release"] == "2.107.0"]
         self.assertTrue(viejos and all(d["yaEnProduccion"] for d in viejos))
         dd = self.app.rutas("GET", "/api/dp/diff", {"repo": rel[0]["repo"], "cod": rel[0]["cod"]}, {})
-        self.assertEqual(len(dd["ficheros"]), rel[0]["nFich"])
+        self.assertEqual(len(dd["ficheros"]) - dd["fuera"], rel[0]["nFich"])
         self.assertTrue(all(f["patch"] for f in dd["ficheros"] if f["estado"] != "removed"))
+
+    def test_dp_package_descriptor_y_gsp(self):
+        """objetos-gs: solo es componente lo que nombra el package descriptor del DP, y el comparador de .gsp
+        separa el ruido (orden, espacios, ids, fechas, versiones) de los cambios reales."""
+        full = "equipo-demo/rdr-objetos-gs"
+        dps = self.app.rutas("GET", "/api/dps", {}, {})["dps"]
+        d = next(x for x in dps if x["repo"] == full and x["release"] == "2.108.0")
+        self.assertEqual(d["descriptor"]["ruta"], "package-descriptor.xml")
+        self.assertTrue(d["descriptor"]["aplica"])
+        dp = self.app.rutas("GET", "/api/dp", {"repo": full, "cod": d["cod"]}, {})
+        fuera = {f["ruta"] for f in dp["ficheros"] if f.get("fueraDescriptor")}
+        self.assertEqual(fuera, {"objetos/V_RDR_PRUEBAS_LOCAL.sql", "package-descriptor.xml"})
+        en_comps = {r for c in dp["componentes"] for r in c["ficheros"]}
+        self.assertFalse(en_comps & fuera)
+        self.assertIn("gs/CARGA_RDR.gsp", en_comps)  # nombrado sin carpeta ni extensión
+        self.assertEqual(d["nFuera"], 2)
+        # El pase marca lo que no se instala.
+        comps = [c for p in P.propuesta(self.mon, d["features"]) for c in p["componentes"] if c["repo"] == full]
+        self.assertTrue(all(not c["fueraDescriptor"] for c in comps))
+        # El diagnóstico solo lleva formas y cifras: ni rutas ni valores.
+        forma = self.app.rutas("GET", "/api/dp/descriptor", {"repo": full, "cod": d["cod"]}, {})
+        self.assertTrue(forma["hay"] and forma["aplica"] and forma["nCasan"] >= 3)
+        donde = {e["donde"] for e in forma["etiquetas"]}
+        self.assertIn("package/components/component@file", donde)
+        txt = json.dumps(forma)
+        for prohibido in ("RDR", "objetos/", "2.108.0", "KYTL", "gs/"):
+            self.assertNotIn(prohibido, txt)
+        # Solo algunas etiquetas (Ajustes): con «process» ya no casan los .sql y el filtro cambia.
+        try:
+            self.cfg.actualizar({"descriptor": {"etiquetas": "process"}})
+            dp2 = self.app.rutas("GET", "/api/dp", {"repo": full, "cod": d["cod"]}, {})
+            self.assertIn("objetos/V_RDR_PRUEBAS_LOCAL.sql", {f["ruta"] for f in dp2["ficheros"] if f.get("fueraDescriptor")})
+            self.assertFalse(any(r.startswith("objetos/") for c in dp2["componentes"] for r in c["ficheros"]))
+        finally:
+            self.cfg.actualizar({"descriptor": {"etiquetas": ""}})
+        # .gsp: uno con un cambio real entre mucho ruido y otro que solo es ruido.
+        g = {x["ruta"]: x for x in self.app.rutas("GET", "/api/dp/gsp", {"repo": full, "cod": d["cod"]}, {})["ficheros"]}
+        self.assertEqual(set(g), {"gs/CARGA_RDR.gsp", "gs/PARAMETROS_RDR.gsp"})
+        self.assertTrue(g["gs/PARAMETROS_RDR.gsp"]["sinCambiosReales"] and g["gs/PARAMETROS_RDR.gsp"]["brutas"] > 5)
+        c = self.app.rutas("GET", "/api/gsp", {"repo": full, "antes": dp["frenteSha"], "despues": dp["sha"], "ruta": "gs/CARGA_RDR.gsp"}, {})
+        self.assertEqual(c["real"], 2)
+        self.assertEqual([x["txt"].strip() for x in c["anadidas"]], ['paso ESCRIBIR destino="RDR_SALIDA_DIARIA"'])
+        self.assertTrue(c["brutas"] > 10 and c["ruido"]["orden"] and c["ruido"]["generado"])
+        dd = self.app.rutas("GET", "/api/dp/diff", {"repo": full, "cod": d["cod"]}, {})
+        self.assertTrue(all(bool(f.get("gsp")) == f["ruta"].endswith(".gsp") for f in dd["ficheros"]))
 
     def test_publicacion_en_pases_datos(self):
         self.app.publicar(forzar=True)
@@ -553,6 +639,21 @@ class TestConGitHubSimulado(unittest.TestCase):
         n = len(subidos)
         self.assertEqual(self.app.publicar(forzar=True)["publicados"], 0)  # ya estaban
         self.assertEqual(len([r for (_, r) in self.datos.contenidos if r.startswith("dps/")]), n)
+        # Un DP publicado con el cálculo de antes (sin el package descriptor) se corrige una vez.
+        clave = next(k for k, v in self.mon.dps_info.items() if v["repo"].endswith("rdr-objetos-gs") and v.get("release") == "2.108.0")
+        info = self.mon.dps_info[clave]
+        ruta = "dps/rdr-objetos-gs/%s.json" % info["cod"]
+        ck = next(k for k in self.datos.contenidos if k[1] == ruta)
+        viejo = json.loads(self.datos.contenidos[ck]["texto"])
+        viejo.pop("calculo")
+        viejo["componentes"].append({"nom": "V_RDR_PRUEBAS_LOCAL", "tipo": "Objeto GS", "subida": "Paquete Custom"})
+        self.datos.contenidos[ck].update(texto=json.dumps(viejo), sha="viejo")
+        info["publicado"] = {"fecha": "2026-01-01T00:00:00Z", "url": "x"}
+        self.assertEqual(self.app.publicar(forzar=True)["publicados"], 1)
+        nuevo = json.loads(self.datos.contenidos[ck]["texto"])
+        self.assertEqual(nuevo["calculo"], 2)
+        self.assertNotIn("V_RDR_PRUEBAS_LOCAL", json.dumps(nuevo))
+        self.assertEqual(self.app.publicar(forzar=True)["publicados"], 0)
 
     def test_navegar_como_github(self):
         repo = "equipo-demo/rdr-javas"

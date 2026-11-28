@@ -151,6 +151,24 @@ En la lista, dos avisos te dicen qué DPs mirar: **pisaría cambios de producci�
 2. Se mira el **contenido**: un fichero del DP que ya es **idéntico** al de producción no cuenta. Es lo que pasa cuando entró por otro lado: una release anterior con *squash*, un *cherry-pick* o un hotfix.
 3. Se mira **al revés**: lo que producción tiene y el DP no lleva (un hotfix que no se ha bajado a la release).
 4. Mientras la release **no está en producción**, se recalcula cada vez que producción cambia. Cuando entra, se **congela** con el último cálculo. Si la app ve el DP por primera vez con la release ya en producción, lo compara con la release anterior.
+5. Si el repositorio tiene **package descriptor** (un XML en la raíz, como en objetos-gs), el DP **solo instala lo que él nombra**. Un fichero que cambia pero no aparece en el descriptor sale marcado **no se instala** y no cuenta: ni como componente, ni en el pase, ni en `pases-datos`.
+
+### El package descriptor
+La app busca en la raíz del commit del DP un `.xml` con «descriptor» en el nombre (o que empiece por «package») y lee todos sus textos y atributos. Un fichero del DP está en el descriptor si alguno lo nombra: por su ruta, por el final de su ruta, por su nombre (con o sin extensión) o por una carpeta suya.
+
+- En la lista de DPs, **N fuera del descriptor** dice cuántos ficheros cambian sin instalarse.
+- Si el descriptor no nombra **ninguno** de los ficheros del DP, la app no lo entiende y no aparta nada (la comprobación lo avisa).
+- **Ver el diagnóstico del descriptor** enseña su forma: los nombres de las etiquetas y atributos, cuántas entradas tiene cada uno y cuántos ficheros casan. **Ningún valor, ruta ni nombre de componente.** Con *Enviar a NFQ* se manda tal cual para ajustar cómo se lee.
+- En **Ajustes → Package descriptor y .gsp** se puede cambiar el nombre del fichero, limitarlo a algunos repositorios o quedarse solo con algunas etiquetas.
+
+### Comparar .gsp sin ruido
+La herramienta que guarda los `.gsp` los reescribe al guardar: cambia el **orden** de los elementos, los **espacios y saltos de línea** y pone **ids, fechas y versiones** nuevos. GitHub enseña todo eso como cambios. En cada `.gsp`, **Cambios reales** (al lado de *Diff de GitHub*) compara las dos versiones sin ese ruido:
+
+- Una barra reparte las líneas que enseña GitHub entre **cambio real**, **orden**, **ids, fechas y versiones** y **espacios y saltos de línea**.
+- Debajo, solo las líneas que cambian de verdad, con su número en la versión de antes (−) o en la de después (+).
+- En los componentes del DP y en su comprobación, cada `.gsp` dice **N cambios reales** o **solo ruido**.
+
+Funciona en los DPs, en los commits y en las ramas. Si la herramienta mete otro ruido (por ejemplo, un id de sesión), añádelo en **Ajustes → Package descriptor y .gsp** como expresión regular.
 
 > **Importante:** si un DP sale con **pisaría cambios de producción**, hay ficheros que producción ha cambiado y que el DP también trae. Si se despliega tal cual, esos cambios de producción se perderían: hay que bajar producción a la release antes.
 
@@ -158,6 +176,8 @@ En la lista, dos avisos te dicen qué DPs mirar: **pisaría cambios de producci�
 Arriba de los componentes, la caja **Comprobación** dice si todo **cuadra** o hay que **revisar**:
 - Contra qué commit de producción se ha calculado, desde dónde se separó y cuándo. **Ver la misma comparación en GitHub** abre exactamente esa comparación en GitHub para contrastarla.
 - Qué ficheros ya estaban iguales en producción.
+- El **package descriptor**: cuántos ficheros del DP nombra y cuáles cambian sin instalarse.
+- Los **.gsp**: cuántas líneas enseña GitHub y cuántas cambian de verdad.
 - Qué tiene producción que el DP no lleva, y si toca ficheros del DP.
 - **Jira:** las historias citadas en los commits del DP, las que no tienen esta release en *Fix Version/s*, y las que están en la release de Jira sin commits en este DP (pueden estar en otro repositorio).
 
@@ -227,6 +247,10 @@ Prepara el `.json` del pase.
 
 ### Reglas de componentes
 Convierten ficheros cambiados en componentes (nombre, tipo y subida). *Probar con ficheros reales* enseña cómo quedan.
+
+### Package descriptor y .gsp
+- Usar o no el package descriptor, cómo se llama, en qué repositorios y qué etiquetas nombran componentes (vacío: todas).
+- Qué extensiones se comparan sin ruido (por defecto `.gsp`) y qué más ruido apartar.
 
 ### Jira
 - Dirección.
@@ -303,7 +327,7 @@ Escribe un trozo del nombre de un repositorio, una rama, una release, un proyect
 - **Solo sale de la VDI** lo que se publica en `rdr-nfq/pases-datos`:
   - los DPs: release, features y nombres de componentes, nunca código;
   - los pases que subes tú;
-  - el diagnóstico de Jira, si lo envías tú tras revisarlo.
+  - los diagnósticos de Jira y del package descriptor, si los envías tú tras revisarlos (solo formas y cifras, sin contenido).
 - El chat de ayuda usa Copilot, igual que la pestaña Copilot.
 - Los datos locales viven en `%USERPROFILE%\.monitor-pases`.
 

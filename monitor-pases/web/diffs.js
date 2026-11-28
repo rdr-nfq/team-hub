@@ -87,14 +87,52 @@ function partirRuta(ruta) {
   return i < 0 ? ["", ruta] : [ruta.slice(0, i + 1), ruta.slice(i + 1)];
 }
 
-function DiffFichero({ f, idx, modo, abierto, alternar, verFichero }) {
+/* ── Comparador de .gsp: lo que cambia de verdad, sin el ruido de la herramienta ── */
+const PARTES_RUIDO = [["real", "Cambio real"], ["orden", "Orden"], ["generado", "Ids, fechas y versiones"], ["espacios", "Espacios y saltos de línea"]];
+
+export function BarraRuido({ r }) {
+  const total = Math.max(1, r.brutas);
+  const v = { real: r.real, orden: r.ruido.orden, generado: r.ruido.generado, espacios: r.ruido.espacios };
+  return html`<div class="ruido">
+    <div class="ruido-barra" role="img" aria-label=${PARTES_RUIDO.map(([k, t]) => `${t}: ${v[k]}`).join(", ")}>
+      ${PARTES_RUIDO.map(([k]) => v[k] ? html`<span key=${k} class=${"rb-" + k} style=${{ flexGrow: v[k] / total }} />` : "")}</div>
+    <ul class="ruido-ley">${PARTES_RUIDO.map(([k, t]) => html`<li key=${k}><span class=${"rb-" + k} aria-hidden="true" />${t} <b class="num">${v[k]}</b></li>`)}</ul>
+  </div>`;
+}
+
+function CambiosReales({ f, repo, antes, despues }) {
+  const [r, setR] = useState(null);
+  const [err, setErr] = useState(null);
+  useEffect(() => {
+    const q = new URLSearchParams({ repo, antes: f.estado === "added" ? "" : antes || "", despues, ruta: f.ruta, rutaAntes: f.antes || "" });
+    api("gsp?" + q).then(setR, (e) => setErr(e.message));
+  }, [f.ruta, antes, despues]);
+  if (err) return html`<p class="df-nota" role="alert">${err}</p>`;
+  if (!r) return html`<p class="df-nota">Comparando sin el ruido de la herramienta…</p>`;
+  const filas = [...r.quitadas.map((x) => ({ t: "-", a: x.n, txt: x.txt })), ...r.anadidas.map((x) => ({ t: "+", b: x.n, txt: x.txt }))];
+  return html`<div class="gsp">
+    <p class="gsp-resumen">${r.sinCambiosReales ? html`<b>Sin cambios reales:</b> ${r.brutas === 1 ? "la línea que enseña GitHub es ruido" : `las ${r.brutas} líneas que enseña GitHub son ruido`} de la herramienta al guardar.`
+      : html`<b>${plural(r.real, "línea cambia de verdad", "líneas cambian de verdad")}</b> de las ${r.brutas} que enseña GitHub. Lo demás es ruido de la herramienta al guardar.`}</p>
+    <${BarraRuido} r=${r} />
+    ${filas.length ? html`<div class="df-cuerpo"><table class="diff"><tbody>${filas.map((x, i) => html`<tr class=${CLASE[x.t]} key=${i}>
+        <td class="ln">${x.a || ""}</td><td class="ln">${x.b || ""}</td><td class="mk" aria-hidden="true">${MARCA[x.t]}</td>
+        <td class="cd"><span class="sr">${x.t === "+" ? "añadida: " : "quitada: "}</span>${x.txt}</td></tr>`)}</tbody></table></div>
+      <p class="df-nota">Se comparan las líneas sin espacios de más, sin ids, fechas ni versiones y sin importar el orden: cada línea sale con su número en la versión de antes (−) o en la de después (+).${r.recortado ? " Hay más cambios de los que se enseñan." : ""}</p>` : ""}
+  </div>`;
+}
+
+function DiffFichero({ f, idx, modo, abierto, alternar, verFichero, repo, antes, despues, resumenGsp }) {
   const [forzar, setForzar] = useState(false);
+  const conGsp = !!(f.gsp && repo && despues && f.estado !== "removed");
+  const [real, setReal] = useState(() => conGsp && leerLS("mp-gsp-real", true));
+  const verReal = conGsp && real;
   const filas = useMemo(() => (abierto && f.patch ? parsearPatch(f.patch) : []), [abierto, f.patch]);
   const [dir, nombre] = partirRuta(f.ruta);
   const [letra, texto] = ESTADO_F[f.estado] || ["?", f.estado];
   const grande = filas.length > GRANDE && !forzar;
   let cuerpo = null;
-  if (abierto) {
+  if (abierto && verReal) cuerpo = html`<${CambiosReales} f=${f} repo=${repo} antes=${antes} despues=${despues} />`;
+  else if (abierto) {
     if (!f.patch) cuerpo = html`<p class="df-nota">${f.estado === "renamed" && !f.mas && !f.menos ? "Solo se ha renombrado; el contenido es el mismo."
       : f.binario ? "Fichero binario: no tiene diferencias de texto." : "GitHub no envía el diff de este fichero (es demasiado grande). Ábrelo completo con «Ver fichero»."}</p>`;
     else if (grande) cuerpo = html`<p class="df-nota">Diff grande: ${plural(filas.length, "línea", "líneas")}. <button class="btn btn-s" onClick=${() => setForzar(true)}>Mostrarlo</button></p>`;
@@ -107,7 +145,13 @@ function DiffFichero({ f, idx, modo, abierto, alternar, verFichero }) {
         <${Icono} n=${abierto ? "desplegado" : "plegado"} /></button>
       <span class="ef ef-${f.estado}" title=${texto}>${letra}</span>
       <span class="df-ruta mono">${f.antes && f.antes !== f.ruta ? html`<span class="tenue">${f.antes} → </span>` : ""}<span class="tenue">${dir}</span><b>${nombre}</b></span>
+      ${f.fueraDescriptor ? html`<span class="chip chip-borde" title="No aparece en el package descriptor del DP: no se instala">no se instala</span>` : ""}
+      ${resumenGsp && !resumenGsp.error ? html`<span class=${"chip " + (resumenGsp.sinCambiosReales ? "chip-borde" : "chip-acento-s")}
+        title=${`De ${resumenGsp.brutas} líneas que enseña GitHub`}>${resumenGsp.sinCambiosReales ? "solo ruido" : plural(resumenGsp.real, "cambio real", "cambios reales")}</span>` : ""}
       <span class="df-cifras num"><span class="c-mas">+${f.mas}</span> <span class="c-menos">−${f.menos}</span></span>
+      ${conGsp ? html`<div class="segmento segmento-s" role="group" aria-label=${"Cómo ver " + f.ruta}>
+        <button aria-pressed=${!real} onClick=${() => { setReal(false); ponerLS("mp-gsp-real", false); }}>Diff de GitHub</button>
+        <button aria-pressed=${real} onClick=${() => { setReal(true); ponerLS("mp-gsp-real", true); }}>Cambios reales</button></div>` : ""}
       ${verFichero ? html`<button class="btn btn-s" onClick=${() => verFichero(f)}><${Icono} n="fichero" /> Ver fichero</button>` : ""}
     </header>
     ${cuerpo}
@@ -145,7 +189,7 @@ export function VerFichero({ repo, sha, ruta, titulo, onCerrar }) {
 }
 
 /* ── Visor de diferencias (lista de ficheros + diffs) ── */
-export function Diferencias({ ficheros, repo, despues, antes, foco }) {
+export function Diferencias({ ficheros, repo, despues, antes, foco, gsp }) {
   const [modo, setModoRaw] = useState(() => leerLS("mp-diff-modo", "unificado"));
   const [filtro, setFiltro] = useState("");
   const [plegados, setPlegados] = useState(() => new Set());
@@ -181,13 +225,14 @@ export function Diferencias({ ficheros, repo, despues, antes, foco }) {
           const [letra, texto] = ESTADO_F[f.estado] || ["?", f.estado];
           return html`<li key=${i}><button onClick=${() => ir(i)} title=${f.ruta}>
             <span class="ef ef-${f.estado}" title=${texto}>${letra}</span>
-            <span class="t"><b>${nombre}</b><span>${dir}</span></span>
+            <span class="t"><b class=${f.fueraDescriptor ? "fuera" : ""}>${nombre}</b><span>${f.fueraDescriptor ? "no se instala · " : gsp?.[f.ruta]?.sinCambiosReales ? "solo ruido · " : ""}${dir}</span></span>
             <span class="num n"><span class="c-mas">+${f.mas}</span> <span class="c-menos">−${f.menos}</span></span></button></li>`;
         })}</ul>
       </nav>
       <div class="dif-ficheros">
         ${!ficheros.length ? html`<div class="vacio-mini">No hay ficheros cambiados.</div>` : ""}
         ${visibles.map(({ f, i }) => html`<${DiffFichero} key=${i} f=${f} idx=${i} modo=${modo} abierto=${!plegados.has(i)} alternar=${() => alternar(i)}
+          repo=${repo} antes=${antes} despues=${despues} resumenGsp=${gsp?.[f.ruta]}
           verFichero=${despues || antes ? (x) => setVer(x.estado === "removed" ? { ruta: x.antes || x.ruta, sha: antes, titulo: "Antes del cambio (ya no existe)" } : { ruta: x.ruta, sha: despues, titulo: "Después del cambio" }) : null} />`)}
       </div>
     </div>

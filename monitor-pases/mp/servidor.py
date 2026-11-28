@@ -243,6 +243,16 @@ class App:
             return d
         if metodo == "GET" and ruta == "/api/dp/diff":
             return self.diffs.dp(q.get("repo", ""), q.get("cod", ""))
+        if metodo == "GET" and ruta == "/api/dp/gsp":
+            return self.diffs.gsp_dp(q.get("repo", ""), q.get("cod", ""))
+        if metodo == "GET" and ruta == "/api/dp/descriptor":
+            return self.mon.forma_descriptor(q.get("repo", ""), q.get("cod", ""))
+        if metodo == "POST" and ruta == "/api/dp/descriptor/enviar":
+            from .publicar import enviar_diagnostico
+            informe = self.mon.forma_descriptor(cuerpo.get("repo") or "", cuerpo.get("cod") or "")
+            return enviar_diagnostico(self.cfg.get(), "descriptor", informe, demo=self.demo)
+        if metodo == "GET" and ruta == "/api/gsp":
+            return self.diffs.gsp(q.get("repo", ""), q.get("antes", ""), q.get("despues", ""), q.get("ruta", ""), q.get("rutaAntes", ""))
         if metodo == "POST" and ruta == "/api/dps/publicar":
             return self.publicar(forzar=True)
         # Repositorios (como la web de GitHub)

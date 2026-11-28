@@ -1,14 +1,52 @@
 // Monitor de pases · DPs: cada release (release/x.y.z) es una subida y su
 // Action genera el DP. Qué componentes lleva cada DP y qué modificaciones.
 import { html, useState, useEffect, useMemo, useRef } from "./vendor/preact-htm.mjs";
-import { api, ChipJira, Icono, Rama, hace, fLarga, fCorta, corto, plural, colorDe, leerLS, ponerLS, uniq, jira, historiasEn, issueJira } from "./comun.js";
+import { api, ChipJira, Icono, Rama, hace, fLarga, fCorta, corto, plural, colorDe, leerLS, ponerLS, uniq, jira, historiasEn, issueJira, copiarTexto } from "./comun.js";
 import { PanelRelease } from "./jira.js";
 import { BarraFiltros, pasa, propsDeRepos, useFacetas } from "./filtros.js";
-import { Diferencias, Cargando, Volver } from "./diffs.js";
+import { Diferencias, Cargando, Volver, BarraRuido } from "./diffs.js";
+
+/* Diagnóstico del package descriptor: solo su forma (etiquetas, atributos y cifras), nunca valores ni rutas. */
+function DiagnosticoDescriptor({ repo, cod, aviso }) {
+  const [f, setF] = useState(null);
+  const [err, setErr] = useState(null);
+  const [enviando, setEnviando] = useState(false);
+  const [enviado, setEnviado] = useState("");
+  useEffect(() => { api(`dp/descriptor?repo=${encodeURIComponent(repo)}&cod=${encodeURIComponent(cod)}`).then(setF, (e) => setErr(e.message)); }, [repo, cod]);
+  if (err) return html`<p class="nota" role="alert">${err}</p>`;
+  if (!f) return html`<p class="tenue">Preparando el diagnóstico…</p>`;
+  const enviar = async () => {
+    setEnviando(true);
+    try { const r = await api("dp/descriptor/enviar", { repo, cod }); setEnviado(r.fichero || "enviado"); }
+    catch (e) { aviso?.(e.message, "mal"); } finally { setEnviando(false); }
+  };
+  return html`<div class="diag-forma">
+    <p style="margin:0 0 6px">Lo que se enviaría a NFQ: los nombres de las etiquetas y atributos del XML y cuántas entradas tiene cada uno,
+      y cuántos ficheros del DP casan con ellos. <b>Ningún valor, ruta ni nombre de componente.</b></p>
+    <p class="tenue" style="margin:0 0 6px">${plural(f.nEntradas, "entrada", "entradas")} · casan ${f.nCasan} de ${plural(f.nFicheros, "fichero", "ficheros")}
+      ${Object.keys(f.casanPor || {}).length ? " (" + Object.entries(f.casanPor).map(([k, n]) => `${n} por ${k}`).join(", ") + ")" : ""}${f.error ? " · " + f.error : ""}</p>
+    ${f.etiquetas.length ? html`<div style="overflow-x:auto"><table><thead><tr><th>Etiqueta o atributo</th><th class="num">Entradas</th><th class="num">Con «/»</th><th class="num">Con extensión</th><th class="num">Casan</th></tr></thead>
+      <tbody>${f.etiquetas.slice(0, 30).map((e) => html`<tr key=${e.donde}><td class="mono">${e.donde}</td><td class="num">${e.n}</td><td class="num">${e.conBarra}</td><td class="num">${e.conExtension}</td><td class="num">${e.casan}</td></tr>`)}</tbody></table></div>` : ""}
+    <div class="diag-acc">
+      <button class="btn btn-s" disabled=${enviando || !!enviado} onClick=${enviar}><${Icono} n=${enviando ? "actualizar" : "subir"} cls=${enviando ? "gira" : ""} /> ${enviado ? "Enviado" : "Enviar a NFQ"}</button>
+      <button class="btn btn-s" onClick=${() => copiarTexto(JSON.stringify(f, null, 1))}><${Icono} n="copiar" /> Copiar</button>
+      ${enviado ? html`<span class="tenue">${enviado}</span>` : ""}
+    </div>
+  </div>`;
+}
 
 /* Comprobación del DP: contra qué commit de producción se ha calculado, lo que ya está igual en producción,
    lo que producción tiene y el DP no lleva, y el cruce con Jira (Fix Version/s de la release). */
-function Comprobacion({ d, repo, estado }) {
+function Comprobacion({ d, repo, estado, gsp, aviso }) {
+  const [verDiag, setVerDiag] = useState(false);
+  const de = d.descriptor;
+  const fuera = (d.ficheros || []).filter((f) => f.fueraDescriptor && !f.esDescriptor).map((f) => f.ruta);
+  const gs = Object.values(gsp || {}).filter((x) => !x.error);
+  const gsRuido = gs.filter((x) => x.sinCambiosReales);
+  const brutas = gs.reduce((a, x) => a + x.brutas, 0), reales = gs.reduce((a, x) => a + x.real, 0);
+  const sumaRuido = gs.reduce((a, x) => ({ brutas: a.brutas + x.brutas, real: a.real + x.real,
+    ruido: { orden: a.ruido.orden + x.ruido.orden, generado: a.ruido.generado + x.ruido.generado, espacios: a.ruido.espacios + x.ruido.espacios } }),
+    { brutas: 0, real: 0, ruido: { orden: 0, generado: 0, espacios: 0 } });
   const urlRepo = (estado.repos || []).find((r) => r.nombre === repo)?.url || "";
   const sp = d.soloProduccion || {};
   const iguales = (d.ficheros || []).filter((f) => f.igualProduccion).map((f) => f.ruta);
@@ -35,6 +73,22 @@ function Comprobacion({ d, repo, estado }) {
       ${iguales.length ? html`<li class="info"><${Icono} n="ok" /><div><b>${plural(iguales.length, "fichero ya está igual", "ficheros ya están iguales")} en producción</b>${" "}
         (entraron por otro lado: otra release, un squash o un cherry-pick). No cuentan como cambios del DP.
         <details><summary>Ver cuáles</summary><ul class="mono">${iguales.map((f) => html`<li key=${f}>${f}</li>`)}</ul></details></div></li>` : ""}
+      ${de?.ruta && de.aplica ? html`<li class="ok"><${Icono} n="paquete" /><div>
+        <b>Package descriptor</b> <span class="mono">${de.ruta}</span>: nombra ${plural(de.casan || 0, "fichero", "ficheros")} del DP, que son sus componentes.
+        ${fuera.length ? html` ${plural(fuera.length, "fichero cambia pero no aparece", "ficheros cambian pero no aparecen")} en él: no se instalan, así que no cuentan como componentes.
+          <details><summary>Ver cuáles</summary><ul class="mono">${fuera.map((f) => html`<li key=${f}>${f}</li>`)}</ul></details>` : " Todos los ficheros que cambian están en él."}
+        <div><button class="lnk" aria-expanded=${verDiag} onClick=${() => setVerDiag(!verDiag)}>${verDiag ? "Ocultar" : "Ver"} el diagnóstico del descriptor</button></div>
+        ${verDiag ? html`<${DiagnosticoDescriptor} repo=${repo} cod=${d.cod} aviso=${aviso} />` : ""}</div></li>`
+      : de?.ruta ? html`<li class="aviso"><${Icono} n="mal" /><div>
+        <b>Hay un package descriptor</b> (<span class="mono">${de.ruta}</span>) pero ${de.error ? de.error.toLowerCase() : "no nombra ninguno de los ficheros que cambian en el DP"}: no se ha apartado nada, cuentan todos.
+        Envía el diagnóstico (sin contenido) para ajustar cómo se lee.
+        <div><button class="lnk" aria-expanded=${verDiag} onClick=${() => setVerDiag(!verDiag)}>${verDiag ? "Ocultar" : "Ver"} el diagnóstico</button></div>
+        ${verDiag ? html`<${DiagnosticoDescriptor} repo=${repo} cod=${d.cod} aviso=${aviso} />` : ""}</div></li>`
+      : de && !de.desactivado ? html`<li class="info"><${Icono} n="paquete" /><div class="tenue">Sin package descriptor en la raíz del repositorio: cuentan todos los ficheros que cambian.</div></li>` : ""}
+      ${gs.length ? html`<li class=${gsRuido.length ? "info" : "ok"}><${Icono} n="lineas" /><div>
+        <b>.gsp:</b> GitHub enseña ${plural(brutas, "línea cambiada", "líneas cambiadas")} en ${plural(gs.length, "fichero", "ficheros")}; de verdad cambian ${reales}.
+        ${gsRuido.length ? html` ${plural(gsRuido.length, "fichero solo tiene", "ficheros solo tienen")} ruido de la herramienta (orden, espacios, ids, fechas o versiones).` : ""}
+        <${BarraRuido} r=${sumaRuido} /></div></li>` : ""}
       ${d.comprobadoContenido === false ? html`<li class="aviso"><${Icono} n="mal" /><div>No se ha podido comparar el contenido con producción (repositorio muy grande): puede haber ficheros que ya estén iguales.</div></li>` : ""}
       ${sp.commits ? html`<li class=${sp.enComun?.length ? "mal" : "aviso"}><${Icono} n="mal" /><div>
         <b>Producción tiene ${plural(sp.commits, "commit", "commits")} que este DP no lleva</b>${sp.mensajes?.length ? html` (${sp.mensajes.slice(-3).join(" · ")})` : ""}.
@@ -175,7 +229,8 @@ export function VistaDPs({ estado, f, setF, setFacetas, ir, aviso }) {
           <${Componentes} comps=${d.componentes} />`}
           ${d.soloProd?.enComun ? html` <span class="chip chip-mal" title="Producción ha cambiado ficheros que este DP también cambia: revisa la comprobación del DP">pisaría cambios de producción</span>`
             : d.soloProd?.commits ? html` <span class="chip chip-borde" title="Producción tiene commits que este DP no lleva (no tocan sus ficheros)">producción va por delante</span>` : ""}
-          ${d.nIguales ? html` <span class="chip chip-borde" title="Ficheros que ya están iguales en producción: no cuentan">${d.nIguales} ya en producción</span>` : ""}</span>
+          ${d.nIguales ? html` <span class="chip chip-borde" title="Ficheros que ya están iguales en producción: no cuentan">${d.nIguales} ya en producción</span>` : ""}
+          ${d.nFuera ? html` <span class="chip chip-borde" title="Cambian, pero el package descriptor no los nombra: no se instalan y no cuentan">${d.nFuera} fuera del descriptor</span>` : ""}</span>
         <${EstadoPublicado} d=${d} nfq=${datos.nfq} />
       </li>`)}</ul>
     </section>`)}
@@ -183,7 +238,7 @@ export function VistaDPs({ estado, f, setF, setFacetas, ir, aviso }) {
   </div>`;
 }
 
-export function VistaDP({ repo, cod, volver, ir, estado }) {
+export function VistaDP({ repo, cod, volver, ir, estado, aviso }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState(null);
   const [dif, setDif] = useState(null);
@@ -192,8 +247,11 @@ export function VistaDP({ repo, cod, volver, ir, estado }) {
   const [verCommits, setVerCommits] = useState(false);
   const [qComp, setQComp] = useState("");
   const [tipoComp, setTipoComp] = useState(null);
+  const [gsp, setGsp] = useState(null);
   const refMods = useRef(null);
   useEffect(() => {
+    api(`dp/gsp?repo=${encodeURIComponent(repo)}&cod=${encodeURIComponent(cod)}`)
+      .then((r) => setGsp(Object.fromEntries((r.ficheros || []).map((x) => [x.ruta, x]))), () => setGsp({}));
     api(`dp?repo=${encodeURIComponent(repo)}&cod=${encodeURIComponent(cod)}`).then(setD, (e) => setErr(e.message));
     api(`dp/diff?repo=${encodeURIComponent(repo)}&cod=${encodeURIComponent(cod)}`).then(setDif, (e) => setErrDif(e.message));
   }, [repo, cod]);
@@ -227,7 +285,7 @@ export function VistaDP({ repo, cod, volver, ir, estado }) {
         <span class="tenue">${c.autor} · ${hace(c.fecha)}</span></li>`)}</ul>` : ""}
     </header>
 
-    <${Comprobacion} d=${d} repo=${repo} estado=${estado} />
+    <${Comprobacion} d=${d} repo=${repo} estado=${estado} gsp=${gsp} aviso=${aviso} />
 
     <section class="caja" aria-labelledby="dp-comp" style="margin-bottom:16px">
       <h2 id="dp-comp">Componentes <span class="chip">${d.componentes.length}</span></h2>
@@ -243,14 +301,16 @@ export function VistaDP({ repo, cod, volver, ir, estado }) {
         <tbody>${comps.map((c) => html`<tr key=${c.clave}>
           <td><b>${c.nombre}</b>${c.borrado ? html` <span class="chip chip-mal">se borra</span>` : ""}</td>
           <td>${c.tipo || html`<span class="chip chip-borde">sin regla</span>`}</td><td>${c.subida || "—"}</td>
-          <td class="ficheros-comp">${c.ficheros.map((f) => html`<button class="lnk mono" key=${f} onClick=${() => irFichero(f)} title="Ver sus cambios">${f}</button>`)}</td>
+          <td class="ficheros-comp">${c.ficheros.map((f) => html`<span key=${f}><button class="lnk mono" onClick=${() => irFichero(f)} title="Ver sus cambios">${f}</button>${gsp?.[f] && !gsp[f].error
+            ? html` <span class=${"chip " + (gsp[f].sinCambiosReales ? "chip-borde" : "chip-acento-s")} title=${`De ${gsp[f].brutas} líneas que enseña GitHub`}>${gsp[f].sinCambiosReales ? "solo ruido" : plural(gsp[f].real, "cambio real", "cambios reales")}</span>` : ""}</span>`)}</td>
         </tr>`)}</tbody></table></div>` : html`<p class="suave" style="margin:0">${d.componentes.length ? "Ningún componente con ese filtro." : "Sin componentes."}</p>`}
       ${d.ignorados ? html`<p class="nota">${plural(d.ignorados, "fichero ignorado", "ficheros ignorados")} por las reglas de Ajustes.</p>` : ""}
     </section>
 
     <div ref=${refMods}>
       <h2 class="h-seccion">Modificaciones</h2>
-      ${dif ? html`<${Diferencias} key=${foco || "x"} ficheros=${dif.ficheros} repo=${repo} despues=${d.sha} antes=${d.frenteSha} foco=${foco ? foco.split("#")[0] : null} />`
+      ${dif?.fuera ? html`<p class="nota">${plural(dif.fuera, "fichero no aparece", "ficheros no aparecen")} en el package descriptor: salen al final, marcados «no se instala».</p>` : ""}
+      ${dif ? html`<${Diferencias} key=${foco || "x"} ficheros=${dif.ficheros} repo=${repo} despues=${d.sha} antes=${d.frenteSha} foco=${foco ? foco.split("#")[0] : null} gsp=${gsp} />`
         : html`<${Cargando} err=${errDif} texto="Cargando las modificaciones…" />`}
     </div>
   </div>`;

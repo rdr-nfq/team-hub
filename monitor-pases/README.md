@@ -92,10 +92,13 @@ Las ramas de integración (`patronIntegracion`: `develop`, `qa`, `uat`…) y las
 
 ### DPs y releases
 
-Las ramas `release/x.y.z` (configurable) son subidas. La Action de la release genera el DP. Lo que trae cada DP frente a producción se comprueba de tres formas (`Monitor._comparar_dp`):
+Las ramas `release/x.y.z` (configurable) son subidas. La Action de la release genera el DP. Lo que trae cada DP frente a producción se comprueba de cuatro formas (`Monitor._comparar_dp`):
 1. **GitHub:** `compare/<producción>...<commit del DP>` (desde el ancestro común).
 2. **Contenido:** con el árbol de producción (`git/trees/<sha>?recursive=1`, una llamada por commit de producción), un fichero del DP cuyo blob es idéntico al de producción no cuenta (entró por otro lado: *squash*, *cherry-pick*, una release anterior). No sale en componentes, ni en el pase, ni en `pases-datos`.
 3. **Al revés:** `compare/<DP>...<producción>`: lo que producción tiene y el DP no lleva; si toca ficheros del DP, el DP sale como **«pisaría cambios de producción»**.
+4. **Package descriptor** (`mp/descriptor.py`): si la raíz del commit del DP tiene un XML con «descriptor» en el nombre (o que empiece por «package»), solo es componente lo que él nombra (por ruta, final de ruta, nombre con o sin extensión o carpeta). Lo demás se marca `fueraDescriptor` y no sale en componentes, ni en el pase, ni en `pases-datos`. Si no nombra ningún fichero del DP no se aparta nada. Sus entradas se guardan en la carpeta de datos (`descriptores/`, por blob) y el diagnóstico (`/api/dp/descriptor`) solo lleva nombres de etiquetas y cifras. Los DPs publicados con el cálculo anterior se corrigen una vez en `pases-datos` (`calculo: 2`).
+
+**Comparador de .gsp** (`mp/gsp.py`, `/api/gsp` y `/api/dp/gsp`): compara dos versiones apartando, por pasos, espacios y saltos de línea, ids, fechas y versiones generados y el orden de las líneas; lo que queda son los cambios reales. Extensiones y ruido propio en Ajustes (`gsp`).
 
 Mientras el código del DP no está en producción, se recalcula cada vez que cambia el commit de producción; al entrar, se congela con el último cálculo. Si la app lo ve por primera vez ya en producción, lo compara con la release anterior. Las features del DP salen de sus propios commits (con el mapa historia → feature de Jira). En el **Pase**, cada componente lleva el DP de la release que contiene su feature y ese fichero (si no, el de su rama), y se marca *Ya está igual en producción* cuando no hay nada que desplegar. La ficha del DP tiene la caja **Comprobación** (producción, GitHub con enlace a la misma comparación, y Jira por *Fix Version/s*).
 
@@ -160,7 +163,7 @@ GitHub da a cada persona un número de llamadas por hora (normalmente 5.000).
 - **Nada se descarga de internet:** la interfaz va dentro.
 - **Los tokens no se guardan:** los gestiona Git. Si pones uno a mano, queda en `%USERPROFILE%\.monitor-pases\config.json`.
 - **Copilot CLI se ejecuta con Node directamente,** sin pasar por `cmd`, para que el texto de una pregunta no pueda colarse como comando.
-- **De BBVA solo sale lo que se publica en `pases-datos`:** DPs, releases, features y nombres de componentes. Y, si lo envías tú tras revisarlo, el diagnóstico de Jira (sin contenido).
+- **De BBVA solo sale lo que se publica en `pases-datos`:** DPs, releases, features y nombres de componentes. Y, si los envías tú tras revisarlos, los diagnósticos de Jira y del package descriptor (sin contenido).
 
 ## Configuración del equipo
 
@@ -181,6 +184,8 @@ node prueba-motor.js && node prueba-extension.js   # el motor como lo arranca el
 - `mp/` es el backend, en Python y solo con su librería estándar:
   - `sesion.py`: Git Credential Manager.
   - `sincro.py`: sincronización, releases y DPs.
+  - `descriptor.py`: package descriptor (qué instala cada DP).
+  - `gsp.py`: comparador de .gsp sin ruido.
   - `publicar.py`: `pases-datos`.
   - `navegar.py`: repositorios como en GitHub.
   - `diffs.py`: commits y diferencias.
