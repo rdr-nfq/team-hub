@@ -7,7 +7,7 @@ const assert = require("assert");
 const Module = require("module");
 const path = require("path");
 
-const comandos = {}, abiertos = [], copiados = [], paneles = [], errores = [];
+const comandos = {}, abiertos = [], copiados = [], paneles = [], errores = [], ejecutados = [], proveedores = [];
 let config = {};
 const evento = () => { const fs = []; const f = (cb) => { fs.push(cb); return { dispose() {} }; }; f.fire = (x) => fs.forEach((cb) => cb(x)); return f; };
 const vscode = {
@@ -24,7 +24,7 @@ const vscode = {
   workspace: { getConfiguration: () => ({ get: (k) => config[k], update: async (k, v) => { config[k] = v; } }) },
   commands: {
     registerCommand: (id, fn) => { comandos[id] = fn; return { dispose() {} }; },
-    executeCommand: (id, ...a) => comandos[id] && comandos[id](...a),
+    executeCommand: (id, ...a) => { ejecutados.push(id); return comandos[id] && comandos[id](...a); },
   },
   window: {
     activeColorTheme: { kind: 2 },
@@ -34,7 +34,7 @@ const vscode = {
     showErrorMessage: async (m) => { errores.push(m); return undefined; },
     showInformationMessage: async () => undefined,
     setStatusBarMessage: () => ({ dispose() {} }),
-    registerWebviewViewProvider: () => ({ dispose() {} }),
+    registerWebviewViewProvider: (id, p) => { proveedores.push(p); return { dispose() {} }; },
     createWebviewPanel: (tipo, titulo) => {
       const recibir = evento(), cerrar = evento();
       const p = { tipo, titulo, enviados: [], webview: { html: "", onDidReceiveMessage: recibir, postMessage: async (m) => p.enviados.push(m) },
@@ -56,6 +56,13 @@ Module._load = function (req, ...r) { return req === "vscode" ? vscode : cargar.
     assert.ok(comandos[c], "comando " + c);
   await comandos["monitorPases.abrirDemo"]();
   assert.strictEqual(paneles.length, 1, "un panel");
+  // Pulsar el icono de la barra de actividad abre la app directamente y recoge la barra lateral.
+  const visible = evento();
+  proveedores[0].resolveWebviewView({ visible: true, webview: { options: {}, html: "", onDidReceiveMessage: evento(), postMessage: async () => true },
+    onDidDispose: evento(), onDidChangeVisibility: visible });
+  await new Promise((r) => setTimeout(r, 50));
+  assert.ok(ejecutados.includes("monitorPases.abrir") && ejecutados.includes("workbench.action.closeSidebar"), "icono -> app: " + ejecutados);
+  assert.strictEqual(paneles.length, 1, "reutiliza el panel");
   const html = paneles[0].webview.html;
   const m = /<iframe id="app" src="([^"]+)"/.exec(html);
   assert.ok(m && /^http:\/\/127\.0\.0\.1:\d+\/\?vscode=1&tema=dark$/.test(m[1]), "iframe con la app: " + (m && m[1]));

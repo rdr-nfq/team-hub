@@ -158,6 +158,14 @@ class Lateral {
 </script></body></html>`;
     view.webview.onDidReceiveMessage((d) => d && d.comando && vscode.commands.executeCommand(d.comando));
     view.onDidDispose(() => { lateral = null; });
+    // Al pulsar el icono de la barra de actividad se abre la app directamente (y se recoge la barra lateral).
+    const alVer = () => {
+      if (!view.visible || conf().get("abrirAlPulsarIcono") === false) return;
+      vscode.commands.executeCommand("monitorPases.abrir");
+      vscode.commands.executeCommand("workbench.action.closeSidebar");
+    };
+    if (view.onDidChangeVisibility) view.onDidChangeVisibility(alVer);
+    alVer();
     estadoBarra(barra.text, barra.tooltip);
   }
 }

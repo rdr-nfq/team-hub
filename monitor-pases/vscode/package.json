@@ -2,7 +2,7 @@
   "name": "monitor-pases",
   "displayName": "Monitor de pases",
   "description": "GitHub BBVA, Jira, DPs y el pase en VS Code (BBVA × NFQ).",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "publisher": "nfq",
   "private": true,
   "license": "SEE LICENSE IN LICENSE.txt",
@@ -111,6 +111,11 @@
           "type": "number",
           "default": 0,
           "description": "Puerto local del motor. 0: el de siempre (8765, o el siguiente libre)."
+        },
+        "monitorPases.abrirAlPulsarIcono": {
+          "type": "boolean",
+          "default": true,
+          "description": "Al pulsar el icono de la barra de actividad, abrir el monitor directamente (sin la barra lateral)."
         },
         "monitorPases.abrirAlIniciar": {
           "type": "boolean",
